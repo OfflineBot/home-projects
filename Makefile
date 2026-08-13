@@ -97,8 +97,12 @@ two-projects: ## one project pulls, another arranges: link, copy, move
 blueprint: ## the arrangement as JSON, out and back in
 	python3 scripts/blueprint.py --url $(API)
 
+.PHONY: calendar-kinds
+calendar-kinds: ## the five kinds of entry, and the file that stays iCalendar
+	python3 scripts/calendar_kinds.py --url $(API)
+
 .PHONY: check
-check: test sweep git-roundtrip ssh-access password-push two-projects blueprint ## what has to be green before a deploy
+check: test sweep git-roundtrip ssh-access password-push two-projects blueprint calendar-kinds ## what has to be green before a deploy
 
 .PHONY: build
 build: ## compile both halves

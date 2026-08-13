@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,7 +86,9 @@ func (Capability) Presets() []capability.Preset {
 // Exports is what a calendar project offers the dashboard.
 func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Project) ([]store.VariableInput, error) {
 	now := time.Now()
-	occ, err := Between(ctx, env, []model.Project{*p}, now.Add(-24*time.Hour), now.AddDate(0, 3, 0))
+	// Three months back, because an overdue deadline stays overdue and a
+	// semester that started in March is still the phase you are in.
+	occ, err := Between(ctx, env, []model.Project{*p}, now.AddDate(0, -3, 0), now.AddDate(0, 3, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +101,11 @@ func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Pro
 	upcoming := []map[string]any{}
 	for i := range occ {
 		o := occ[i]
+		// A phase is the backdrop, not an entry in today's list, and counting
+		// it would make "3 things today" mean "2 things and a semester".
+		if o.Kind == ics.KindPhase {
+			continue
+		}
 		if o.Start.Before(todayEnd) && o.End.After(todayStart) {
 			todayCount++
 		}
@@ -131,7 +139,141 @@ func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Pro
 			store.VariableInput{Name: "next_event_at", Type: "date", Value: nil, Source: "capability:calendar"},
 		)
 	}
-	return out, nil
+	return append(out, deadlineAndPhaseVariables(occ, now, todayStart, todayEnd)...), nil
+}
+
+// deadlineAndPhaseVariables are what makes a dashboard useful without a
+// calendar widget on it: a red tile for what is overdue, a text tile for what
+// comes next, a progress tile for the semester.
+func deadlineAndPhaseVariables(occ []Occurrence, now, todayStart, todayEnd time.Time) []store.VariableInput {
+	open, overdue := 0, 0
+	var nextDeadline *Occurrence
+	var phase *Occurrence
+	var slots []Occurrence
+
+	for i := range occ {
+		o := occ[i]
+		switch o.Kind {
+		case ics.KindDeadline:
+			if o.Done {
+				continue
+			}
+			if o.Start.Before(now) {
+				overdue++
+				continue
+			}
+			open++
+			if nextDeadline == nil || o.Start.Before(nextDeadline.Start) {
+				nextDeadline = &occ[i]
+			}
+		case ics.KindPhase:
+			// The phase you are in now. Several may overlap — "exam period"
+			// inside "semester 3" — and the shorter one is the more specific
+			// answer to "where am I".
+			if o.Start.After(now) || o.End.Before(now) {
+				continue
+			}
+			if phase == nil || o.End.Sub(o.Start) < phase.End.Sub(phase.Start) {
+				phase = &occ[i]
+			}
+		case ics.KindSlot:
+			if !o.AllDay && o.Start.Before(todayEnd) && o.End.After(todayStart) {
+				slots = append(slots, o)
+			}
+		}
+	}
+
+	out := []store.VariableInput{
+		{Name: "deadlines_open", Type: "number", Value: open, Source: "capability:calendar"},
+		{Name: "deadlines_overdue", Type: "number", Value: overdue, Source: "capability:calendar"},
+		{Name: "free_today", Type: "text", Value: largestGap(slots, todayStart, todayEnd, now), Source: "capability:calendar"},
+	}
+	if nextDeadline != nil {
+		out = append(out,
+			store.VariableInput{Name: "next_deadline", Type: "text", Value: nextDeadline.Summary, Source: "capability:calendar"},
+			store.VariableInput{Name: "next_deadline_at", Type: "date", Value: nextDeadline.Start, Source: "capability:calendar"},
+		)
+	} else {
+		out = append(out,
+			store.VariableInput{Name: "next_deadline", Type: "text", Value: "", Source: "capability:calendar"},
+			store.VariableInput{Name: "next_deadline_at", Type: "date", Value: nil, Source: "capability:calendar"},
+		)
+	}
+	if phase != nil {
+		span := phase.End.Sub(phase.Start)
+		progress := 0
+		if span > 0 {
+			progress = int(now.Sub(phase.Start) * 100 / span)
+		}
+		out = append(out,
+			store.VariableInput{Name: "current_phase", Type: "text", Value: phase.Summary, Source: "capability:calendar"},
+			store.VariableInput{Name: "phase_progress", Type: "number", Value: clamp(progress, 0, 100), Source: "capability:calendar"},
+			store.VariableInput{Name: "days_left_in_phase", Type: "number",
+				Value: int(phase.End.Sub(now).Hours() / 24), Source: "capability:calendar"},
+		)
+	} else {
+		out = append(out,
+			store.VariableInput{Name: "current_phase", Type: "text", Value: "", Source: "capability:calendar"},
+			store.VariableInput{Name: "phase_progress", Type: "number", Value: 0, Source: "capability:calendar"},
+			store.VariableInput{Name: "days_left_in_phase", Type: "number", Value: 0, Source: "capability:calendar"},
+		)
+	}
+	return out
+}
+
+// largestGap answers "when do I have time today" — the longest stretch between
+// the appointments that are still ahead.
+func largestGap(slots []Occurrence, dayStart, dayEnd, now time.Time) string {
+	from := dayStart
+	if now.After(from) {
+		from = now
+	}
+	if !from.Before(dayEnd) {
+		return ""
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i].Start.Before(slots[j].Start) })
+
+	var best time.Duration
+	var bestFrom time.Time
+	cursor := from
+	consider := func(until time.Time) {
+		if d := until.Sub(cursor); d > best {
+			best, bestFrom = d, cursor
+		}
+	}
+	for _, s := range slots {
+		if s.End.Before(cursor) {
+			continue
+		}
+		if s.Start.After(cursor) {
+			consider(s.Start)
+		}
+		if s.End.After(cursor) {
+			cursor = s.End
+		}
+	}
+	consider(dayEnd)
+
+	if best < 15*time.Minute {
+		return ""
+	}
+	hours := int(best.Hours())
+	minutes := int(best.Minutes()) % 60
+	length := fmt.Sprintf("%dh %02dm", hours, minutes)
+	if hours == 0 {
+		length = fmt.Sprintf("%dm", minutes)
+	}
+	return fmt.Sprintf("%s from %s", length, bestFrom.Format("15:04"))
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // SchedulerKinds brings the ICS subscription: a foreign calendar URL pulled on

@@ -186,7 +186,32 @@ Nothing writes via cookie: every write carries the access token in an
 do exist — the refresh token and the binding cookie — are `httpOnly`, `Secure`
 and `SameSite=Strict`, so a cross-site request never carries them either.
 
-## 13. What is not built
+## 13. Five kinds of entry, and none of them a new file format
+
+`CALENDAR.md` asks for five things in a calendar — slot, all-day, deadline,
+phase, milestone — because they want to be *drawn* differently. That could have
+been a `kind` column and a private format. It is neither.
+
+- A **deadline is a `VTODO`** with a `DUE`, `PRIORITY`, and `STATUS:COMPLETED`
+  when it is ticked off. That is what iCalendar has for something that can be
+  finished; an event cannot be completed, a todo can. The cost is real and is
+  stated in the UI: Google Calendar ignores `VTODO` on a subscribed feed, so
+  the export converts them to short events by default. `?deadlines=todos`
+  turns that off for the clients that do understand them. The file is never
+  what leaves — the conversion happens on the way out.
+- A **phase and a milestone are ordinary `VEVENT`s** carrying `X-HOME-KIND`,
+  which RFC 5545 explicitly allows. A client that ignores it shows a correct
+  calendar, just less prettily.
+- **A slot and an all-day carry nothing at all.** The kind is worked out from
+  what the entry is — timed or whole-day — so an appointment written by
+  Thunderbird comes back out byte-for-byte the same shape it went in as. The
+  check script asserts exactly this.
+- Everything else uses properties that already exist: `CATEGORIES` for tags,
+  `RELATED-TO` for "belongs to this phase", `PRIORITY` for importance.
+  `X-HOME-LINK` and `X-HOME-ATTACHED-TO` are the only two additions, and both
+  are decoration: losing them loses a jump to a folder, never an appointment.
+
+## 14. What is not built
 
 - **The Android app.** Everything it needs exists on the server side.
 - **WebAuthn / passkeys.** TOTP is in; the brief lists passkeys as optional.

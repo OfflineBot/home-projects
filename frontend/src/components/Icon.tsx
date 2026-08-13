@@ -51,6 +51,8 @@ const paths: Record<string, string> = {
   map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14",
   key: "M15 4a5 5 0 1 1-4.6 7L4 17.4V21h3.6l1-1v-2h2l1.4-1.4A5 5 0 0 1 15 4z",
   alert: "M12 4 2 20h20zM12 10v4M12 17.5h.01",
+  flag: "M6 21V4M6 4h11l-2 3.5L17 11H6",
+  circle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
   info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01",
   grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   logout: "M10 20H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5M16 16l4-4-4-4M20 12H10",

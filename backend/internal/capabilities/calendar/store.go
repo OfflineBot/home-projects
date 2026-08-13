@@ -113,7 +113,7 @@ func Reindex(ctx context.Context, env *capability.Env, p *model.Project) error {
 	}
 	var rows []row
 	for _, f := range files {
-		for _, comp := range f.Cal.Kids("VEVENT") {
+		for _, comp := range entryComps(f.Cal) {
 			e, err := ics.FromComponent(comp)
 			if err != nil {
 				continue // a broken event does not break the project
@@ -142,14 +142,22 @@ func Reindex(ctx context.Context, env *capability.Env, p *model.Project) error {
 		for _, a := range r.e.Alarms {
 			alarms = append(alarms, strconv.Itoa(a))
 		}
+		var completed *time.Time
+		if !r.e.Completed.IsZero() {
+			t := r.e.Completed
+			completed = &t
+		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO calendar_events (project_id, uid, recurrence_id, dtstart, dtend, all_day,
 				summary, description, location, rrule, exdates, color, alarms, sequence,
-				source_file, read_only)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+				source_file, read_only, kind, is_todo, status, completed, priority,
+				categories, related_to, attached_to, link, person)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
 			p.ID, r.uid, r.rid, r.e.Start, r.e.End, r.e.AllDay, r.e.Summary, r.e.Description,
 			r.e.Location, r.e.RRule, strings.Join(exdates, ","), r.e.Color,
-			strings.Join(alarms, ","), r.e.Sequence, r.sourceFile, r.readOnly)
+			strings.Join(alarms, ","), r.e.Sequence, r.sourceFile, r.readOnly,
+			r.e.EffectiveKind(), r.e.IsTodo, r.e.Status, completed, r.e.Priority,
+			strings.Join(r.e.Categories, ","), r.e.RelatedTo, r.e.AttachedTo, r.e.Link, r.e.Person)
 		if err != nil {
 			return err
 		}
@@ -157,7 +165,7 @@ func Reindex(ctx context.Context, env *capability.Env, p *model.Project) error {
 	return tx.Commit(ctx)
 }
 
-// Row is one indexed VEVENT.
+// Row is one indexed entry — a VEVENT or a VTODO.
 type Row struct {
 	ProjectID   uuid.UUID
 	UID         string
@@ -175,10 +183,20 @@ type Row struct {
 	Sequence    int
 	SourceFile  string
 	ReadOnly    bool
+	Kind        string
+	IsTodo      bool
+	Status      string
+	Completed   *time.Time
+	Priority    int
+	Categories  []string
+	RelatedTo   string
+	AttachedTo  string
+	Link        string
+	Person      string
 }
 
 func (r Row) event() ics.Event {
-	return ics.Event{
+	e := ics.Event{
 		UID:          r.UID,
 		Summary:      r.Summary,
 		Description:  r.Description,
@@ -192,13 +210,28 @@ func (r Row) event() ics.Event {
 		Sequence:     r.Sequence,
 		Color:        r.Color,
 		Alarms:       r.Alarms,
+		Kind:         r.Kind,
+		IsTodo:       r.IsTodo,
+		Status:       r.Status,
+		Priority:     r.Priority,
+		Categories:   r.Categories,
+		RelatedTo:    r.RelatedTo,
+		AttachedTo:   r.AttachedTo,
+		Link:         r.Link,
+		Person:       r.Person,
 	}
+	if r.Completed != nil {
+		e.Completed = *r.Completed
+	}
+	return e
 }
 
 func loadRows(ctx context.Context, env *capability.Env, projectIDs []uuid.UUID) ([]Row, error) {
 	rows, err := env.Store.Pool().Query(ctx, `
 		SELECT project_id, uid, recurrence_id, dtstart, dtend, all_day, summary, description,
-			location, rrule, exdates, color, alarms, sequence, source_file, read_only
+			location, rrule, exdates, color, alarms, sequence, source_file, read_only,
+			kind, is_todo, status, completed, priority, categories, related_to, attached_to,
+			link, person
 		FROM calendar_events WHERE project_id = ANY($1) ORDER BY dtstart`, projectIDs)
 	if err != nil {
 		return nil, err
@@ -207,11 +240,18 @@ func loadRows(ctx context.Context, env *capability.Env, projectIDs []uuid.UUID) 
 	out := []Row{}
 	for rows.Next() {
 		var r Row
-		var exdates, alarms string
+		var exdates, alarms, categories string
 		if err := rows.Scan(&r.ProjectID, &r.UID, &r.Recurrence, &r.Start, &r.End, &r.AllDay,
 			&r.Summary, &r.Description, &r.Location, &r.RRule, &exdates, &r.Color, &alarms,
-			&r.Sequence, &r.SourceFile, &r.ReadOnly); err != nil {
+			&r.Sequence, &r.SourceFile, &r.ReadOnly, &r.Kind, &r.IsTodo, &r.Status,
+			&r.Completed, &r.Priority, &categories, &r.RelatedTo, &r.AttachedTo,
+			&r.Link, &r.Person); err != nil {
 			return nil, err
+		}
+		for _, cat := range strings.Split(categories, ",") {
+			if cat = strings.TrimSpace(cat); cat != "" {
+				r.Categories = append(r.Categories, cat)
+			}
 		}
 		for _, ex := range strings.Split(exdates, ",") {
 			if ex == "" {
@@ -254,6 +294,23 @@ type Occurrence struct {
 	Alarms       []int     `json:"alarms,omitempty"`
 	ReadOnly     bool      `json:"readOnly"`
 	SourceFile   string    `json:"sourceFile"`
+
+	// What it is, and therefore how it wants to be drawn.
+	Kind string `json:"kind"`
+	// Deadlines only.
+	IsTodo    bool       `json:"isTodo,omitempty"`
+	Done      bool       `json:"done,omitempty"`
+	Completed *time.Time `json:"completedAt,omitempty"`
+	Priority  int        `json:"priority,omitempty"`
+	// Overdue is worked out at read time, not stored — it changes with the
+	// clock, not with the file.
+	Overdue bool `json:"overdue,omitempty"`
+
+	Categories []string `json:"categories,omitempty"`
+	RelatedTo  string   `json:"relatedTo,omitempty"`
+	AttachedTo string   `json:"attachedTo,omitempty"`
+	Link       string   `json:"link,omitempty"`
+	Person     string   `json:"person,omitempty"`
 }
 
 // Between expands everything in the given projects into the time range.
@@ -320,6 +377,7 @@ func Between(ctx context.Context, env *capability.Env, projects []model.Project,
 				ReadOnly:     master.ReadOnly,
 				SourceFile:   master.SourceFile,
 			}
+			decorate(&o, master, occ.Start)
 			if master.RRule != "" {
 				o.RecurrenceID = ics.FormatUTC(occ.RecurrenceID)
 			}
@@ -347,14 +405,16 @@ func Between(ctx context.Context, env *capability.Env, projects []model.Project,
 			if r.End.Before(from) || r.Start.After(to) {
 				continue
 			}
-			out = append(out, Occurrence{
+			o := Occurrence{
 				ProjectID: k.project, ProjectSlug: p.Slug, ProjectTitle: p.Title,
 				Color: firstNonEmpty(r.Color, p.Color), UID: r.UID,
 				RecurrenceID: ics.FormatUTC(*r.Recurrence),
 				Start:        r.Start, End: r.End, AllDay: r.AllDay, Summary: r.Summary,
 				Description: r.Description, Location: r.Location, ReadOnly: r.ReadOnly,
 				SourceFile: r.SourceFile, IsException: true,
-			})
+			}
+			decorate(&o, r, r.Start)
+			out = append(out, o)
 		}
 	}
 
@@ -365,6 +425,29 @@ func Between(ctx context.Context, env *capability.Env, projects []model.Project,
 		return out[i].Start.Before(out[j].Start)
 	})
 	return out, nil
+}
+
+// decorate copies everything the drawing depends on onto one appearance, and
+// works out the two things that depend on the clock rather than on the file.
+func decorate(o *Occurrence, r Row, start time.Time) {
+	o.Kind = r.Kind
+	if o.Kind == "" {
+		o.Kind = r.event().EffectiveKind()
+	}
+	o.IsTodo = r.IsTodo
+	o.Done = strings.EqualFold(r.Status, "COMPLETED")
+	o.Completed = r.Completed
+	o.Priority = r.Priority
+	o.Categories = r.Categories
+	o.RelatedTo = r.RelatedTo
+	o.AttachedTo = r.AttachedTo
+	o.Link = r.Link
+	o.Person = r.Person
+	// Only a deadline can be late. A lecture that has been and gone is simply
+	// past, and colouring it red would say nothing.
+	if o.Kind == ics.KindDeadline && !o.Done && start.Before(time.Now()) {
+		o.Overdue = true
+	}
 }
 
 func firstNonEmpty(values ...string) string {
@@ -429,7 +512,7 @@ func mutate(ctx context.Context, env *capability.Env, p *model.Project, uid stri
 	var target *file
 	if uid != "" {
 		for _, f := range files {
-			for _, comp := range f.Cal.Kids("VEVENT") {
+			for _, comp := range entryComps(f.Cal) {
 				if comp.Value("UID") == uid {
 					target = f
 					break
@@ -472,10 +555,22 @@ func capabilityOp(author, email, message string) filesOp {
 	return filesOp{Author: author, Email: email, Message: message, Commit: true}
 }
 
+// entryComps returns the components that carry an entry: appointments and
+// deadlines alike. Everything else in the file — time zones, free/busy — is
+// left where it is.
+func entryComps(cal *ics.Component) []*ics.Component {
+	out := cal.Kids("VEVENT")
+	return append(out, cal.Kids("VTODO")...)
+}
+
 // Export merges everything into a single VCALENDAR — that is what a
 // subscription URL and a download return, whatever the storage looks like
 // inside.
-func Export(ctx context.Context, env *capability.Env, p *model.Project) ([]byte, error) {
+//
+// todosAsEvents is the one concession to Google Calendar, which ignores VTODO
+// on a subscribed feed: with it, deadlines leave as short VEVENTs. The files
+// are untouched either way.
+func Export(ctx context.Context, env *capability.Env, p *model.Project, todosAsEvents bool) ([]byte, error) {
 	files, err := readFiles(ctx, env, p)
 	if err != nil {
 		return nil, err
@@ -484,6 +579,17 @@ func Export(ctx context.Context, env *capability.Env, p *model.Project) ([]byte,
 	for _, f := range files {
 		for _, comp := range f.Cal.Kids("VEVENT") {
 			out.Children = append(out.Children, comp)
+		}
+		for _, comp := range f.Cal.Kids("VTODO") {
+			if !todosAsEvents {
+				out.Children = append(out.Children, comp)
+				continue
+			}
+			e, err := ics.FromComponent(comp)
+			if err != nil {
+				continue
+			}
+			out.Children = append(out.Children, e.AsEvent())
 		}
 		// Time zone definitions travel with the events that need them.
 		for _, tz := range f.Cal.Kids("VTIMEZONE") {

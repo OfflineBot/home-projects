@@ -16,9 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+
 	lib "github.com/OfflineBot/nicht-libs/moodle"
 	"github.com/offlinebot/home-projects/backend/internal/capability"
 	"github.com/offlinebot/home-projects/backend/internal/files"
+	"github.com/offlinebot/home-projects/backend/internal/httpx"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/slug"
 	"github.com/offlinebot/home-projects/backend/internal/store"
@@ -60,6 +63,8 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 			{Name: "onlyCurrent", Label: "Only courses that are still running", Type: "bool"},
 			{Name: "courses", Label: "Only these courses (short names, comma separated)", Type: "text",
 				Placeholder: "leave empty for all of them"},
+			{Name: "flat", Label: "No folder per course — everything straight into the target folder",
+				Type: "bool"},
 		},
 		Run: runMoodle,
 	}}
@@ -181,7 +186,13 @@ func runMoodle(ctx context.Context, env *capability.Env, job capability.Job) (ca
 		return capability.Report{}, err
 	}
 	job.Log("signed in")
+	return pull(ctx, env, job, cfg, token)
+}
 
+// pull is everything after the sign-in: the material. It is its own function
+// because a one-off pull with a password typed on the spot does exactly the
+// same thing, only without an account behind it.
+func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg config, token string) (capability.Report, error) {
 	// From here the sign-in is confirmed; anything that fails now is about the
 	// material, not the password.
 	courses, err := lib.GetCourses(cfg.URL, token)
@@ -193,6 +204,10 @@ func runMoodle(ctx context.Context, env *capability.Env, job capability.Job) (ca
 	if v, ok := job.Options["onlyCurrent"].(bool); ok {
 		onlyCurrent = v
 	}
+	// One folder per course is the default. "flat" puts everything straight
+	// into the target folder — and an empty target folder is the project
+	// itself, so nothing extra is created at all.
+	flat, _ := job.Options["flat"].(bool)
 	wanted := map[string]bool{}
 	if list, ok := job.Options["courses"].([]any); ok {
 		for _, item := range list {
@@ -218,9 +233,13 @@ func runMoodle(ctx context.Context, env *capability.Env, job capability.Job) (ca
 		if len(wanted) > 0 && !wanted[fmt.Sprint(course.ID)] && !wanted[course.Shortname] {
 			continue
 		}
-		folder := path.Join(base, slug.Make(course.Shortname))
-		if course.Shortname == "" {
-			folder = path.Join(base, slug.Make(course.Fullname))
+		name := course.Shortname
+		if name == "" {
+			name = course.Fullname
+		}
+		folder := path.Join(base, slug.Make(name))
+		if flat {
+			folder = base
 		}
 
 		items, err := lib.GetCourseFiles(cfg.URL, token, course.ID)
@@ -283,4 +302,80 @@ func sanitise(name string) string {
 		name = name[:200]
 	}
 	return name
+}
+
+// Routes are mounted under /api/projects/:project/moodle.
+//
+// There is exactly one: a pull you run yourself, with the password typed on
+// the spot. Nothing is stored — not the password, not an account, not a
+// scheduler — so there is no credential that could be used up, and no second
+// attempt to prevent. For everything that should happen on a schedule, an
+// account is still the right answer.
+func (Capability) Routes(env *capability.Env, r fiber.Router) {
+	r.Post("/pull-once", func(ctx *fiber.Ctx) error {
+		if err := capability.RequireWrite(ctx); err != nil {
+			return err
+		}
+		p := capability.Project(ctx)
+
+		var in struct {
+			URL         string `json:"url"`
+			User        string `json:"user"`
+			Password    string `json:"password"`
+			Target      string `json:"target"`
+			Courses     string `json:"courses"`
+			OnlyCurrent *bool  `json:"onlyCurrent"`
+			Flat        bool   `json:"flat"`
+		}
+		if err := ctx.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The request could not be read.")
+		}
+		cfg := config{URL: baseURL(in.URL), User: strings.TrimSpace(in.User)}
+		if cfg.URL == "" || cfg.User == "" || in.Password == "" {
+			return httpx.BadRequest("Address, user name and password are all needed for a one-off pull.")
+		}
+
+		// The address is checked before the password is sent, for the same
+		// reason as everywhere else: a typo in a URL must not look like a
+		// failed sign-in.
+		probe := model.Account{Config: []byte(fmt.Sprintf(`{"url":%q,"user":%q}`, cfg.URL, cfg.User))}
+		if err := precheckMoodle(ctx.UserContext(), env, &probe); err != nil {
+			return httpx.BadRequest("%v", err)
+		}
+
+		token, err := signIn(cfg, []byte(in.Password))
+		if err != nil {
+			return httpx.New(401, "sign_in_failed",
+				"%v. Nothing was stored, so you can simply try again.", err)
+		}
+
+		var lines []string
+		onlyCurrent := true
+		if in.OnlyCurrent != nil {
+			onlyCurrent = *in.OnlyCurrent
+		}
+		job := capability.Job{
+			Project:   p,
+			Scheduler: &model.Scheduler{TargetPath: strings.Trim(in.Target, "/")},
+			Options: map[string]any{
+				"onlyCurrent": onlyCurrent,
+				"courses":     in.Courses,
+				"flat":        in.Flat,
+			},
+			Log: func(format string, args ...any) {
+				lines = append(lines, fmt.Sprintf(format, args...))
+			},
+		}
+		report, err := pull(ctx.UserContext(), env, job, cfg, token)
+		if err != nil {
+			return httpx.New(502, "pull_failed", "Signed in, but the material could not be fetched: %v", err)
+		}
+		env.Store.Audit(ctx.UserContext(), nil, "moodle.pull_once", p.Title, "",
+			map[string]any{"files": report.FilesChanged})
+		return ctx.JSON(fiber.Map{
+			"message": report.Message,
+			"files":   report.FilesChanged,
+			"log":     lines,
+		})
+	})
 }

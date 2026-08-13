@@ -9,8 +9,35 @@ import (
 	"github.com/teambition/rrule-go"
 )
 
-// Event is the readable view of a VEVENT. The component it came from is kept
-// so writing it back changes only the properties that were edited.
+// The five kinds an entry can be. They exist because these things want to be
+// *drawn* differently: a deadline is a moment with weight, not a block from
+// 23:00 to 23:59, and a six-week phase drawn as a block would bury every
+// lecture underneath it.
+//
+// The kind rides in X-HOME-KIND, a custom property RFC 5545 explicitly allows.
+// A foreign client that ignores it still shows a correct calendar — just less
+// prettily. Nothing is written that a reader needs in order to understand the
+// entry.
+const (
+	KindSlot      = "slot"      // when am I where: start → end
+	KindAllDay    = "all-day"   // what is today: a whole day or several
+	KindDeadline  = "deadline"  // when is it due: a point, and it can be done
+	KindPhase     = "phase"     // what period am I in: days to months, drawn as a band
+	KindMilestone = "milestone" // when does it start: a point, nothing owed
+)
+
+// Custom properties. All of them are optional; dropping them loses decoration,
+// never the appointment.
+const (
+	PropKind       = "X-HOME-KIND"
+	PropAttachedTo = "X-HOME-ATTACHED-TO" // my note on a pulled entry
+	PropLink       = "X-HOME-LINK"        // project path this entry belongs to
+	PropPerson     = "X-HOME-PERSON"      // lecturer, so it can be filtered
+)
+
+// Event is the readable view of one entry — a VEVENT, or a VTODO when it is a
+// deadline. The component it came from is kept so writing it back changes only
+// the properties that were edited.
 type Event struct {
 	UID          string
 	Summary      string
@@ -32,16 +59,51 @@ type Event struct {
 	Status string
 	TZID   string
 
+	// Kind is one of the five above. Empty on the way in means: work it out
+	// from what the entry looks like.
+	Kind string
+	// IsTodo marks a VTODO. A deadline is stored as one because that is what
+	// iCalendar has for it — and because an event cannot be completed, while a
+	// todo can.
+	IsTodo    bool
+	Completed time.Time
+	// Priority is RFC 5545's 1–9, shown as normal / important / critical.
+	Priority   int
+	Categories []string
+	RelatedTo  string
+	AttachedTo string
+	Link       string
+	Person     string
+
 	Comp *Component `json:"-"`
 }
+
+// EffectiveKind is what to draw when the file said nothing: a timed entry is a
+// slot, a full-day one is an all-day, a todo is a deadline.
+func (e Event) EffectiveKind() string {
+	switch e.Kind {
+	case KindSlot, KindAllDay, KindDeadline, KindPhase, KindMilestone:
+		return e.Kind
+	}
+	if e.IsTodo {
+		return KindDeadline
+	}
+	if e.AllDay {
+		return KindAllDay
+	}
+	return KindSlot
+}
+
+// Done reports whether a deadline has been ticked off.
+func (e Event) Done() bool { return strings.EqualFold(e.Status, "COMPLETED") }
 
 // DefaultLocation is what a floating time means. It is set once at startup
 // from the server's timezone.
 var DefaultLocation = time.Local
 
-// FromComponent reads a VEVENT.
+// FromComponent reads a VEVENT or a VTODO.
 func FromComponent(c *Component) (Event, error) {
-	e := Event{Comp: c}
+	e := Event{Comp: c, IsTodo: strings.EqualFold(c.Name, "VTODO")}
 	e.UID = c.Value("UID")
 	e.Summary = UnescapeText(c.Value("SUMMARY"))
 	e.Description = UnescapeText(c.Value("DESCRIPTION"))
@@ -53,6 +115,60 @@ func FromComponent(c *Component) (Event, error) {
 	}
 	if seq := c.Value("SEQUENCE"); seq != "" {
 		e.Sequence, _ = strconv.Atoi(seq)
+	}
+	e.Kind = strings.ToLower(strings.TrimSpace(c.Value(PropKind)))
+	e.AttachedTo = c.Value(PropAttachedTo)
+	e.Link = UnescapeText(c.Value(PropLink))
+	e.Person = UnescapeText(c.Value(PropPerson))
+	e.RelatedTo = c.Value("RELATED-TO")
+	if p := c.Value("PRIORITY"); p != "" {
+		e.Priority, _ = strconv.Atoi(p)
+	}
+	for _, prop := range c.All("CATEGORIES") {
+		for _, cat := range strings.Split(prop.Value, ",") {
+			if cat = strings.TrimSpace(UnescapeText(cat)); cat != "" {
+				e.Categories = append(e.Categories, cat)
+			}
+		}
+	}
+	if v := c.Value("COMPLETED"); v != "" {
+		if t, _, err := parseTimeValue(v, "", false); err == nil {
+			e.Completed = t
+		}
+	}
+	if e.Link == "" {
+		if u := c.Value("URL"); strings.HasPrefix(u, "project:") {
+			e.Link = u
+		}
+	}
+
+	// A deadline is a point in time. DUE is where it lives; a VTODO that only
+	// carries DTSTART is still read rather than thrown away.
+	if e.IsTodo {
+		due := c.Get("DUE")
+		if due == nil {
+			due = c.Get("DTSTART")
+		}
+		if due == nil {
+			return e, fmt.Errorf("todo %q has neither DUE nor DTSTART", e.UID)
+		}
+		t, allDay, err := ParseTimeProp(due)
+		if err != nil {
+			return e, err
+		}
+		e.Start, e.End, e.AllDay = t, t, allDay
+		e.TZID = due.Param("TZID")
+		if r := c.Get("RRULE"); r != nil {
+			e.RRule = r.Value
+		}
+		for _, alarm := range c.Kids("VALARM") {
+			if trig := alarm.Value("TRIGGER"); trig != "" {
+				if d, err := ParseDuration(trig); err == nil {
+					e.Alarms = append(e.Alarms, int(-d.Minutes()))
+				}
+			}
+		}
+		return e, nil
 	}
 
 	start := c.Get("DTSTART")
@@ -126,12 +242,26 @@ func FromComponent(c *Component) (Event, error) {
 	return e, nil
 }
 
-// ToComponent writes the event back, creating the component if it is new.
+// ToComponent writes the entry back, creating the component if it is new.
+//
+// Changing a slot into a deadline changes the component itself — VEVENT
+// becomes VTODO. It is edited in place, because the calendar file holds a
+// pointer to it.
 func (e *Event) ToComponent() *Component {
+	want := "VEVENT"
+	if e.IsTodo {
+		want = "VTODO"
+	}
 	c := e.Comp
 	if c == nil {
-		c = NewComponent("VEVENT")
+		c = NewComponent(want)
 		e.Comp = c
+	} else if !strings.EqualFold(c.Name, want) {
+		c.Name = want
+		// The properties of the old shape would be nonsense in the new one.
+		for _, name := range []string{"DTSTART", "DTEND", "DURATION", "DUE", "COMPLETED", "PERCENT-COMPLETE"} {
+			c.Remove(name)
+		}
 	}
 	c.Set("UID", e.UID)
 	c.Set("DTSTAMP", FormatUTC(time.Now()))
@@ -141,6 +271,44 @@ func (e *Event) ToComponent() *Component {
 	setOrRemove(c, "LOCATION", EscapeText(e.Location))
 	setOrRemove(c, "COLOR", e.Color)
 	setOrRemove(c, "STATUS", e.Status)
+	setOrRemove(c, "RELATED-TO", e.RelatedTo)
+	setOrRemove(c, PropAttachedTo, e.AttachedTo)
+	setOrRemove(c, PropLink, EscapeText(e.Link))
+	setOrRemove(c, PropPerson, EscapeText(e.Person))
+
+	// The kind is only written when it cannot be worked out from the entry
+	// itself — a slot with a time and an all-day with a date say what they are.
+	kind := e.EffectiveKind()
+	if kind == KindPhase || kind == KindMilestone {
+		c.Set(PropKind, kind)
+	} else {
+		c.Remove(PropKind)
+	}
+
+	c.Remove("CATEGORIES")
+	if len(e.Categories) > 0 {
+		escaped := make([]string, 0, len(e.Categories))
+		for _, cat := range e.Categories {
+			if cat = strings.TrimSpace(cat); cat != "" {
+				escaped = append(escaped, EscapeText(cat))
+			}
+		}
+		if len(escaped) > 0 {
+			c.Set("CATEGORIES", strings.Join(escaped, ","))
+		}
+	}
+
+	if e.Priority > 0 && e.Priority <= 9 {
+		c.Set("PRIORITY", strconv.Itoa(e.Priority))
+	} else {
+		c.Remove("PRIORITY")
+	}
+
+	if e.IsTodo {
+		e.writeTodoTimes(c)
+		e.writeTail(c)
+		return c
+	}
 
 	// Both properties are created first: taking a pointer into c.Props and
 	// then appending another property would leave the pointer dangling.
@@ -166,7 +334,45 @@ func (e *Event) ToComponent() *Component {
 		end.Value = FormatUTC(e.End)
 	}
 	c.Remove("DURATION")
+	e.writeTail(c)
+	return c
+}
 
+// writeTodoTimes writes what a deadline consists of: when it is due, and
+// whether it has been done.
+func (e *Event) writeTodoTimes(c *Component) {
+	c.Remove("DTSTART")
+	c.Remove("DTEND")
+	c.Remove("DURATION")
+	c.Set("DUE", "")
+	due := c.Get("DUE")
+	due.Params = nil
+	if e.AllDay {
+		due.Value = e.Start.Format("20060102")
+		due.SetParam("VALUE", "DATE")
+	} else {
+		due.Value = FormatUTC(e.Start)
+	}
+
+	if e.Done() {
+		c.Set("STATUS", "COMPLETED")
+		c.Set("PERCENT-COMPLETE", "100")
+		done := e.Completed
+		if done.IsZero() {
+			done = time.Now()
+		}
+		c.Set("COMPLETED", FormatUTC(done))
+	} else {
+		c.Remove("COMPLETED")
+		c.Remove("PERCENT-COMPLETE")
+		if c.Value("STATUS") == "COMPLETED" {
+			c.Remove("STATUS")
+		}
+	}
+}
+
+// writeTail is everything both shapes share: repetition, bookkeeping, alarms.
+func (e *Event) writeTail(c *Component) {
 	c.Remove("RRULE")
 	if e.RRule != "" {
 		c.Set("RRULE", strings.TrimPrefix(strings.ToUpper(e.RRule), "RRULE:"))
@@ -195,6 +401,39 @@ func (e *Event) ToComponent() *Component {
 		alarm.Set("TRIGGER", fmt.Sprintf("-PT%dM", minutes))
 		c.Children = append(c.Children, alarm)
 	}
+}
+
+// AsEvent turns a deadline into a short VEVENT. Google Calendar ignores VTODO
+// on a subscribed feed, so a phone would simply not show it — and you would
+// find that out at the wrong moment. The conversion happens on the way out
+// only; what lies in the file stays a todo.
+func (e Event) AsEvent() *Component {
+	c := NewComponent("VEVENT")
+	c.Set("UID", e.UID)
+	c.Set("DTSTAMP", FormatUTC(time.Now()))
+	summary := e.Summary
+	if e.Done() {
+		summary = "✓ " + summary
+	}
+	c.Set("SUMMARY", EscapeText(summary))
+	setOrRemove(c, "DESCRIPTION", EscapeText(e.Description))
+	setOrRemove(c, "LOCATION", EscapeText(e.Location))
+	setOrRemove(c, "COLOR", e.Color)
+	if e.AllDay {
+		start := c.Set("DTSTART", e.Start.Format("20060102"))
+		start.SetParam("VALUE", "DATE")
+		end := c.Set("DTEND", e.Start.AddDate(0, 0, 1).Format("20060102"))
+		end.SetParam("VALUE", "DATE")
+	} else {
+		c.Set("DTSTART", FormatUTC(e.Start))
+		// Fifteen minutes: long enough to be visible in a grid, short enough
+		// not to pretend the deadline lasts.
+		c.Set("DTEND", FormatUTC(e.Start.Add(15*time.Minute)))
+	}
+	if e.RRule != "" {
+		c.Set("RRULE", strings.TrimPrefix(strings.ToUpper(e.RRule), "RRULE:"))
+	}
+	c.Set(PropKind, KindDeadline)
 	return c
 }
 

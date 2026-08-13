@@ -12,7 +12,14 @@ import { colorVar } from "../lib/theme";
  * Opening a calendar project shows the grid. The files sit behind their own
  * tab, for whoever wants them. The week starts on Monday. Changes appear
  * immediately and snap back with a reason if the server refuses them.
+ *
+ * Five kinds of entry live in here, and they are drawn differently on purpose:
+ * a slot is a block, a deadline is a marker with weight, a phase is a band
+ * behind everything else — because a six-week internship drawn as a block
+ * would bury every lecture underneath it.
  */
+
+export type Kind = "slot" | "all-day" | "deadline" | "phase" | "milestone";
 
 export interface Occurrence {
   projectId: string;
@@ -33,17 +40,34 @@ export interface Occurrence {
   alarms?: number[];
   readOnly: boolean;
   sourceFile: string;
+  kind: Kind;
+  isTodo?: boolean;
+  done?: boolean;
+  completedAt?: string;
+  priority?: number;
+  overdue?: boolean;
+  categories?: string[];
+  relatedTo?: string;
+  attachedTo?: string;
+  link?: string;
+  person?: string;
 }
 
 type View = "month" | "week" | "day" | "list";
+
+export const KINDS: { key: Kind; title: string; hint: string }[] = [
+  { key: "slot", title: "Slot", hint: "when am I where — start and end" },
+  { key: "all-day", title: "All day", hint: "what is today — a whole day or several" },
+  { key: "deadline", title: "Deadline", hint: "when is it due — a point, and it can be done" },
+  { key: "phase", title: "Phase", hint: "what period am I in — drawn as a band" },
+  { key: "milestone", title: "Milestone", hint: "when does it start — a point, nothing owed" },
+];
 
 export default function CalendarView({ project }: { project: Project; reload: () => void }) {
   return (
     <CalendarGrid
       sources={[{ id: project.id, title: project.title, color: project.color, readOnly: project.readOnly }]}
-      endpoint={(from, to) =>
-        `/api/projects/${project.id}/calendar/events?from=${from}&to=${to}`
-      }
+      endpoint={(from, to) => `/api/projects/${project.id}/calendar/events?from=${from}&to=${to}`}
       defaultProject={project.id}
       showSubscription={project.id}
     />
@@ -70,11 +94,25 @@ export function CalendarGrid({
   const [params, setParams] = useSearchParams();
   const view = (params.get("view") as View) ?? "month";
   const anchor = params.get("at") ? new Date(params.get("at")!) : new Date();
+  // The filter lives in the URL, so the back button and a shared link both
+  // work. Empty means everything.
+  const kindFilter = new Set((params.get("kinds") ?? "").split(",").filter(Boolean) as Kind[]);
+  const tagFilter = params.get("tag") ?? "";
+  // One phase with everything belonging to it — the answer to "what is in this
+  // semester", without a second page.
+  const phaseFilter = params.get("phase") ?? "";
+
+  const patch = (changes: Record<string, string>) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v) p.set(k, v);
+      else p.delete(k);
+    }
+    setParams(p);
+  };
 
   const setView = (next: View) => {
-    const p = new URLSearchParams(params);
-    p.set("view", next);
-    setParams(p);
+    patch({ view: next });
     // The last choice is remembered on the server too, so the next visit opens
     // the same way.
     if (showSubscription) {
@@ -84,10 +122,12 @@ export function CalendarGrid({
       }).catch(() => undefined);
     }
   };
-  const setAnchor = (d: Date) => {
-    const p = new URLSearchParams(params);
-    p.set("at", isoDate(d));
-    setParams(p);
+  const setAnchor = (d: Date) => patch({ at: isoDate(d) });
+  const toggleKind = (k: Kind) => {
+    const next = new Set(kindFilter);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    patch({ kinds: [...next].join(",") });
   };
 
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor.getTime()]);
@@ -101,9 +141,25 @@ export function CalendarGrid({
   const [actionError, setActionError] = useState<Error | null>(null);
   const [subscription, setSubscription] = useState<string | null>(null);
 
-  const events = (data?.events ?? [])
+  const all = (data?.events ?? [])
     .filter((e) => !hidden?.has(e.projectId))
-    .map((e) => ({ ...e, ...(optimistic[keyOf(e)] ?? {}) }));
+    .map((e) => ({ ...e, kind: e.kind ?? "slot", ...(optimistic[keyOf(e)] ?? {}) }));
+
+  const events = all.filter(
+    (e) =>
+      (kindFilter.size === 0 || kindFilter.has(e.kind)) &&
+      (!tagFilter || (e.categories ?? []).includes(tagFilter)) &&
+      (!phaseFilter || e.relatedTo === phaseFilter || e.uid === phaseFilter),
+  );
+  const focused = phaseFilter ? all.find((e) => e.uid === phaseFilter) : undefined;
+  const tags = [...new Set(all.flatMap((e) => e.categories ?? []))].sort();
+
+  // Phases are the backdrop and milestones are pins: neither belongs in a grid
+  // cell, both belong in their own lane above it.
+  const phases = events.filter((e) => e.kind === "phase");
+  const milestones = events.filter((e) => e.kind === "milestone");
+  const inGrid = events.filter((e) => e.kind !== "phase" && e.kind !== "milestone");
+  const deadlines = all.filter((e) => e.kind === "deadline");
 
   // Move an event by dropping it. It jumps immediately; if the server says no,
   // it snaps back and says why.
@@ -128,6 +184,12 @@ export function CalendarGrid({
           end: end.toISOString(),
           allDay: event.allDay,
           rrule: event.rrule,
+          kind: event.kind,
+          priority: event.priority,
+          categories: event.categories,
+          relatedTo: event.relatedTo,
+          link: event.link,
+          person: event.person,
           scope: event.repeats ? "single" : "all",
           recurrenceId: event.recurrenceId,
         },
@@ -145,7 +207,37 @@ export function CalendarGrid({
     }
   };
 
-  const title = titleFor(view, anchor);
+  const toggleDone = async (event: Occurrence) => {
+    const key = keyOf(event);
+    setOptimistic((o) => ({ ...o, [key]: { done: !event.done } }));
+    try {
+      await api(`/api/projects/${event.projectId}/calendar/events/${encodeURIComponent(event.uid)}/done`, {
+        method: "POST",
+        body: { done: !event.done },
+      });
+      reload();
+    } catch (err) {
+      setActionError(err as Error);
+    } finally {
+      setTimeout(() => setOptimistic({}), 400);
+    }
+  };
+
+  const newEntry = (kind: Kind, day?: Date, hour?: number) => {
+    const base = day ?? anchor;
+    const start = kind === "deadline" ? atTime(base, 23, 59) : atHour(base, hour ?? 9);
+    setEditing({
+      projectId: lastUsedProject(sources.map((s) => s.id)) ?? defaultProject ?? sources[0]?.id,
+      kind,
+      start: start.toISOString(),
+      end: (kind === "deadline" || kind === "milestone"
+        ? start
+        : new Date(start.getTime() + 3600_000)
+      ).toISOString(),
+      allDay: kind === "all-day" || kind === "phase" || kind === "milestone",
+      summary: "",
+    });
+  };
 
   return (
     <div>
@@ -159,7 +251,8 @@ export function CalendarGrid({
         <button className="btn small" onClick={() => setAnchor(new Date())}>
           Today
         </button>
-        <span className="title">{title}</span>
+        <span className="title">{titleFor(view, anchor)}</span>
+        <PhaseBadge phases={phases} />
         <div style={{ flex: 1 }} />
         {(["month", "week", "day", "list"] as View[]).map((v) => (
           <button key={v} className={v === view ? "btn small primary" : "btn small"} onClick={() => setView(v)}>
@@ -181,22 +274,44 @@ export function CalendarGrid({
             <Icon name="link" size={14} /> Subscribe
           </button>
         ) : null}
-        <button
-          className="btn small primary"
-          onClick={() =>
-            setEditing({
-              projectId: lastUsedProject(sources.map((s) => s.id)) ?? defaultProject ?? sources[0]?.id,
-              start: atHour(anchor, 9).toISOString(),
-              end: atHour(anchor, 10).toISOString(),
-              summary: "",
-            })
-          }
-        >
-          <Icon name="plus" size={14} /> Event
-        </button>
+        <NewEntryButton onPick={(k) => newEntry(k)} />
       </div>
 
       {extraHeader}
+
+      <div className="cal-filters">
+        {KINDS.map((k) => (
+          <button
+            key={k.key}
+            className={kindFilter.has(k.key) ? "badge good" : "badge"}
+            style={{ cursor: "pointer", opacity: kindFilter.size && !kindFilter.has(k.key) ? 0.5 : 1 }}
+            title={k.hint}
+            onClick={() => toggleKind(k.key)}
+          >
+            {k.title}
+          </button>
+        ))}
+        {tags.length ? (
+          <select value={tagFilter} onChange={(e) => patch({ tag: e.target.value })} style={{ width: "auto" }}>
+            <option value="">all tags</option>
+            {tags.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {focused ? (
+          <span className="badge good">
+            inside {focused.summary} — {events.length - 1} entries belong to it
+          </span>
+        ) : null}
+        {kindFilter.size || tagFilter || phaseFilter ? (
+          <button className="btn small" onClick={() => patch({ kinds: "", tag: "", phase: "" })}>
+            clear filter
+          </button>
+        ) : null}
+      </div>
 
       {sources.length > 1 ? (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -221,25 +336,50 @@ export function CalendarGrid({
       <ErrorBox error={actionError ?? error} onRetry={reload} />
       {loading && !data ? <Spinner /> : null}
 
-      {view === "month" ? (
-        <MonthView anchor={anchor} events={events} onPick={setEditing} onMove={moveTo} defaultProject={defaultProject} />
-      ) : view === "list" ? (
-        <ListView events={events} onPick={setEditing} />
-      ) : (
-        <TimeView
-          anchor={anchor}
-          days={view === "day" ? 1 : 7}
-          events={events}
-          onPick={setEditing}
-          onMove={moveTo}
-          defaultProject={defaultProject}
-        />
-      )}
+      <div className="cal-layout">
+        <div style={{ minWidth: 0 }}>
+          {view !== "list" ? (
+            <PhaseLane
+              phases={phases}
+              milestones={milestones}
+              from={range.from}
+              to={range.to}
+              onPick={setEditing}
+              onFocus={(uid) => patch({ phase: phaseFilter === uid ? "" : uid })}
+            />
+          ) : null}
+
+          {view === "month" ? (
+            <MonthView
+              anchor={anchor}
+              events={inGrid}
+              onPick={setEditing}
+              onMove={moveTo}
+              onNew={(day) => newEntry("slot", day)}
+            />
+          ) : view === "list" ? (
+            <ListView events={events} onPick={setEditing} onToggleDone={toggleDone} />
+          ) : (
+            <TimeView
+              anchor={anchor}
+              days={view === "day" ? 1 : 7}
+              events={inGrid}
+              onPick={setEditing}
+              onMove={moveTo}
+              onNew={(day, hour) => newEntry("slot", day, hour)}
+              showGaps={view === "day"}
+            />
+          )}
+        </div>
+
+        <DeadlinePanel deadlines={deadlines} onPick={setEditing} onToggleDone={toggleDone} />
+      </div>
 
       {editing ? (
         <EventDialog
           initial={editing}
           sources={sources}
+          phases={phases}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -255,7 +395,184 @@ export function CalendarGrid({
             Thunderbird and iOS can be pointed straight at it, without an account on this server.
           </p>
           <input readOnly value={subscription} onFocus={(e) => e.currentTarget.select()} />
+          <p className="hint">
+            Deadlines are stored as <code className="mono">VTODO</code>, which Google Calendar ignores on a
+            feed — so they leave as short events by default. Append{" "}
+            <code className="mono">&amp;deadlines=todos</code> to get them as todos, which Thunderbird and
+            Apple Reminders do understand.
+          </p>
         </Modal>
+      ) : null}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- phase lane
+
+/** Phases run behind everything else: a band per lane, never a grid cell. */
+function PhaseLane({
+  phases,
+  milestones,
+  from,
+  to,
+  onPick,
+  onFocus,
+}: {
+  phases: Occurrence[];
+  milestones: Occurrence[];
+  from: Date;
+  to: Date;
+  onPick: (e: Partial<Occurrence>) => void;
+  onFocus: (uid: string) => void;
+}) {
+  if (!phases.length && !milestones.length) return null;
+  const span = to.getTime() - from.getTime();
+  const pct = (d: Date) => Math.min(100, Math.max(0, ((d.getTime() - from.getTime()) / span) * 100));
+
+  // Several phases stack into several lanes; two that overlap never share one.
+  const lanes: Occurrence[][] = [];
+  for (const p of [...phases].sort((a, b) => a.start.localeCompare(b.start))) {
+    const lane = lanes.find((l) => l.every((o) => o.end <= p.start || o.start >= p.end));
+    if (lane) lane.push(p);
+    else lanes.push([p]);
+  }
+
+  return (
+    <div className="cal-lanes">
+      {lanes.map((lane, i) => (
+        <div key={i} className="cal-lane">
+          {lane.map((p) => {
+            const left = pct(new Date(p.start));
+            const right = pct(new Date(p.end));
+            return (
+              <div
+                key={keyOf(p)}
+                className="cal-band"
+                style={{
+                  left: `${left}%`,
+                  width: `${Math.max(1.5, right - left)}%`,
+                  ["--ev-color" as string]: colorVar(p.color),
+                }}
+                title={`${p.summary} · ${new Date(p.start).toLocaleDateString()} – ${new Date(p.end).toLocaleDateString()}`}
+              >
+                <button
+                  className="name"
+                  title="show everything that belongs to this phase"
+                  onClick={() => onFocus(p.uid)}
+                >
+                  {p.summary}
+                </button>
+                <button className="edit" title="change this phase" onClick={() => onPick(p)}>
+                  <Icon name="settings" size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {milestones.length ? (
+        <div className="cal-lane pins">
+          {milestones.map((m) => (
+            <button
+              key={keyOf(m)}
+              className="cal-pin"
+              style={{ left: `${pct(new Date(m.start))}%`, ["--ev-color" as string]: colorVar(m.color) }}
+              title={`${m.summary} · ${new Date(m.start).toLocaleDateString()}`}
+              onClick={() => onPick(m)}
+            >
+              <Icon name="flag" size={12} />
+              <span>{m.summary}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** "Semester 3 · week 7 of 20" — where you are, without counting. */
+function PhaseBadge({ phases }: { phases: Occurrence[] }) {
+  const now = Date.now();
+  const running = phases
+    .filter((p) => new Date(p.start).getTime() <= now && new Date(p.end).getTime() >= now)
+    .sort((a, b) => spanOf(a) - spanOf(b))[0];
+  if (!running) return null;
+  const start = new Date(running.start).getTime();
+  const week = Math.floor((now - start) / (7 * 864e5)) + 1;
+  const weeks = Math.max(1, Math.round(spanOf(running) / (7 * 864e5)));
+  return (
+    <span className="badge" title="the phase today falls into">
+      {running.summary} · week {Math.min(week, weeks)} of {weeks}
+    </span>
+  );
+}
+
+function spanOf(o: Occurrence) {
+  return new Date(o.end).getTime() - new Date(o.start).getTime();
+}
+
+// ---------------------------------------------------------- deadline panel
+
+/** Everything owed, nearest first — because that is the question a deadline answers. */
+function DeadlinePanel({
+  deadlines,
+  onPick,
+  onToggleDone,
+}: {
+  deadlines: Occurrence[];
+  onPick: (e: Partial<Occurrence>) => void;
+  onToggleDone: (e: Occurrence) => void;
+}) {
+  if (!deadlines.length) return null;
+  const open = deadlines.filter((d) => !d.done).sort((a, b) => a.start.localeCompare(b.start));
+  const done = deadlines.filter((d) => d.done).sort((a, b) => b.start.localeCompare(a.start));
+  const overdue = open.filter((d) => new Date(d.start).getTime() < Date.now());
+
+  return (
+    <aside className="cal-side">
+      <h3>
+        Upcoming deadlines
+        {overdue.length ? <span className="badge bad">{overdue.length} overdue</span> : null}
+      </h3>
+      {open.map((d) => (
+        <DeadlineRow key={keyOf(d)} d={d} onPick={onPick} onToggleDone={onToggleDone} />
+      ))}
+      {!open.length ? <div className="sub">Nothing owed in this range.</div> : null}
+      {done.slice(0, 5).map((d) => (
+        <DeadlineRow key={keyOf(d)} d={d} onPick={onPick} onToggleDone={onToggleDone} />
+      ))}
+    </aside>
+  );
+}
+
+function DeadlineRow({
+  d,
+  onPick,
+  onToggleDone,
+}: {
+  d: Occurrence;
+  onPick: (e: Partial<Occurrence>) => void;
+  onToggleDone: (e: Occurrence) => void;
+}) {
+  const late = !d.done && new Date(d.start).getTime() < Date.now();
+  return (
+    <div className={["cal-deadline-row", d.done ? "done" : "", late ? "late" : ""].join(" ")}>
+      <button
+        className="btn icon small"
+        title={d.done ? "put it back" : "tick it off"}
+        disabled={d.readOnly}
+        onClick={() => onToggleDone(d)}
+      >
+        <Icon name={d.done ? "check" : "circle"} size={14} />
+      </button>
+      <button className="grow" onClick={() => onPick(d)}>
+        <span className="summary">{d.summary}</span>
+        <span className="meta">{distance(new Date(d.start))}</span>
+      </button>
+      {d.priority && d.priority <= 4 ? (
+        <span className={d.priority <= 2 ? "badge bad" : "badge warn"}>
+          {d.priority <= 2 ? "critical" : "important"}
+        </span>
       ) : null}
     </div>
   );
@@ -268,13 +585,13 @@ function MonthView({
   events,
   onPick,
   onMove,
-  defaultProject,
+  onNew,
 }: {
   anchor: Date;
   events: Occurrence[];
   onPick: (e: Partial<Occurrence>) => void;
   onMove: (e: Occurrence, start: Date) => void;
-  defaultProject?: string;
+  onNew: (day: Date) => void;
 }) {
   const first = startOfWeek(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
   const days = Array.from({ length: 42 }, (_, i) => addDays(first, i));
@@ -290,6 +607,9 @@ function MonthView({
       {days.map((day) => {
         const key = isoDate(day);
         const dayEvents = events.filter((e) => overlapsDay(e, day));
+        const marks = dayEvents.filter((e) => e.kind === "deadline");
+        const blocks = dayEvents.filter((e) => e.kind !== "deadline");
+        const clashes = overlapping(blocks);
         return (
           <div
             key={key}
@@ -309,20 +629,16 @@ function MonthView({
               target.setHours(from.getHours(), from.getMinutes(), 0, 0);
               onMove(event, target);
             }}
-            onClick={() =>
-              onPick({
-                projectId: defaultProject,
-                start: atHour(day, 9).toISOString(),
-                end: atHour(day, 10).toISOString(),
-                summary: "",
-              })
-            }
+            onClick={() => onNew(day)}
           >
             <span className="num">{day.getDate()}</span>
-            {dayEvents.slice(0, 4).map((e) => (
+            {marks.map((e) => (
+              <DeadlineMark key={keyOf(e) + key} e={e} onPick={onPick} />
+            ))}
+            {blocks.slice(0, 4).map((e) => (
               <div
                 key={keyOf(e) + key}
-                className="cal-event"
+                className={["cal-event", clashes.has(keyOf(e)) ? "clash" : ""].join(" ")}
                 style={{ ["--ev-color" as string]: colorVar(e.color) }}
                 draggable={!e.readOnly}
                 onDragStart={(ev) => ev.dataTransfer.setData("text/event", JSON.stringify(e))}
@@ -330,16 +646,38 @@ function MonthView({
                   ev.stopPropagation();
                   onPick(e);
                 }}
-                title={`${e.summary}${e.location ? " · " + e.location : ""}`}
+                title={
+                  `${e.summary}${e.location ? " · " + e.location : ""}` +
+                  (clashes.has(keyOf(e)) ? " · overlaps another entry" : "")
+                }
               >
                 {e.allDay ? "" : shortTime(new Date(e.start)) + " "}
                 {e.summary}
               </div>
             ))}
-            {dayEvents.length > 4 ? <div className="sub">+{dayEvents.length - 4} more</div> : null}
+            {blocks.length > 4 ? <div className="sub">+{blocks.length - 4} more</div> : null}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** A deadline is a flag on the edge of the day, not a block from 23:00 to 23:59. */
+function DeadlineMark({ e, onPick }: { e: Occurrence; onPick: (e: Partial<Occurrence>) => void }) {
+  const late = !e.done && new Date(e.start).getTime() < Date.now();
+  return (
+    <div
+      className={["cal-mark", e.done ? "done" : "", late ? "late" : ""].join(" ")}
+      style={{ ["--ev-color" as string]: colorVar(e.color) }}
+      onClick={(ev) => {
+        ev.stopPropagation();
+        onPick(e);
+      }}
+      title={`${e.summary} · ${distance(new Date(e.start))}`}
+    >
+      <Icon name={e.done ? "check" : "alert"} size={11} />
+      <span>{e.allDay ? "" : shortTime(new Date(e.start)) + " "}{e.summary}</span>
     </div>
   );
 }
@@ -350,18 +688,33 @@ function TimeView({
   events,
   onPick,
   onMove,
-  defaultProject,
+  onNew,
+  showGaps,
 }: {
   anchor: Date;
   days: number;
   events: Occurrence[];
   onPick: (e: Partial<Occurrence>) => void;
   onMove: (e: Occurrence, start: Date) => void;
-  defaultProject?: string;
+  onNew: (day: Date, hour: number) => void;
+  showGaps?: boolean;
 }) {
   const first = days === 1 ? startOfDay(anchor) : startOfWeek(anchor);
   const columns = Array.from({ length: days }, (_, i) => addDays(first, i));
-  const hours = Array.from({ length: 24 }, (_, i) => i);
+
+  const timed = events.filter((e) => !e.allDay && e.kind !== "deadline");
+  const strip = events.filter((e) => e.allDay || e.kind === "deadline");
+
+  // The visible range covers the working day and widens for whatever falls
+  // outside it, instead of hiding a 06:30 train behind a scrollbar.
+  const starts = timed.map((e) => new Date(e.start).getHours());
+  const ends = timed.map((e) => new Date(e.end).getHours() + 1);
+  const fromHour = Math.min(6, ...(starts.length ? starts : [6]));
+  const toHour = Math.max(22, ...(ends.length ? ends : [22]));
+  const hours = Array.from({ length: Math.max(1, toHour - fromHour) }, (_, i) => fromHour + i);
+
+  const layout = useMemo(() => columnsFor(timed), [timed]);
+  const clashes = overlapping(timed);
 
   return (
     <div className="cal-week" style={{ gridTemplateColumns: `54px repeat(${days}, minmax(0, 1fr))` }}>
@@ -372,14 +725,37 @@ function TimeView({
         </div>
       ))}
 
+      <div className="cal-hour strip">all day</div>
+      {columns.map((day) => (
+        <div key={"strip" + isoDate(day)} className="cal-strip">
+          {strip
+            .filter((e) => overlapsDay(e, day))
+            .map((e) =>
+              e.kind === "deadline" ? (
+                <DeadlineMark key={keyOf(e) + isoDate(day)} e={e} onPick={onPick} />
+              ) : (
+                <div
+                  key={keyOf(e) + isoDate(day)}
+                  className="cal-event"
+                  style={{ ["--ev-color" as string]: colorVar(e.color) }}
+                  onClick={() => onPick(e)}
+                  title={e.summary}
+                >
+                  {e.summary}
+                </div>
+              ),
+            )}
+        </div>
+      ))}
+
       {hours.map((hour) => (
         <div key={hour} style={{ display: "contents" }}>
           <div className="cal-hour">{String(hour).padStart(2, "0")}:00</div>
           {columns.map((day) => {
             const slotStart = new Date(day);
             slotStart.setHours(hour, 0, 0, 0);
-            const slotEvents = events.filter(
-              (e) => !e.allDay && new Date(e.start).getHours() === hour && sameDay(new Date(e.start), day),
+            const slotEvents = timed.filter(
+              (e) => new Date(e.start).getHours() === hour && sameDay(new Date(e.start), day),
             );
             return (
               <div
@@ -392,39 +768,36 @@ function TimeView({
                   if (!payload) return;
                   onMove(JSON.parse(payload) as Occurrence, slotStart);
                 }}
-                onClick={() =>
-                  onPick({
-                    projectId: defaultProject,
-                    start: slotStart.toISOString(),
-                    end: new Date(slotStart.getTime() + 3600_000).toISOString(),
-                    summary: "",
-                  })
-                }
+                onClick={() => onNew(day, hour)}
               >
-                {slotEvents.map((e, i) => {
+                {slotEvents.map((e) => {
                   const start = new Date(e.start);
                   const end = new Date(e.end);
                   const minutes = Math.max(20, (end.getTime() - start.getTime()) / 60000);
+                  const place = layout.get(keyOf(e)) ?? { col: 0, of: 1 };
                   return (
                     <div
                       key={keyOf(e)}
-                      className="cal-abs"
+                      className={["cal-abs", clashes.has(keyOf(e)) ? "clash" : ""].join(" ")}
                       draggable={!e.readOnly}
                       onDragStart={(ev) => ev.dataTransfer.setData("text/event", JSON.stringify(e))}
                       style={{
                         ["--ev-color" as string]: colorVar(e.color),
                         top: `${(start.getMinutes() / 60) * 44}px`,
                         height: `${(minutes / 60) * 44}px`,
-                        left: `${2 + i * 4}px`,
+                        left: `calc(${(place.col / place.of) * 100}% + 2px)`,
+                        width: `calc(${100 / place.of}% - 4px)`,
                       }}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         onPick(e);
                       }}
+                      title={clashes.has(keyOf(e)) ? `${e.summary} · overlaps another entry` : e.summary}
                     >
                       <strong>{e.summary}</strong>
                       <div style={{ fontSize: 10.5, opacity: 0.85 }}>
                         {shortTime(start)}–{shortTime(end)}
+                        {e.location ? ` · ${e.location}` : ""}
                       </div>
                     </div>
                   );
@@ -434,28 +807,97 @@ function TimeView({
           })}
         </div>
       ))}
+
+      {showGaps ? <GapRow events={timed} /> : null}
     </div>
   );
 }
 
-function ListView({ events, onPick }: { events: Occurrence[]; onPick: (e: Partial<Occurrence>) => void }) {
+/** "2h 15m free" between two slots — because the real question is often when there is time. */
+function GapRow({ events }: { events: Occurrence[] }) {
+  const sorted = [...events].sort((a, b) => a.start.localeCompare(b.start));
+  const gaps: { from: Date; to: Date }[] = [];
+  let cursor: Date | null = null;
+  for (const e of sorted) {
+    const start = new Date(e.start);
+    const end = new Date(e.end);
+    if (cursor && start.getTime() - cursor.getTime() >= 15 * 60000) gaps.push({ from: cursor, to: start });
+    if (!cursor || end > cursor) cursor = end;
+  }
+  if (!gaps.length) return null;
+  return (
+    <>
+      <div className="cal-hour strip">gaps</div>
+      <div className="cal-strip" style={{ gridColumn: "2 / -1" }}>
+        {gaps.map((g, i) => (
+          <span key={i} className="badge">
+            {shortTime(g.from)}–{shortTime(g.to)} · {lengthOf(g.to.getTime() - g.from.getTime())}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ListView({
+  events,
+  onPick,
+  onToggleDone,
+}: {
+  events: Occurrence[];
+  onPick: (e: Partial<Occurrence>) => void;
+  onToggleDone: (e: Occurrence) => void;
+}) {
   if (!events.length) return <div className="empty">Nothing in this range.</div>;
+  const byDay = new Map<string, Occurrence[]>();
+  for (const e of events) {
+    const key = isoDate(new Date(e.start));
+    byDay.set(key, [...(byDay.get(key) ?? []), e]);
+  }
   return (
     <div className="list">
-      {events.map((e) => (
-        <div key={keyOf(e)} className="list-row" style={{ cursor: "pointer" }} onClick={() => onPick(e)}>
-          <span className="dot-status" style={{ background: colorVar(e.color) }} />
-          <span className="meta" style={{ minWidth: 140 }}>
-            {new Date(e.start).toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short" })}
-            {e.allDay ? " · all day" : ` · ${shortTime(new Date(e.start))}`}
-          </span>
-          <span className="grow">
-            {e.summary}
-            {e.location ? <span className="meta"> · {e.location}</span> : null}
-          </span>
-          {e.repeats ? <span className="badge">repeats</span> : null}
-          {e.readOnly ? <span className="badge warn">from a subscription</span> : null}
-          {e.projectTitle ? <span className="badge">{e.projectTitle}</span> : null}
+      {[...byDay.entries()].map(([day, list]) => (
+        <div key={day}>
+          <div className="list-head">
+            {new Date(day).toLocaleDateString(undefined, {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </div>
+          {list.map((e) => (
+            <div
+              key={keyOf(e)}
+              className={["list-row", e.kind === "deadline" ? "deadline" : "", e.done ? "done" : ""].join(" ")}
+              style={{ cursor: "pointer" }}
+              onClick={() => onPick(e)}
+            >
+              <span className="dot-status" style={{ background: colorVar(e.color) }} />
+              <span className="meta" style={{ minWidth: 96 }}>
+                {e.allDay ? "all day" : shortTime(new Date(e.start))}
+              </span>
+              <span className="grow">
+                {e.summary}
+                {e.location ? <span className="meta"> · {e.location}</span> : null}
+              </span>
+              {e.kind !== "slot" && e.kind !== "all-day" ? <span className="badge">{e.kind}</span> : null}
+              {e.kind === "deadline" ? (
+                <button
+                  className="btn small"
+                  disabled={e.readOnly}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    onToggleDone(e);
+                  }}
+                >
+                  {e.done ? "done" : distance(new Date(e.start))}
+                </button>
+              ) : null}
+              {e.repeats ? <span className="badge">repeats</span> : null}
+              {e.readOnly ? <span className="badge warn">from a subscription</span> : null}
+              {e.projectTitle ? <span className="badge">{e.projectTitle}</span> : null}
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -464,20 +906,53 @@ function ListView({ events, onPick }: { events: Occurrence[]; onPick: (e: Partia
 
 // ------------------------------------------------------------------ dialog
 
+function NewEntryButton({ onPick }: { onPick: (k: Kind) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button className="btn small primary" onClick={() => setOpen((o) => !o)}>
+        <Icon name="plus" size={14} /> New
+      </button>
+      {open ? (
+        <>
+          <div className="menu-backdrop" onClick={() => setOpen(false)} />
+          <div className="menu">
+            {KINDS.map((k) => (
+              <button
+                key={k.key}
+                onClick={() => {
+                  setOpen(false);
+                  onPick(k.key);
+                }}
+              >
+                <strong>{k.title}</strong>
+                <span className="meta">{k.hint}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function EventDialog({
   initial,
   sources,
+  phases,
   onClose,
   onSaved,
 }: {
   initial: Partial<Occurrence>;
   sources: { id: string; title: string; readOnly?: boolean }[];
+  phases: Occurrence[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isNew = !initial.uid;
   const [form, setForm] = useState({
     projectId: initial.projectId ?? sources[0]?.id ?? "",
+    kind: (initial.kind ?? lastUsedKind()) as Kind,
     summary: initial.summary ?? "",
     description: initial.description ?? "",
     location: initial.location ?? "",
@@ -486,31 +961,66 @@ function EventDialog({
     allDay: initial.allDay ?? false,
     rrule: initial.rrule ?? "",
     alarms: (initial.alarms ?? []).join(","),
+    priority: String(initial.priority ?? 0),
+    done: initial.done ?? false,
+    categories: (initial.categories ?? []).join(", "),
+    relatedTo: initial.relatedTo ?? "",
+    link: initial.link ?? "",
+    person: initial.person ?? "",
     scope: "all" as "all" | "single",
   });
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
 
-  const body = () => ({
-    summary: form.summary,
-    description: form.description,
-    location: form.location,
-    start: new Date(form.start).toISOString(),
-    end: new Date(form.end).toISOString(),
-    allDay: form.allDay,
-    rrule: form.rrule,
-    alarms: form.alarms
-      .split(",")
-      .map((s) => parseInt(s.trim(), 10))
-      .filter((n) => !Number.isNaN(n)),
-    scope: form.scope,
-    recurrenceId: initial.recurrenceId,
-  });
+  const kind = form.kind;
+  const isPoint = kind === "deadline" || kind === "milestone";
+  const wholeDays = kind === "all-day" || kind === "phase" || kind === "milestone";
+
+  // The kind decides which fields exist: a slot wants start and end, a
+  // deadline only a due time, a phase two dates.
+  const setKind = (next: Kind) => {
+    setForm((f) => ({
+      ...f,
+      kind: next,
+      allDay: next === "all-day" || next === "phase" || next === "milestone",
+      alarms: next === "deadline" && !f.alarms ? "1440,60" : f.alarms,
+    }));
+  };
+
+  const body = () => {
+    const start = new Date(form.start);
+    const end = isPoint ? start : new Date(form.end);
+    return {
+      summary: form.summary,
+      description: form.description,
+      location: form.location,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      allDay: wholeDays,
+      rrule: form.rrule,
+      kind: form.kind,
+      priority: parseInt(form.priority, 10) || 0,
+      done: kind === "deadline" ? form.done : undefined,
+      categories: form.categories
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      relatedTo: form.relatedTo,
+      link: form.link,
+      person: form.person,
+      alarms: form.alarms
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !Number.isNaN(n)),
+      scope: form.scope,
+      recurrenceId: initial.recurrenceId,
+    };
+  };
 
   return (
     <Modal
-      title={isNew ? "New event" : initial.summary || "Event"}
+      title={isNew ? `New ${KINDS.find((k) => k.key === kind)?.title.toLowerCase()}` : initial.summary || "Entry"}
       onClose={onClose}
       footer={
         <>
@@ -521,7 +1031,7 @@ function EventDialog({
                 setBusy(true);
                 setError(null);
                 try {
-                  // A duplicate is a new event with the same content — no uid,
+                  // A duplicate is a new entry with the same content — no uid,
                   // so the server gives it one of its own.
                   await api(`/api/projects/${form.projectId}/calendar/events`, {
                     body: { ...body(), summary: `${form.summary} (copy)` },
@@ -574,6 +1084,7 @@ function EventDialog({
                   if (isNew) {
                     await api(`/api/projects/${form.projectId}/calendar/events`, { body: body() });
                     rememberProject(form.projectId);
+                    rememberKind(form.kind);
                   } else {
                     await api(
                       `/api/projects/${initial.projectId}/calendar/events/${encodeURIComponent(initial.uid!)}`,
@@ -603,9 +1114,20 @@ function EventDialog({
       <ErrorBox error={error} />
       {initial.readOnly ? (
         <div className="warning">
-          This event comes from a subscription. It is read-only and gets overwritten on the next run.
+          This entry comes from a subscription. It is read-only and gets overwritten on the next run — but you
+          can put your own note next to it, which no pull can touch.
         </div>
       ) : null}
+
+      <Field label="Kind" hint={KINDS.find((k) => k.key === kind)?.hint}>
+        <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+          {KINDS.map((k) => (
+            <option key={k.key} value={k.key}>
+              {k.title}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <Field label="Title">
         <input value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} autoFocus />
@@ -625,33 +1147,70 @@ function EventDialog({
         </Field>
       ) : null}
 
-      <label className="check">
-        <input type="checkbox" checked={form.allDay} onChange={(e) => setForm({ ...form, allDay: e.target.checked })} />
-        <span>All day</span>
-      </label>
-
-      <div className="row">
-        <Field label="Start">
+      {isPoint ? (
+        <Field label={kind === "deadline" ? "Due" : "On"}>
           <input
-            type={form.allDay ? "date" : "datetime-local"}
-            value={form.allDay ? form.start.slice(0, 10) : form.start}
+            type={wholeDays ? "date" : "datetime-local"}
+            value={wholeDays ? form.start.slice(0, 10) : form.start}
             onChange={(e) =>
-              setForm({ ...form, start: form.allDay ? `${e.target.value}T00:00` : e.target.value })
+              setForm({ ...form, start: wholeDays ? `${e.target.value}T00:00` : e.target.value })
             }
           />
         </Field>
-        <Field label="End">
-          <input
-            type={form.allDay ? "date" : "datetime-local"}
-            value={form.allDay ? form.end.slice(0, 10) : form.end}
-            onChange={(e) => setForm({ ...form, end: form.allDay ? `${e.target.value}T00:00` : e.target.value })}
-          />
-        </Field>
-      </div>
+      ) : (
+        <div className="row">
+          <Field label="Start">
+            <input
+              type={wholeDays ? "date" : "datetime-local"}
+              value={wholeDays ? form.start.slice(0, 10) : form.start}
+              onChange={(e) =>
+                setForm({ ...form, start: wholeDays ? `${e.target.value}T00:00` : e.target.value })
+              }
+            />
+          </Field>
+          <Field label="End">
+            <input
+              type={wholeDays ? "date" : "datetime-local"}
+              value={wholeDays ? form.end.slice(0, 10) : form.end}
+              onChange={(e) => setForm({ ...form, end: wholeDays ? `${e.target.value}T00:00` : e.target.value })}
+            />
+          </Field>
+        </div>
+      )}
 
-      <Field label="Location">
-        <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-      </Field>
+      {kind === "deadline" ? (
+        <>
+          <div className="row">
+            <Field label="Importance">
+              <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                <option value="0">normal</option>
+                <option value="4">important</option>
+                <option value="1">critical</option>
+              </select>
+            </Field>
+            <Field label="State">
+              <select
+                value={form.done ? "done" : "open"}
+                onChange={(e) => setForm({ ...form, done: e.target.value === "done" })}
+              >
+                <option value="open">open</option>
+                <option value="done">done</option>
+              </select>
+            </Field>
+          </div>
+          <p className="hint">
+            Stored as a <code className="mono">VTODO</code> — that is what iCalendar has for something that can
+            be finished. The subscription URL hands it out as an event, because Google Calendar ignores todos.
+          </p>
+        </>
+      ) : null}
+
+      {kind === "slot" ? (
+        <Field label="Room">
+          <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+        </Field>
+      ) : null}
+
       <Field label="Description">
         <textarea
           style={{ minHeight: 70 }}
@@ -660,19 +1219,24 @@ function EventDialog({
         />
       </Field>
 
-      <Field label="Repeat" hint="An RFC 5545 rule, e.g. FREQ=WEEKLY;BYDAY=MO,WE — empty means once.">
-        <select value={form.rrule} onChange={(e) => setForm({ ...form, rrule: e.target.value })}>
-          <option value="">Once</option>
-          <option value="FREQ=DAILY">Daily</option>
-          <option value="FREQ=WEEKLY">Weekly</option>
-          <option value="FREQ=WEEKLY;INTERVAL=2">Every two weeks</option>
-          <option value="FREQ=MONTHLY">Monthly</option>
-          <option value="FREQ=YEARLY">Yearly</option>
-          {form.rrule && !["FREQ=DAILY", "FREQ=WEEKLY", "FREQ=WEEKLY;INTERVAL=2", "FREQ=MONTHLY", "FREQ=YEARLY"].includes(form.rrule) ? (
-            <option value={form.rrule}>{form.rrule}</option>
-          ) : null}
-        </select>
-      </Field>
+      {kind !== "phase" ? (
+        <Field label="Repeat" hint="An RFC 5545 rule, e.g. FREQ=WEEKLY;BYDAY=MO — empty means once.">
+          <select value={form.rrule} onChange={(e) => setForm({ ...form, rrule: e.target.value })}>
+            <option value="">Once</option>
+            <option value="FREQ=DAILY">Daily</option>
+            <option value="FREQ=WEEKLY">Weekly</option>
+            <option value="FREQ=WEEKLY;INTERVAL=2">Every two weeks</option>
+            <option value="FREQ=MONTHLY">Monthly</option>
+            <option value="FREQ=YEARLY">Yearly</option>
+            {form.rrule &&
+            !["FREQ=DAILY", "FREQ=WEEKLY", "FREQ=WEEKLY;INTERVAL=2", "FREQ=MONTHLY", "FREQ=YEARLY"].includes(
+              form.rrule,
+            ) ? (
+              <option value={form.rrule}>{form.rrule}</option>
+            ) : null}
+          </select>
+        </Field>
+      ) : null}
 
       {initial.repeats ? (
         <Field label="This change applies to">
@@ -683,9 +1247,59 @@ function EventDialog({
         </Field>
       ) : null}
 
-      <Field label="Reminders" hint="Minutes before the start, comma separated.">
-        <input value={form.alarms} onChange={(e) => setForm({ ...form, alarms: e.target.value })} placeholder="15" />
+      {kind !== "phase" ? (
+        <Field
+          label="Reminders"
+          hint={
+            kind === "deadline"
+              ? "Minutes before it is due. A day and an hour before, unless you say otherwise."
+              : "Minutes before the start, comma separated."
+          }
+        >
+          <input value={form.alarms} onChange={(e) => setForm({ ...form, alarms: e.target.value })} placeholder="15" />
+        </Field>
+      ) : null}
+
+      {phases.length && kind !== "phase" ? (
+        <Field label="Belongs to" hint="A phase — the semester or the period this is part of.">
+          <select value={form.relatedTo} onChange={(e) => setForm({ ...form, relatedTo: e.target.value })}>
+            <option value="">nothing in particular</option>
+            {phases.map((p) => (
+              <option key={p.uid} value={p.uid}>
+                {p.summary}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+
+      <Field label="Tags" hint="Comma separated. The filter above picks them up.">
+        <input value={form.categories} onChange={(e) => setForm({ ...form, categories: e.target.value })} />
       </Field>
+
+      <Field
+        label="Link into the project"
+        hint="A folder or a file in this project — the material for this lecture, the folder for this assignment."
+      >
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={form.link}
+            onChange={(e) => setForm({ ...form, link: e.target.value })}
+            placeholder="lectures/analysis"
+          />
+          {form.link ? (
+            <a className="btn small" href={filesHref(form.projectId, form.link)}>
+              <Icon name="folder" size={14} /> Open
+            </a>
+          ) : null}
+        </div>
+      </Field>
+
+      {kind === "slot" ? (
+        <Field label="Person" hint="The lecturer, so it can be filtered by.">
+          <input value={form.person} onChange={(e) => setForm({ ...form, person: e.target.value })} />
+        </Field>
+      ) : null}
 
       {!isNew && sources.length > 1 ? (
         <Field label="Move to another calendar">
@@ -708,8 +1322,8 @@ function EventDialog({
 // ------------------------------------------------------------------ helpers
 
 /**
- * Creating an event asks which project it goes into, with the last used one
- * preselected — remembered locally, per browser.
+ * Creating an entry asks which project it goes into, with the last used one
+ * preselected — remembered locally, per browser. The same for the kind.
  */
 function lastUsedProject(available: string[]): string | undefined {
   try {
@@ -726,6 +1340,122 @@ function rememberProject(id: string) {
   } catch {
     /* private mode */
   }
+}
+
+/**
+ * Where a link points. A file opens the folder it lies in, because that is
+ * what the files tab shows.
+ */
+function filesHref(projectId: string, link: string) {
+  const path = link.replace(/^project:/, "").replace(/^\/+/, "");
+  const last = path.split("/").pop() ?? "";
+  const folder = last.includes(".") ? path.split("/").slice(0, -1).join("/") : path;
+  return `/p/${projectId}?tab=files&path=${encodeURIComponent(folder)}`;
+}
+
+function lastUsedKind(): Kind {
+  try {
+    const k = localStorage.getItem("calendar.lastKind") as Kind | null;
+    return k && KINDS.some((x) => x.key === k) ? k : "slot";
+  } catch {
+    return "slot";
+  }
+}
+
+function rememberKind(k: Kind) {
+  try {
+    localStorage.setItem("calendar.lastKind", k);
+  } catch {
+    /* private mode */
+  }
+}
+
+/**
+ * Which entries share a time with another one. With a timetable that is almost
+ * always a mistake worth seeing, so it gets a marker rather than silence.
+ */
+function overlapping(events: Occurrence[]): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i < events.length; i++) {
+    for (let j = i + 1; j < events.length; j++) {
+      const a = events[i];
+      const b = events[j];
+      if (a.allDay || b.allDay) continue;
+      if (new Date(a.start) < new Date(b.end) && new Date(b.start) < new Date(a.end)) {
+        out.add(keyOf(a));
+        out.add(keyOf(b));
+      }
+    }
+  }
+  return out;
+}
+
+/** Overlapping slots sit side by side, not on top of each other. */
+function columnsFor(events: Occurrence[]): Map<string, { col: number; of: number }> {
+  const out = new Map<string, { col: number; of: number }>();
+  const byDay = new Map<string, Occurrence[]>();
+  for (const e of events) {
+    const key = isoDate(new Date(e.start));
+    byDay.set(key, [...(byDay.get(key) ?? []), e]);
+  }
+  for (const list of byDay.values()) {
+    const sorted = [...list].sort((a, b) => a.start.localeCompare(b.start));
+    // One cluster is a run of entries that touch each other; every member of a
+    // cluster is divided by the same number, so the columns line up.
+    let cluster: Occurrence[] = [];
+    let clusterEnd = 0;
+    const flush = () => {
+      const cols: number[] = [];
+      for (const e of cluster) {
+        const start = new Date(e.start).getTime();
+        let col = cols.findIndex((end) => end <= start);
+        if (col === -1) {
+          col = cols.length;
+          cols.push(0);
+        }
+        cols[col] = new Date(e.end).getTime();
+        out.set(keyOf(e), { col, of: 1 });
+      }
+      for (const e of cluster) {
+        const place = out.get(keyOf(e))!;
+        out.set(keyOf(e), { col: place.col, of: Math.max(1, cols.length) });
+      }
+      cluster = [];
+      clusterEnd = 0;
+    };
+    for (const e of sorted) {
+      const start = new Date(e.start).getTime();
+      if (cluster.length && start >= clusterEnd) flush();
+      cluster.push(e);
+      clusterEnd = Math.max(clusterEnd, new Date(e.end).getTime());
+    }
+    flush();
+  }
+  return out;
+}
+
+/** "in 3 days", "tomorrow 23:59", "2 days overdue" — the distance in plain words. */
+function distance(target: Date): string {
+  const ms = target.getTime() - Date.now();
+  const days = Math.round(ms / 864e5);
+  const hours = Math.round(ms / 36e5);
+  if (ms < 0) {
+    const late = -ms;
+    if (late < 36e5) return "overdue";
+    if (late < 864e5) return `${Math.round(late / 36e5)}h overdue`;
+    return `${Math.round(late / 864e5)} days overdue`;
+  }
+  if (hours < 1) return "in under an hour";
+  if (hours < 24 && target.getDate() === new Date().getDate()) return `today ${shortTime(target)}`;
+  if (days <= 1) return `tomorrow ${shortTime(target)}`;
+  if (days < 14) return `in ${days} days`;
+  return target.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+function lengthOf(ms: number) {
+  const h = Math.floor(ms / 36e5);
+  const m = Math.round((ms % 36e5) / 60000);
+  return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
 }
 
 function keyOf(e: Occurrence) {
@@ -762,6 +1492,12 @@ function atHour(d: Date, hour: number) {
   return copy;
 }
 
+function atTime(d: Date, hour: number, minute: number) {
+  const copy = startOfDay(d);
+  copy.setHours(hour, minute);
+  return copy;
+}
+
 function sameDay(a: Date, b: Date) {
   return isoDate(a) === isoDate(b);
 }
@@ -771,6 +1507,8 @@ function overlapsDay(e: Occurrence, day: Date) {
   const end = new Date(e.end);
   const from = startOfDay(day);
   const to = addDays(from, 1);
+  // A point in time has no length, so "overlap" would never be true for it.
+  if (start.getTime() === end.getTime()) return start >= from && start < to;
   return start < to && end > from;
 }
 

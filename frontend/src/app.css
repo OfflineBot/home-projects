@@ -365,6 +365,76 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
   border-left: 3px solid var(--ev-color, var(--accent));
 }
 
+/* Kinds of entry. A deadline is a marker with weight, a phase a band behind
+   everything else, a milestone a pin — never all three the same block. */
+
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .cal-layout { grid-template-columns: minmax(0, 1fr); } }
+
+.cal-filters { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.cal-filters select { width: auto; padding: 3px 8px; font-size: 12.5px; }
+
+.cal-lanes { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.cal-lane { position: relative; height: 22px; }
+.cal-lane.pins { height: 24px; }
+.cal-band {
+  position: absolute; top: 0; height: 22px; display: flex; align-items: center;
+  border-radius: 999px; font-size: 11.5px; overflow: hidden;
+  background: color-mix(in srgb, var(--ev-color, var(--accent)) 30%, transparent);
+  border-left: 3px solid var(--ev-color, var(--accent));
+}
+.cal-band .name {
+  flex: 1; min-width: 0; background: none; border: none; cursor: pointer; text-align: left;
+  color: var(--ctp-text); padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-band .edit { background: none; border: none; cursor: pointer; color: var(--ctp-subtext0);
+  padding: 0 7px; display: flex; align-items: center; }
+.cal-band .edit:hover { color: var(--ctp-text); }
+.cal-pin {
+  position: absolute; top: 0; transform: translateX(-6px); display: flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer; font-size: 11.5px; white-space: nowrap;
+  color: var(--ev-color, var(--accent));
+}
+
+.cal-mark {
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px; cursor: pointer;
+  padding: 1px 5px; border-radius: 5px; overflow: hidden; white-space: nowrap;
+  border-left: 3px solid var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 16%, transparent);
+}
+.cal-mark span { overflow: hidden; text-overflow: ellipsis; }
+.cal-mark.late { border-left-color: var(--ctp-red); color: var(--ctp-red);
+  background: color-mix(in srgb, var(--ctp-red) 16%, transparent); }
+.cal-mark.done { opacity: 0.5; text-decoration: line-through; border-left-color: var(--ctp-green); }
+
+.cal-event.clash, .cal-abs.clash { outline: 1.5px dashed var(--ctp-peach); outline-offset: -1px; }
+
+.cal-strip { background: var(--ctp-base); min-height: 26px; padding: 3px;
+  display: flex; flex-direction: column; gap: 2px; }
+.cal-hour.strip { height: auto; padding-top: 6px; }
+
+.cal-side { border: 1px solid var(--ctp-surface0); border-radius: var(--radius);
+  background: var(--ctp-mantle); padding: 12px 14px; }
+.cal-side h3 { margin: 0 0 10px; font-size: 14px; display: flex; align-items: center;
+  gap: 8px; justify-content: space-between; }
+.cal-deadline-row { display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-bottom: 1px solid var(--ctp-surface0); }
+.cal-deadline-row:last-child { border-bottom: none; }
+.cal-deadline-row .grow { flex: 1; min-width: 0; background: none; border: none; cursor: pointer;
+  color: inherit; text-align: left; display: flex; flex-direction: column; }
+.cal-deadline-row .summary { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-deadline-row .meta { font-size: 11.5px; color: var(--ctp-subtext0); }
+.cal-deadline-row.late .meta { color: var(--ctp-red); }
+.cal-deadline-row.done { opacity: 0.55; }
+.cal-deadline-row.done .summary { text-decoration: line-through; }
+
+.list-head { padding: 8px 14px; background: var(--ctp-crust); font-size: 12.5px;
+  color: var(--ctp-subtext0); }
+.list-row.done .grow { text-decoration: line-through; opacity: 0.6; }
+.list-row.deadline .dot-status { border-radius: 2px; }
+
+.menu-backdrop { position: fixed; inset: 0; z-index: 30; }
+
 /* ------------------------------------------------------------------- files */
 
 .crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;

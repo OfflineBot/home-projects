@@ -34,7 +34,30 @@ type eventInput struct {
 	Alarms       []int     `json:"alarms"`
 	Scope        string    `json:"scope"`        // "all" (default) or "single"
 	RecurrenceID string    `json:"recurrenceId"` // which appearance, for scope=single
+
+	// Which of the five kinds this is. Empty means: whatever it looks like.
+	Kind string `json:"kind"`
+	// Deadlines only. Done is a pointer so "not mentioned" and "not done" stay
+	// different things.
+	Done     *bool `json:"done"`
+	Priority int   `json:"priority"`
+
+	Categories []string `json:"categories"`
+	RelatedTo  string   `json:"relatedTo"`
+	AttachedTo string   `json:"attachedTo"`
+	Link       string   `json:"link"`
+	Person     string   `json:"person"`
 }
+
+// wantsTodo is true when the input describes a deadline, which is stored as a
+// VTODO rather than as an event.
+func (in eventInput) wantsTodo() bool {
+	return strings.EqualFold(in.Kind, ics.KindDeadline)
+}
+
+// defaultAlarms is what a deadline gets when nothing was said: one day before,
+// and one hour before. A deadline you learn about when it hits is worthless.
+var defaultAlarms = []int{24 * 60, 60}
 
 // Routes are mounted under /api/projects/:project/calendar
 func (c Capability) Routes(env *capability.Env, r fiber.Router) {
@@ -69,11 +92,18 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		if in.Start.IsZero() {
 			return httpx.BadRequest("An event needs a start.")
 		}
+		// A deadline and a milestone are points: there is nothing to end.
+		if in.wantsTodo() || strings.EqualFold(in.Kind, ics.KindMilestone) {
+			in.End = in.Start
+		}
 		if in.End.IsZero() {
 			in.End = in.Start.Add(time.Hour)
 		}
 		if in.End.Before(in.Start) {
 			return httpx.BadRequest("The end of the event is before its start.")
+		}
+		if in.wantsTodo() && in.Alarms == nil {
+			in.Alarms = defaultAlarms
 		}
 		uid := in.UID
 		if uid == "" {
@@ -92,6 +122,17 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 				RRule:       normaliseRRule(in.RRule),
 				Color:       in.Color,
 				Alarms:      in.Alarms,
+				Kind:        strings.ToLower(in.Kind),
+				IsTodo:      in.wantsTodo(),
+				Priority:    in.Priority,
+				Categories:  in.Categories,
+				RelatedTo:   in.RelatedTo,
+				AttachedTo:  in.AttachedTo,
+				Link:        in.Link,
+				Person:      in.Person,
+			}
+			if in.Done != nil && *in.Done {
+				e.Status, e.Completed = "COMPLETED", time.Now()
 			}
 			f.Cal.Children = append(f.Cal.Children, e.ToComponent())
 			return nil
@@ -199,6 +240,52 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		return httpx.OK(ctx)
 	})
 
+	// Tick a deadline off, or put it back. One click from the list, without
+	// going through the whole dialog.
+	r.Post("/events/:uid/done", func(ctx *fiber.Ctx) error {
+		if err := capability.RequireWrite(ctx); err != nil {
+			return err
+		}
+		p := capability.Project(ctx)
+		uid := ctx.Params("uid")
+		var body struct {
+			Done *bool `json:"done"`
+		}
+		_ = ctx.BodyParser(&body)
+		author, email := capability.AuthorOf(ctx)
+
+		done := true
+		err := mutate(ctx.UserContext(), env, p, uid, author, email, "Tick off a deadline", func(f *file) error {
+			comp := findEvent(f, uid, "")
+			if comp == nil {
+				return errNoEvent
+			}
+			e, err := ics.FromComponent(comp)
+			if err != nil {
+				return err
+			}
+			if !e.IsTodo {
+				return httpx.BadRequest("Only a deadline can be ticked off. %q is an appointment.", e.Summary)
+			}
+			if body.Done != nil {
+				done = *body.Done
+			} else {
+				done = !e.Done()
+			}
+			if done {
+				e.Status, e.Completed = "COMPLETED", time.Now()
+			} else {
+				e.Status, e.Completed = "", time.Time{}
+			}
+			e.ToComponent()
+			return nil
+		})
+		if err != nil {
+			return writeError(err)
+		}
+		return ctx.JSON(fiber.Map{"done": done})
+	})
+
 	// Move an event into another calendar project.
 	r.Post("/events/:uid/move", func(ctx *fiber.Ctx) error {
 		if err := capability.RequireWrite(ctx); err != nil {
@@ -263,7 +350,7 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		if err := requireReadOrToken(ctx, env, p); err != nil {
 			return err
 		}
-		body, err := Export(ctx.UserContext(), env, p)
+		body, err := Export(ctx.UserContext(), env, p, deadlinesAsEvents(ctx, env, p))
 		if err != nil {
 			return httpx.Internal("the calendar could not be exported").WithCause(err)
 		}
@@ -288,7 +375,7 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		author, email := capability.AuthorOf(ctx)
 		added := 0
 		err = mutate(ctx.UserContext(), env, p, "", author, email, "Import calendar", func(f *file) error {
-			for _, comp := range incoming.Kids("VEVENT") {
+			for _, comp := range entryComps(incoming) {
 				uid := comp.Value("UID")
 				if uid == "" {
 					uid = uuid.NewString() + "@home-projects"
@@ -347,14 +434,14 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 			return err
 		}
 		p := capability.Project(ctx)
-		var split bool
-		var lastView string
-		err := env.Store.Pool().QueryRow(ctx.UserContext(),
-			`SELECT split, last_view FROM calendar_settings WHERE project_id=$1`, p.ID).Scan(&split, &lastView)
+		s, err := settingsOf(ctx.UserContext(), env, p.ID)
 		if err != nil {
-			split, lastView = false, "month"
+			return httpx.Internal("the settings could not be read").WithCause(err)
 		}
-		return ctx.JSON(fiber.Map{"split": split, "lastView": lastView, "files": entries(env, p)})
+		return ctx.JSON(fiber.Map{
+			"split": s.Split, "lastView": s.LastView, "todosAsEvents": s.TodosAsEvents,
+			"files": entries(env, p),
+		})
 	})
 
 	r.Put("/settings", func(ctx *fiber.Ctx) error {
@@ -363,34 +450,39 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		}
 		p := capability.Project(ctx)
 		var in struct {
-			Split    *bool   `json:"split"`
-			LastView *string `json:"lastView"`
+			Split         *bool   `json:"split"`
+			LastView      *string `json:"lastView"`
+			TodosAsEvents *bool   `json:"todosAsEvents"`
 		}
 		if err := ctx.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The settings could not be read.")
 		}
-		split := false
-		view := "month"
-		_ = env.Store.Pool().QueryRow(ctx.UserContext(),
-			`SELECT split, last_view FROM calendar_settings WHERE project_id=$1`, p.ID).Scan(&split, &view)
+		cur, err := settingsOf(ctx.UserContext(), env, p.ID)
+		if err != nil {
+			return httpx.Internal("the settings could not be read").WithCause(err)
+		}
 		if in.Split != nil {
-			split = *in.Split
+			cur.Split = *in.Split
 		}
 		if in.LastView != nil {
-			view = *in.LastView
+			cur.LastView = *in.LastView
+		}
+		if in.TodosAsEvents != nil {
+			cur.TodosAsEvents = *in.TodosAsEvents
 		}
 		if _, err := env.Store.Pool().Exec(ctx.UserContext(), `
-			INSERT INTO calendar_settings (project_id, split, last_view) VALUES ($1,$2,$3)
-			ON CONFLICT (project_id) DO UPDATE SET split=EXCLUDED.split, last_view=EXCLUDED.last_view`,
-			p.ID, split, view); err != nil {
+			INSERT INTO calendar_settings (project_id, split, last_view, todos_as_events) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (project_id) DO UPDATE SET split=EXCLUDED.split, last_view=EXCLUDED.last_view,
+				todos_as_events=EXCLUDED.todos_as_events`,
+			p.ID, cur.Split, cur.LastView, cur.TodosAsEvents); err != nil {
 			return httpx.Internal("the settings could not be stored").WithCause(err)
 		}
 		if in.Split != nil {
-			if err := restructure(ctx.UserContext(), env, p, split); err != nil {
+			if err := restructure(ctx.UserContext(), env, p, cur.Split); err != nil {
 				return writeError(err)
 			}
 		}
-		return ctx.JSON(fiber.Map{"split": split, "lastView": view})
+		return ctx.JSON(fiber.Map{"split": cur.Split, "lastView": cur.LastView, "todosAsEvents": cur.TodosAsEvents})
 	})
 }
 
@@ -420,7 +512,7 @@ func (c Capability) SharedRoutes(env *capability.Env, r fiber.Router) {
 				return err
 			}
 		}
-		body, err := Export(ctx.UserContext(), env, p)
+		body, err := Export(ctx.UserContext(), env, p, deadlinesAsEvents(ctx, env, p))
 		if err != nil {
 			return httpx.Internal("the calendar could not be exported").WithCause(err)
 		}
@@ -479,6 +571,41 @@ func (c Capability) SharedRoutes(env *capability.Env, r fiber.Router) {
 
 // ------------------------------------------------------------------ helpers
 
+// settings are the per-project choices. Defaults matter here: a fresh calendar
+// keeps everything in one file, opens in the month view, and hands deadlines
+// out as events — because the alternative is a phone that shows nothing.
+type settings struct {
+	Split         bool
+	LastView      string
+	TodosAsEvents bool
+}
+
+func settingsOf(ctx context.Context, env *capability.Env, projectID uuid.UUID) (settings, error) {
+	s := settings{LastView: "month", TodosAsEvents: true}
+	err := env.Store.Pool().QueryRow(ctx,
+		`SELECT split, last_view, todos_as_events FROM calendar_settings WHERE project_id=$1`,
+		projectID).Scan(&s.Split, &s.LastView, &s.TodosAsEvents)
+	if err != nil {
+		// No row yet is not an error — it is the default.
+		return settings{LastView: "month", TodosAsEvents: true}, nil
+	}
+	return s, nil
+}
+
+// deadlinesAsEvents decides how the todos leave. The query wins over the
+// stored default, so one subscriber can ask for the other shape without
+// changing it for everyone.
+func deadlinesAsEvents(ctx *fiber.Ctx, env *capability.Env, p *model.Project) bool {
+	switch strings.ToLower(ctx.Query("deadlines")) {
+	case "events", "true", "1":
+		return true
+	case "todos", "false", "0":
+		return false
+	}
+	s, _ := settingsOf(ctx.UserContext(), env, p.ID)
+	return s.TodosAsEvents
+}
+
 func applyInput(e *ics.Event, in eventInput) {
 	if in.Summary != "" {
 		e.Summary = in.Summary
@@ -497,6 +624,32 @@ func applyInput(e *ics.Event, in eventInput) {
 	}
 	e.Color = in.Color
 	e.Alarms = in.Alarms
+
+	if in.Kind != "" {
+		e.Kind = strings.ToLower(in.Kind)
+		// Changing the kind changes the shape on disk. A deadline becomes a
+		// VTODO, anything else becomes a VEVENT again.
+		e.IsTodo = in.wantsTodo()
+		if e.IsTodo || e.Kind == ics.KindMilestone {
+			e.End = e.Start
+		}
+	}
+	if in.Done != nil {
+		if *in.Done {
+			e.Status = "COMPLETED"
+			if e.Completed.IsZero() {
+				e.Completed = time.Now()
+			}
+		} else {
+			e.Status, e.Completed = "", time.Time{}
+		}
+	}
+	e.Priority = in.Priority
+	e.Categories = in.Categories
+	e.RelatedTo = in.RelatedTo
+	e.AttachedTo = in.AttachedTo
+	e.Link = in.Link
+	e.Person = in.Person
 }
 
 func normaliseRRule(r string) string {
@@ -507,7 +660,7 @@ func normaliseRRule(r string) string {
 // findEvent returns the VEVENT with that UID; recurrenceID picks a single
 // changed appearance, an empty one the series master.
 func findEvent(f *file, uid, recurrenceID string) *ics.Component {
-	for _, comp := range f.Cal.Kids("VEVENT") {
+	for _, comp := range entryComps(f.Cal) {
 		if comp.Value("UID") != uid {
 			continue
 		}
@@ -523,7 +676,7 @@ func removeEvent(f *file, uid, recurrenceID string) bool {
 	kept := make([]*ics.Component, 0, len(f.Cal.Children))
 	removed := false
 	for _, ch := range f.Cal.Children {
-		if strings.EqualFold(ch.Name, "VEVENT") && ch.Value("UID") == uid {
+		if (strings.EqualFold(ch.Name, "VEVENT") || strings.EqualFold(ch.Name, "VTODO")) && ch.Value("UID") == uid {
 			if recurrenceID == "" || ch.Value("RECURRENCE-ID") == recurrenceID {
 				removed = true
 				continue
