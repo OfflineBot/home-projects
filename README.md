@@ -177,6 +177,20 @@ sudo ./scripts/setup-git-ssh.sh     # creates the git user, installs two scripts
                                     # configures sshd, prints the variables
 ```
 
+`GIT_SSH_HOST` is written the way it appears in a clone command —
+`git@offlinebot.xyz`. Without a user in front git reads `host:path` as scp
+syntax with whoever you happen to be, so the `git@` is filled in if you leave it
+out. A non-standard port needs the URL form: `ssh://git@offlinebot.xyz:2222`.
+
+`GIT_SSH_WRAPPER` is a path **on the host**, not in the container: it is what
+goes into the forced command sshd hands out with every key. The setup script
+installs the wrapper at the default, so leave this alone unless you moved it.
+
+The SSH connection itself goes to that host's sshd on port 22 — not through the
+container, and not through a reverse proxy. If the domain is behind a proxy that
+only forwards HTTP (a Cloudflare tunnel, for instance), point `GIT_SSH_HOST` at
+a name that resolves straight to the machine instead.
+
 Then add your public key under **Security → Keys for git over SSH**.
 
 A key can do nothing on that machine except talk to this server about
@@ -279,8 +293,9 @@ in a project becomes variables, whether it arrived by upload, by API or by push.
 | `OWNER_USERNAME`, `OWNER_PASSWORD` | only for the very first start |
 | `COOKIE_SECURE` | `true` behind HTTPS |
 | `ALLOW_PROJECT_COMMANDS` | lets `project.yaml` run shell commands |
-| `GIT_SSH_HOST` | `git@your-host` — switches git over SSH on |
-| `GIT_SSH_SECRET` | what sshd and the wrapper authenticate to the server with |
+| `GIT_SSH_HOST` | `git@your-host` — switches git over SSH on, and is the address shown in the clone command |
+| `GIT_SSH_SECRET` | what sshd and the wrapper on the host authenticate to the server with |
+| `GIT_SSH_WRAPPER` | where `hp-git-shell` sits **on the host**; only if not the default `/usr/local/bin/hp-git-shell` |
 | `MAX_UPLOAD_MB` | upload limit, default 512 |
 
 Changing `SECRET_KEY` makes every stored credential unreadable — they then have

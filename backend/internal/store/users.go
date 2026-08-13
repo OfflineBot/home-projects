@@ -319,3 +319,46 @@ func (s *Store) SetSetting(ctx context.Context, key string, value any) error {
 		ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`, key, body)
 	return norm(err)
 }
+
+// Blocked is one subject that has run into the throttle.
+type Blocked struct {
+	Subject  string    `json:"subject"`
+	Failures int       `json:"failures"`
+	LastAt   time.Time `json:"lastAt"`
+	IP       string    `json:"ip"`
+}
+
+// BlockedSubjects lists what is currently locked out, so a block can be seen
+// rather than only felt.
+func (s *Store) BlockedSubjects(ctx context.Context, scope string, window time.Duration, threshold int) ([]Blocked, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT subject, count(*), max(created_at), max(ip)
+		FROM auth_attempts
+		WHERE scope=$1 AND ok=false AND created_at > now() - $2::interval
+		GROUP BY subject HAVING count(*) >= $3
+		ORDER BY max(created_at) DESC`, scope, window.String(), threshold)
+	if err != nil {
+		return nil, norm(err)
+	}
+	defer rows.Close()
+	out := []Blocked{}
+	for rows.Next() {
+		var b Blocked
+		if err := rows.Scan(&b.Subject, &b.Failures, &b.LastAt, &b.IP); err != nil {
+			return nil, norm(err)
+		}
+		out = append(out, b)
+	}
+	return out, norm(rows.Err())
+}
+
+// ClearAttempts lifts a block. Locking yourself out by mistyping a password is
+// ordinary; having no way back would not be.
+func (s *Store) ClearAttempts(ctx context.Context, scope, subject string) (int, error) {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM auth_attempts WHERE scope=$1 AND subject=$2 AND ok=false`, scope, subject)
+	if err != nil {
+		return 0, norm(err)
+	}
+	return int(tag.RowsAffected()), nil
+}

@@ -111,8 +111,21 @@ func TestAuthorizedKeysWithNoKeys(t *testing.T) {
 }
 
 func TestSSHCloneURL(t *testing.T) {
-	if got := SSHCloneURL("git@offlinebot.xyz", "studies"); got != "git@offlinebot.xyz:studies.git" {
-		t.Errorf("got %q", got)
+	cases := map[string]string{
+		"git@offlinebot.xyz":  "git@offlinebot.xyz:studies.git",
+		" git@offlinebot.xyz": "git@offlinebot.xyz:studies.git",
+		"git@offlinebot.xyz:": "git@offlinebot.xyz:studies.git",
+		// Written without a user, git would read it as scp syntax with whoever
+		// you happen to be. The user is filled in rather than handed out broken.
+		"offlinebot.xyz": "git@offlinebot.xyz:studies.git",
+		// A port needs the URL form.
+		"ssh://git@offlinebot.xyz:2222":  "ssh://git@offlinebot.xyz:2222/studies.git",
+		"ssh://git@offlinebot.xyz:2222/": "ssh://git@offlinebot.xyz:2222/studies.git",
+	}
+	for host, want := range cases {
+		if got := SSHCloneURL(host, "studies"); got != want {
+			t.Errorf("%q → %q, want %q", host, got, want)
+		}
 	}
 	if got := SSHCloneURL("git@offlinebot.xyz", ""); got != "git@offlinebot.xyz:ungrouped.git" {
 		t.Errorf("ungrouped: got %q", got)

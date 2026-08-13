@@ -323,16 +323,44 @@ func (s *Server) mountGroups(r fiber.Router) {
 		if err != nil {
 			return httpx.Internal("the projects could not be read").WithCause(err)
 		}
+
+		// A group with projects is never silently taken down with it. Either the
+		// projects are deleted on purpose, or they move to Ungrouped and keep
+		// their history.
 		if len(projects) > 0 && !withProjects {
-			// A group with projects is never silently taken down with it.
-			moved, err := s.Store.MoveProjectsToUngrouped(ctx, grp.ID)
-			if err != nil {
-				return httpx.Internal("the projects could not be moved").WithCause(err)
+			renamed := map[string]string{}
+			for _, p := range projects {
+				// Ungrouped is one namespace: a project called "docs" moving out
+				// of two different groups cannot keep that address twice. The one
+				// that would collide is renamed, and the answer says so rather
+				// than failing with a constraint the user never saw.
+				free, err := slug.Unique(p.Slug, func(candidate string) (bool, error) {
+					return s.Store.ProjectSlugTaken(ctx, nil, candidate)
+				})
+				if err != nil {
+					return httpx.Internal("a free address could not be found").WithCause(err)
+				}
+				if free != p.Slug {
+					if err := s.Git.RenameBranch(ctx, grp.Slug, p.Slug, free); err != nil {
+						return httpx.Internal("the branch could not be renamed").WithCause(err)
+					}
+					renamed[p.Slug] = free
+				}
+				var none *uuid.UUID
+				if _, err := s.Store.UpdateProject(ctx, p.ID, store.ProjectPatch{
+					GroupID: &none, Slug: &free,
+				}); err != nil {
+					return httpx.Internal("the project could not be moved").WithCause(err)
+				}
 			}
-			if err := s.Git.EnsureRepo(ctx, "ungrouped", "Ungrouped"); err == nil {
-				_ = s.Git.InstallHooks("ungrouped")
+			if err := s.Git.EnsureRepo(ctx, gitsrv.UngroupedRepo, "Ungrouped"); err == nil {
+				_ = s.Git.InstallHooks(gitsrv.UngroupedRepo)
 				for _, p := range projects {
-					_ = s.Git.MoveBranch(ctx, grp.Slug, "ungrouped", p.Slug)
+					branch := p.Slug
+					if to, ok := renamed[p.Slug]; ok {
+						branch = to
+					}
+					_ = s.Git.MoveBranch(ctx, grp.Slug, gitsrv.UngroupedRepo, branch)
 				}
 			}
 			if err := s.Store.DeleteGroup(ctx, grp.ID); err != nil {
@@ -340,17 +368,23 @@ func (s *Server) mountGroups(r fiber.Router) {
 			}
 			_ = s.Git.DeleteRepo(grp.Slug)
 			s.Store.Audit(ctx, auth.From(c).UserID(), "group.deleted", grp.Slug, auth.ClientIP(c),
-				map[string]any{"movedProjects": moved})
-			return c.JSON(fiber.Map{"movedToUngrouped": moved})
+				map[string]any{"movedProjects": len(projects)})
+			return c.JSON(fiber.Map{"movedToUngrouped": len(projects), "renamed": renamed})
 		}
 
+		// With the projects: the rows go too, not only their files. Leaving them
+		// behind would put a project in the listing whose data is gone.
 		for _, p := range projects {
+			if err := s.Store.DeleteProject(ctx, p.ID); err != nil {
+				return httpx.Internal("the project %s could not be deleted", p.Title).WithCause(err)
+			}
 			_ = s.WS.Destroy(p.ID)
 		}
 		if err := s.Store.DeleteGroup(ctx, grp.ID); err != nil {
 			return httpx.Internal("the group could not be deleted").WithCause(err)
 		}
 		_ = s.Git.DeleteRepo(grp.Slug)
+		_ = s.Sched.Reload(ctx)
 		s.Store.Audit(ctx, auth.From(c).UserID(), "group.deleted", grp.Slug, auth.ClientIP(c),
 			map[string]any{"withProjects": len(projects)})
 		return c.JSON(fiber.Map{"deletedProjects": len(projects)})

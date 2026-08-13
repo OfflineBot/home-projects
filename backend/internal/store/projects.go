@@ -291,12 +291,3 @@ func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	}
 	return nil
 }
-
-// MoveProjectsToUngrouped is the alternative to deleting a group's contents.
-func (s *Store) MoveProjectsToUngrouped(ctx context.Context, groupID uuid.UUID) (int, error) {
-	tag, err := s.pool.Exec(ctx, `UPDATE projects SET group_id=NULL, updated_at=now() WHERE group_id=$1`, groupID)
-	if err != nil {
-		return 0, norm(err)
-	}
-	return int(tag.RowsAffected()), nil
-}

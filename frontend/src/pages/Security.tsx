@@ -22,6 +22,10 @@ export default function Security() {
   const audit = useQuery<{ entries: { id: number; action: string; subject: string; ip: string; createdAt: string }[] }>(
     "/api/auth/audit",
   );
+  const blocks = useQuery<{
+    blocked: { subject: string; failures: number; lastAt: string; ip: string }[];
+    limit: number;
+  }>("/api/git/attempts");
   const sshKeys = useQuery<{
     keys: { id: string; name: string; fingerprint: string; lastUsedAt?: string }[];
     enabled: boolean;
@@ -153,6 +157,39 @@ export default function Security() {
           </div>
         ) : null}
       </div>
+
+      {blocks.data?.blocked.length ? (
+        <>
+          <h2 style={{ fontSize: 17, marginTop: 28 }}>Git, currently waiting</h2>
+          <p style={{ color: "var(--ctp-subtext0)", marginTop: 0 }}>
+            After {blocks.data.limit} wrong passwords a repository stops answering that address for fifteen
+            minutes. Mistyping your own is ordinary — this is the way back.
+          </p>
+          <div className="list">
+            {blocks.data.blocked.map((b) => (
+              <div key={b.subject} className="list-row">
+                <Icon name="lock" size={16} />
+                <span className="grow">
+                  <code className="mono">{b.subject}</code>
+                </span>
+                <span className="meta">{b.failures} attempts</span>
+                <span className="meta">{formatDate(b.lastAt)}</span>
+                <button
+                  className="btn small"
+                  onClick={async () => {
+                    await api(`/api/git/attempts?subject=${encodeURIComponent(b.subject)}`, {
+                      method: "DELETE",
+                    });
+                    blocks.reload();
+                  }}
+                >
+                  Lift
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <h2 style={{ fontSize: 17, marginTop: 28 }}>Keys for git over SSH</h2>
       {sshKeys.data?.enabled ? (

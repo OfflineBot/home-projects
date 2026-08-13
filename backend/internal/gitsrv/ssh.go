@@ -101,14 +101,33 @@ func ParsePublicKey(input string) (normalised string, fingerprint string, err er
 }
 
 // SSHCloneURL is the address shown next to the HTTPS one.
+//
+// GIT_SSH_HOST is written the way it appears in a clone command:
+//
+//	git@offlinebot.xyz            → git@offlinebot.xyz:studies.git
+//	offlinebot.xyz                → git@offlinebot.xyz:studies.git   (git@ added)
+//	ssh://git@offlinebot.xyz:2222 → ssh://git@offlinebot.xyz:2222/studies.git
+//
+// The middle form is the one people write by accident: without a user, git
+// reads `host:path` as scp syntax with whoever you happen to be, and the
+// connection fails for a reason that has nothing to do with this server. So it
+// is filled in rather than handed out broken.
 func SSHCloneURL(host, groupSlug string) string {
+	host = strings.TrimSpace(host)
 	if host == "" {
 		return ""
 	}
 	if groupSlug == "" {
 		groupSlug = UngroupedRepo
 	}
-	return fmt.Sprintf("%s:%s.git", host, groupSlug)
+	// A port needs the URL form; scp syntax cannot express one.
+	if strings.Contains(host, "://") {
+		return fmt.Sprintf("%s/%s.git", strings.TrimRight(host, "/"), groupSlug)
+	}
+	if !strings.Contains(host, "@") {
+		host = "git@" + host
+	}
+	return fmt.Sprintf("%s:%s.git", strings.TrimRight(host, ":"), groupSlug)
 }
 
 // repoName is the shape a group's address has: the same one slug.Validate

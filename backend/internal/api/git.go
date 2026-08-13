@@ -79,6 +79,57 @@ func (s *Server) mountProjectGit(r fiber.Router) {
 }
 
 // repoName is the throttle's key for a repository, group or not.
+// mountGitAttempts lets the owner see what the throttle is currently holding
+// back, and lift it. Mistyping a repository password a few times is ordinary;
+// having no way back would not be.
+func (s *Server) mountGitAttempts(r fiber.Router) {
+	g := r.Group("/git/attempts", requireOwner)
+
+	g.Get("/", func(c *fiber.Ctx) error {
+		list, err := s.Store.BlockedSubjects(c.UserContext(), "git", 15*time.Minute, gitFailureLimit)
+		if err != nil {
+			return httpx.Internal("the blocks could not be read").WithCause(err)
+		}
+		return c.JSON(fiber.Map{"blocked": list, "window": "15m", "limit": gitFailureLimit})
+	})
+
+	g.Delete("/", func(c *fiber.Ctx) error {
+		subject := c.Query("subject")
+		if repo := c.Query("repo"); repo != "" && subject == "" {
+			// Everything counted for that repository, whichever address it came
+			// from.
+			list, err := s.Store.BlockedSubjects(c.UserContext(), "git", 15*time.Minute, 1)
+			if err != nil {
+				return httpx.Internal("the blocks could not be read").WithCause(err)
+			}
+			cleared := 0
+			for _, b := range list {
+				if b.Subject == repo || strings.HasPrefix(b.Subject, repo+"|") {
+					n, err := s.Store.ClearAttempts(c.UserContext(), "git", b.Subject)
+					if err != nil {
+						return httpx.Internal("the block could not be lifted").WithCause(err)
+					}
+					cleared += n
+				}
+			}
+			return c.JSON(fiber.Map{"cleared": cleared})
+		}
+		if subject == "" {
+			return httpx.BadRequest("Name the repository or the subject to unblock.")
+		}
+		cleared, err := s.Store.ClearAttempts(c.UserContext(), "git", subject)
+		if err != nil {
+			return httpx.Internal("the block could not be lifted").WithCause(err)
+		}
+		s.Store.Audit(c.UserContext(), auth.From(c).UserID(), "git.unblocked", subject, auth.ClientIP(c), nil)
+		return c.JSON(fiber.Map{"cleared": cleared})
+	})
+}
+
+// gitFailureLimit is how many failed attempts a repository takes from one
+// address before it waits.
+const gitFailureLimit = 8
+
 func repoName(grp *model.Group) string {
 	if grp == nil {
 		return gitsrv.UngroupedRepo
@@ -236,25 +287,38 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 
 	user, pass, hasBasic := basicAuth(c)
 	if hasBasic {
-		// Failed git logins are counted and throttled like every other one —
-		// under the repository as well as the user name, because the name in a
-		// basic-auth header is whatever the client felt like sending and
-		// counting only that could be walked around by varying it.
-		repoKey := "repo:" + repoName(grp)
-		for _, subject := range []string{user, repoKey} {
-			if fails, _ := s.Store.RecentFailures(ctx, "git", subject, 15*time.Minute); fails >= 8 {
+		// Failed git logins are counted and throttled like every other one. What
+		// they are counted *under* matters:
+		//
+		// The user name in a basic-auth header is whatever the client felt like
+		// sending — for a repository password it means nothing at all. Counting
+		// under it alone could be walked around by varying it, and would let one
+		// stranger's guessing lock out everybody who happened to type the same
+		// name. So the counter that decides is the repository together with the
+		// address the attempt came from: a guesser blocks only themselves.
+		//
+		// A name that really is an account is counted as well, so guessing one
+		// password from many addresses still runs into a wall.
+		ip := auth.ClientIP(c)
+		attemptKey := repoName(grp) + "|" + ip
+		subjects := []string{attemptKey}
+		if _, err := s.Store.UserByName(ctx, user); err == nil {
+			subjects = append(subjects, user)
+		}
+		for _, subject := range subjects {
+			if fails, _ := s.Store.RecentFailures(ctx, "git", subject, 15*time.Minute); fails >= gitFailureLimit {
 				return nil, false
 			}
 		}
 		// A real account first, so `git push` works with the owner's login.
 		if u, err := s.Store.UserByName(ctx, user); err == nil && secret.Verify(pass, u.PasswordHash) {
-			s.Store.RecordAttempt(ctx, "git", user, auth.ClientIP(c), true)
+			s.Store.RecordAttempt(ctx, "git", user, ip, true)
 			return &auth.Actor{User: u, Unlocked: actor.Unlocked}, true
 		}
 		// The password in the basic-auth field may also be the group's own.
 		if grp != nil && grp.Visibility == model.VisibilityPassword && grp.PasswordHash != "" &&
 			secret.Verify(pass, grp.PasswordHash) {
-			s.Store.RecordAttempt(ctx, "git", grp.Slug, auth.ClientIP(c), true)
+			s.Store.RecordAttempt(ctx, "git", attemptKey, ip, true)
 			return &auth.Actor{Unlocked: map[uuid.UUID]bool{grp.ID: true}}, true
 		}
 		// Tokens work too: the user name can be anything, the password is the
@@ -262,8 +326,9 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 		if tok, _, err := s.Store.TokenByHash(ctx, secret.Fingerprint(pass)); err == nil {
 			return &auth.Actor{Token: tok}, true
 		}
-		s.Store.RecordAttempt(ctx, "git", user, auth.ClientIP(c), false)
-		s.Store.RecordAttempt(ctx, "git", repoKey, auth.ClientIP(c), false)
+		for _, subject := range subjects {
+			s.Store.RecordAttempt(ctx, "git", subject, ip, false)
+		}
 		return nil, false
 	}
 

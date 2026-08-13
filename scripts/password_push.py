@@ -115,10 +115,24 @@ with tempfile.TemporaryDirectory() as tmp:
     # password — the switch lets the password write, it does not open the door.
     r = git_as("not-the-password", "ls-remote", url)
     check(r.returncode != 0, "a wrong password gets nothing")
+
+    # …and guessing it runs into a wall. The counter is per repository and
+    # address, so this locks out the guesser, not the repository.
+    for _ in range(9):
+        git_as("still-not-it", "ls-remote", url)
+    r = git_as(REPO_PASSWORD, "ls-remote", url)
+    check(r.returncode != 0, "after enough wrong guesses even the right password waits")
     r = git_bare("push", "origin", project["slug"], cwd=w)
     check(r.returncode != 0, "and with the switch on, a push still needs the password")
     check("401" in (r.stderr + r.stdout) or "auth" in (r.stderr + r.stdout).lower(),
           "the server asks for it rather than refusing silently")
+
+    # Clear the block again, so the rest of the checks measure what they mean to.
+    c.call("POST", "/api/auth/step-up", {"password": args.password})
+    c.call("DELETE", f"/api/git/attempts?repo={group['slug']}")
+
+    r = git_as(REPO_PASSWORD, "ls-remote", url)
+    check(r.returncode == 0, "and the block can be lifted from the UI")
 
     # Read-only outranks the switch.
     c.call("PATCH", f"/api/projects/{project['id']}", {"readOnly": True})
