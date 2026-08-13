@@ -179,6 +179,7 @@ export interface Group {
   visibility: Visibility;
   hasPassword: boolean;
   readOnly: boolean;
+  pushWithPassword: boolean;
   color: string;
   icon: string;
   siteProjectId?: string;

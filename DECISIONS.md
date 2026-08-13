@@ -153,7 +153,32 @@ rules is the doubling section 12 warns about, so there is only one set:
 The cost is that SSH access needs the server to be up. It needed that anyway:
 the wrapper cannot ask anyone else what a key may do.
 
-## 11. CSRF
+## 11. A password may push, if the group says so
+
+**The brief says:** in the table in section 4, `push` is *"login required"* for
+every visibility, including `password`.
+
+**What was built:** a switch on the group, off by default. With it on, the
+repository's own password is enough to push — no account anywhere.
+
+**Why:** asked for during the build, and it is a coherent thing to want: a
+repository that is simply password-protected, the way a small private git server
+is. It is a switch rather than the new behaviour because a password that may
+read is a different thing from one that may write, and the brief is right that
+the second one should not happen by accident.
+
+What the switch deliberately does not touch: read-only still refuses the push,
+branches the password may not see are not advertised, and the attempt counter
+now counts per repository as well as per user name — a basic-auth user name is
+chosen by the client, so counting only that could be walked around by varying
+it.
+
+While building it, one thing turned out to be wrong on its own account: a
+project created in a password-protected group was `private`, so such a group
+cloned empty. A new project now takes its group's visibility unless it is given
+one, and a project that carries no password of its own is opened by its group's.
+
+## 12. CSRF
 
 The brief asks for *"CSRF protection for everything that writes via cookie"*.
 Nothing writes via cookie: every write carries the access token in an
@@ -161,7 +186,7 @@ Nothing writes via cookie: every write carries the access token in an
 do exist — the refresh token and the binding cookie — are `httpOnly`, `Secure`
 and `SameSite=Strict`, so a cross-site request never carries them either.
 
-## 12. What is not built
+## 13. What is not built
 
 - **The Android app.** Everything it needs exists on the server side.
 - **WebAuthn / passkeys.** TOTP is in; the brief lists passkeys as optional.

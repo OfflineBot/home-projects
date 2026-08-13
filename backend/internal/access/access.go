@@ -48,13 +48,27 @@ func CanReadProject(a *auth.Actor, p *model.Project) bool {
 	case model.VisibilityPublic:
 		return true
 	case model.VisibilityPassword:
-		return a.HasUnlocked(p.ID)
+		return unlockedFor(a, p)
+	}
+	return false
+}
+
+// unlockedFor answers whether a password-protected project is open. A project
+// that carries a password of its own needs exactly that one; a project that
+// carries none is opened by its group's, which is what makes a
+// password-protected group behave as one thing.
+func unlockedFor(a *auth.Actor, p *model.Project) bool {
+	if a.HasUnlocked(p.ID) {
+		return true
+	}
+	if !p.HasPassword && p.GroupID != nil && a.HasUnlocked(*p.GroupID) {
+		return true
 	}
 	return false
 }
 
 func NeedsProjectPassword(a *auth.Actor, p *model.Project) bool {
-	return !a.IsUser() && p.Visibility == model.VisibilityPassword && !a.HasUnlocked(p.ID)
+	return !a.IsUser() && p.Visibility == model.VisibilityPassword && !unlockedFor(a, p)
 }
 
 // RequireReadProject returns the error the API answers with, so "locked",
@@ -102,6 +116,12 @@ func RequireWriteProject(a *auth.Actor, p *model.Project, g *model.Group) error 
 	}
 	if a.Token != nil && a.Token.ProjectID != nil && *a.Token.ProjectID == p.ID &&
 		(a.Token.Scope == "write" || a.Token.Scope == "git") {
+		return nil
+	}
+	// A group can be set to accept the repository password as a licence to
+	// write, not only to read. It is off unless someone turned it on.
+	if g != nil && g.PushWithPassword && g.Visibility == model.VisibilityPassword &&
+		a.HasUnlocked(g.ID) {
 		return nil
 	}
 	// Visitors write only where a project explicitly allows it.

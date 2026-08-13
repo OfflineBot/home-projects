@@ -85,8 +85,12 @@ git-roundtrip: ## clone, push, and check the working tree followed
 ssh-access: ## check what a key over SSH may see and write
 	python3 scripts/ssh_access.py --url $(API)
 
+.PHONY: password-push
+password-push: ## check pushing with the repository password, and its limits
+	python3 scripts/password_push.py --url $(API)
+
 .PHONY: check
-check: test sweep git-roundtrip ssh-access ## what has to be green before a deploy
+check: test sweep git-roundtrip ssh-access password-push ## what has to be green before a deploy
 
 .PHONY: build
 build: ## compile both halves

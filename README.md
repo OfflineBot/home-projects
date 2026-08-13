@@ -95,6 +95,7 @@ scripts/
   sweep.py               the endpoint sweep
   git_roundtrip.py       clone, push, and check the working tree followed
   ssh_access.py          what a key over SSH may see and write
+  password_push.py       pushing with the repository password, and its limits
   setup-git-ssh.sh       the one-time host setup for git@<host>
   hp-git-shell           the forced command every registered key carries
   hp-authorized-keys     what sshd asks for the keys
@@ -129,6 +130,29 @@ branch is refused with a message that says why.
 
 Basic auth takes either your account password or the group's own password; a
 machine token works too (any user name, the token as the password).
+
+### Cloning and pushing with nothing but a password
+
+A group set to **password** hands out its repository to anyone who knows that
+password — no account involved:
+
+```bash
+git clone https://<host>/git/<group-slug>.git      # it asks; the group's password
+```
+
+Pushing that way is a separate switch, off by default: **Settings → the
+password may push, too**. With it on, `git push` needs no account either. What
+it does not switch off:
+
+- a read-only project or group still refuses the push, with a reason;
+- a project whose visibility is stricter than its group's is not advertised, so
+  the password cannot reach it;
+- failed attempts are counted and throttled — per user name *and* per
+  repository, since the name in a basic-auth header is whatever the client
+  chose to send.
+
+Projects created in a password-protected group take that visibility, so the
+group behaves as one thing instead of cloning empty.
 
 ### Over SSH
 

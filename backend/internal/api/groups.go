@@ -160,17 +160,18 @@ func (s *Server) mountGroups(r fiber.Router) {
 		grp := groupOf(c)
 		ctx := c.UserContext()
 		var in struct {
-			Title         *string `json:"title"`
-			Slug          *string `json:"slug"`
-			Description   *string `json:"description"`
-			Visibility    *string `json:"visibility"`
-			Password      *string `json:"password"`
-			ReadOnly      *bool   `json:"readOnly"`
-			Color         *string `json:"color"`
-			Icon          *string `json:"icon"`
-			Pinned        *bool   `json:"pinned"`
-			Archived      *bool   `json:"archived"`
-			SiteProjectID *string `json:"siteProjectId"`
+			Title            *string `json:"title"`
+			Slug             *string `json:"slug"`
+			Description      *string `json:"description"`
+			Visibility       *string `json:"visibility"`
+			Password         *string `json:"password"`
+			ReadOnly         *bool   `json:"readOnly"`
+			PushWithPassword *bool   `json:"pushWithPassword"`
+			Color            *string `json:"color"`
+			Icon             *string `json:"icon"`
+			Pinned           *bool   `json:"pinned"`
+			Archived         *bool   `json:"archived"`
+			SiteProjectID    *string `json:"siteProjectId"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
@@ -179,6 +180,14 @@ func (s *Server) mountGroups(r fiber.Router) {
 		patch := store.GroupPatch{
 			Title: in.Title, Description: in.Description, ReadOnly: in.ReadOnly,
 			Icon: in.Icon, Pinned: in.Pinned, Archived: in.Archived,
+			PushWithPassword: in.PushWithPassword,
+		}
+		// Letting a password write is a sensitive step, like changing who may
+		// see the group at all.
+		if in.PushWithPassword != nil && *in.PushWithPassword != grp.PushWithPassword {
+			if err := s.stepUp(c, "letting the repository password push"); err != nil {
+				return err
+			}
 		}
 		if in.Color != nil {
 			if !validColor(*in.Color) {

@@ -33,6 +33,7 @@ export default function GroupSettings({
     icon: group.icon,
     pinned: group.pinned,
     readOnly: group.readOnly,
+    pushWithPassword: group.pushWithPassword,
     archived: group.archived,
     siteProjectId: group.siteProjectId ?? "",
   });
@@ -56,6 +57,7 @@ export default function GroupSettings({
         icon: form.icon,
         pinned: form.pinned,
         readOnly: form.readOnly,
+        pushWithPassword: form.pushWithPassword,
         archived: form.archived,
         siteProjectId: form.siteProjectId,
       };
@@ -250,6 +252,22 @@ export default function GroupSettings({
         </Field>
       ) : null}
 
+      {form.visibility === "password" ? (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={form.pushWithPassword}
+            onChange={(e) => setForm({ ...form, pushWithPassword: e.target.checked })}
+          />
+          <span>
+            <strong>The password may push, too.</strong> Then{" "}
+            <code className="mono">git push</code> needs no account — the repository's password is enough,
+            in the basic-auth field. Read-only projects still refuse it, and branches the password may not
+            see are not offered. Off by default: a password that may read is a different thing from one
+            that may write.
+          </span>
+        </label>
+      ) : null}
       <label className="check">
         <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} />
         <span>Pin to the dashboard</span>

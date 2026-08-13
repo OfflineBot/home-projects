@@ -9,14 +9,15 @@ import (
 )
 
 const groupCols = `id, owner_id, slug, title, description, visibility, password_hash,
-	read_only, color, icon, site_project_id, pinned, archived, position, created_at, updated_at`
+	read_only, push_with_password, color, icon, site_project_id, pinned, archived, position,
+	created_at, updated_at`
 
 func scanGroup(r scanner) (*model.Group, error) {
 	var g model.Group
 	var pw *string
 	err := r.Scan(&g.ID, &g.OwnerID, &g.Slug, &g.Title, &g.Description, &g.Visibility, &pw,
-		&g.ReadOnly, &g.Color, &g.Icon, &g.SiteProjectID, &g.Pinned, &g.Archived, &g.Position,
-		&g.CreatedAt, &g.UpdatedAt)
+		&g.ReadOnly, &g.PushWithPassword, &g.Color, &g.Icon, &g.SiteProjectID, &g.Pinned,
+		&g.Archived, &g.Position, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -94,18 +95,19 @@ func (s *Store) ListGroups(ctx context.Context, includeArchived bool) ([]model.G
 
 // GroupPatch carries only the fields a request actually wants to change.
 type GroupPatch struct {
-	Slug          *string
-	Title         *string
-	Description   *string
-	Visibility    *model.Visibility
-	PasswordHash  **string // set: pointer to value; clear: pointer to nil
-	ReadOnly      *bool
-	Color         *string
-	Icon          *string
-	SiteProjectID **uuid.UUID
-	Pinned        *bool
-	Archived      *bool
-	Position      *int
+	Slug             *string
+	Title            *string
+	Description      *string
+	Visibility       *model.Visibility
+	PasswordHash     **string // set: pointer to value; clear: pointer to nil
+	ReadOnly         *bool
+	PushWithPassword *bool
+	Color            *string
+	Icon             *string
+	SiteProjectID    **uuid.UUID
+	Pinned           *bool
+	Archived         *bool
+	Position         *int
 }
 
 func (s *Store) UpdateGroup(ctx context.Context, id uuid.UUID, p GroupPatch) (*model.Group, error) {
@@ -135,6 +137,9 @@ func (s *Store) UpdateGroup(ctx context.Context, id uuid.UUID, p GroupPatch) (*m
 	}
 	if p.ReadOnly != nil {
 		add("read_only", *p.ReadOnly)
+	}
+	if p.PushWithPassword != nil {
+		add("push_with_password", *p.PushWithPassword)
 	}
 	if p.Color != nil {
 		add("color", *p.Color)

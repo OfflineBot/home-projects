@@ -78,6 +78,14 @@ func (s *Server) mountProjectGit(r fiber.Router) {
 	})
 }
 
+// repoName is the throttle's key for a repository, group or not.
+func repoName(grp *model.Group) string {
+	if grp == nil {
+		return gitsrv.UngroupedRepo
+	}
+	return grp.Slug
+}
+
 func repoOf(p *model.Project) string {
 	if p.GroupSlug == "" {
 		return gitsrv.UngroupedRepo
@@ -145,7 +153,7 @@ func (s *Server) mountGitTransport(app *fiber.App) {
 				allowed = append(allowed, "refs/heads/"+p.Slug)
 			}
 		}
-		if writing && grp != nil && !grp.ReadOnly && actor.IsUser() {
+		if writing && grp != nil && !grp.ReadOnly && (actor.IsUser() || pushWithPassword(actor, grp)) {
 			allowed = append(allowed, "refs/heads/main")
 		}
 
@@ -228,9 +236,15 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 
 	user, pass, hasBasic := basicAuth(c)
 	if hasBasic {
-		// Failed git logins are counted and throttled like every other one.
-		if fails, _ := s.Store.RecentFailures(ctx, "git", user, 15*time.Minute); fails >= 8 {
-			return nil, false
+		// Failed git logins are counted and throttled like every other one —
+		// under the repository as well as the user name, because the name in a
+		// basic-auth header is whatever the client felt like sending and
+		// counting only that could be walked around by varying it.
+		repoKey := "repo:" + repoName(grp)
+		for _, subject := range []string{user, repoKey} {
+			if fails, _ := s.Store.RecentFailures(ctx, "git", subject, 15*time.Minute); fails >= 8 {
+				return nil, false
+			}
 		}
 		// A real account first, so `git push` works with the owner's login.
 		if u, err := s.Store.UserByName(ctx, user); err == nil && secret.Verify(pass, u.PasswordHash) {
@@ -249,6 +263,7 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 			return &auth.Actor{Token: tok}, true
 		}
 		s.Store.RecordAttempt(ctx, "git", user, auth.ClientIP(c), false)
+		s.Store.RecordAttempt(ctx, "git", repoKey, auth.ClientIP(c), false)
 		return nil, false
 	}
 
@@ -293,7 +308,15 @@ func (s *Server) pushable(actor *auth.Actor, p *model.Project, grp *model.Group)
 		(actor.Token.Scope == "git" || actor.Token.Scope == "write") {
 		return true
 	}
-	return false
+	// The repository's own password may write too, when the group says so.
+	return pushWithPassword(actor, grp)
+}
+
+// pushWithPassword reports whether this actor got in with the group's password
+// and that group accepts it as a licence to write.
+func pushWithPassword(actor *auth.Actor, grp *model.Group) bool {
+	return grp != nil && grp.PushWithPassword && grp.Visibility == model.VisibilityPassword &&
+		!grp.ReadOnly && actor.HasUnlocked(grp.ID)
 }
 
 // afterPush makes the working trees follow what was pushed.

@@ -51,22 +51,25 @@ type Session struct {
 }
 
 type Group struct {
-	ID            uuid.UUID  `json:"id"`
-	OwnerID       uuid.UUID  `json:"-"`
-	Slug          string     `json:"slug"`
-	Title         string     `json:"title"`
-	Description   string     `json:"description"`
-	Visibility    Visibility `json:"visibility"`
-	HasPassword   bool       `json:"hasPassword"`
-	ReadOnly      bool       `json:"readOnly"`
-	Color         string     `json:"color"`
-	Icon          string     `json:"icon"`
-	SiteProjectID *uuid.UUID `json:"siteProjectId,omitempty"`
-	Pinned        bool       `json:"pinned"`
-	Archived      bool       `json:"archived"`
-	Position      int        `json:"position"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	ID          uuid.UUID  `json:"id"`
+	OwnerID     uuid.UUID  `json:"-"`
+	Slug        string     `json:"slug"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Visibility  Visibility `json:"visibility"`
+	HasPassword bool       `json:"hasPassword"`
+	ReadOnly    bool       `json:"readOnly"`
+	// PushWithPassword lets someone without an account push, using the
+	// repository's own password. Off unless it is switched on deliberately.
+	PushWithPassword bool       `json:"pushWithPassword"`
+	Color            string     `json:"color"`
+	Icon             string     `json:"icon"`
+	SiteProjectID    *uuid.UUID `json:"siteProjectId,omitempty"`
+	Pinned           bool       `json:"pinned"`
+	Archived         bool       `json:"archived"`
+	Position         int        `json:"position"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 
 	// Filled in by the API when listing.
 	ProjectCount int            `json:"projectCount"`

@@ -138,7 +138,13 @@ func (s *Server) mountProjects(r fiber.Router) {
 
 		visibility := model.Visibility(in.Visibility)
 		if visibility == "" {
+			// A project takes its group's visibility. A password-protected group
+			// whose projects are all private would clone empty, which is not
+			// what anyone means by putting a password on a group.
 			visibility = model.VisibilityPrivate
+			if grp != nil {
+				visibility = grp.Visibility
+			}
 		}
 		if !visibility.Valid() {
 			return httpx.BadRequest("Visibility has to be private, public or password.")
