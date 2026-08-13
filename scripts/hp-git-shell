@@ -1,0 +1,106 @@
+#!/bin/sh
+# home-projects: the forced command every registered SSH key carries.
+#
+# Install as /usr/local/bin/hp-git-shell, owned by root, mode 0755.
+#
+# sshd hands us the key's id as $1 and the client's wish in
+# SSH_ORIGINAL_COMMAND, e.g.  git-upload-pack '/personal.git'
+#
+# We never decide anything ourselves. We ask the server the same questions its
+# HTTPS handler asks itself — may this key touch this repository, which branches
+# must stay hidden, which may be written — then run git with exactly that
+# answer, and tell the server afterwards so the working trees follow the push.
+#
+# Without this wrapper a key could not do anything anyway: the pre-receive hook
+# in every repository refuses every ref unless HP_ALLOWED_REFS names it, and
+# only this script sets that variable.
+
+set -eu
+
+API="${HP_API:-http://127.0.0.1:5000}"
+SECRET_FILE="${HP_SECRET_FILE:-/etc/home-projects/git-ssh-secret}"
+
+fail() {
+	echo "home-projects: $1" >&2
+	exit 1
+}
+
+[ -n "${1:-}" ] || fail "this command is only meant to be run by sshd."
+KEY_ID="$1"
+
+[ -r "$SECRET_FILE" ] || fail "the shared secret is missing on this machine."
+SECRET=$(cat "$SECRET_FILE")
+
+command -v curl >/dev/null 2>&1 || fail "curl is not installed on this machine."
+command -v python3 >/dev/null 2>&1 || fail "python3 is not installed on this machine."
+
+[ -n "${SSH_ORIGINAL_COMMAND:-}" ] || fail "this account only serves git. Try: git clone $(whoami)@$(hostname):<group>.git"
+
+# Only the two git services, nothing else. No shell, ever.
+case "$SSH_ORIGINAL_COMMAND" in
+	git-upload-pack\ *)   SERVICE=upload-pack ;;
+	git-receive-pack\ *)  SERVICE=receive-pack ;;
+	git-upload-archive\ *) fail "git archive over ssh is not served here." ;;
+	*) fail "this account only serves git clone, fetch and push." ;;
+esac
+REPO_ARG=${SSH_ORIGINAL_COMMAND#* }
+
+ask() {
+	curl -sS --max-time 30 \
+		-H "Content-Type: application/json" \
+		-H "X-Git-Ssh-Secret: $SECRET" \
+		-d "$1" "$API$2"
+}
+
+payload=$(KEY="$KEY_ID" REPO="$REPO_ARG" SERVICE="$SERVICE" python3 -c '
+import json, os
+print(json.dumps({"keyId": os.environ["KEY"], "repo": os.environ["REPO"],
+                  "service": os.environ["SERVICE"]}))')
+
+answer=$(ask "$payload" /api/git/ssh/authorize) || fail "the server did not answer."
+
+# Reading the answer with python keeps this honest: no grep-and-hope parsing of
+# a decision that governs who may write what.
+eval "$(printf '%s' "$answer" | python3 -c '
+import json, shlex, sys
+
+try:
+    a = json.load(sys.stdin)
+except Exception:
+    print("ALLOWED=no"); print("MESSAGE=" + shlex.quote("the server sent something we cannot read.")); raise SystemExit
+
+if a.get("error"):
+    print("ALLOWED=no")
+    print("MESSAGE=" + shlex.quote(a["error"].get("message", "refused")))
+    raise SystemExit
+
+print("ALLOWED=" + ("yes" if a.get("allowed") else "no"))
+print("MESSAGE=" + shlex.quote(a.get("message", "not allowed")))
+print("REPO_PATH=" + shlex.quote(a.get("repoPath", "")))
+print("ALLOWED_REFS=" + shlex.quote(" ".join(a.get("allowedRefs") or [])))
+print("DENY_MESSAGE=" + shlex.quote(a.get("denyMessage", "")))
+print("HIDE_ARGS=" + shlex.quote(" ".join(
+    "-c transfer.hideRefs=refs/heads/" + r for r in (a.get("hiddenRefs") or []))))
+')"
+
+[ "${ALLOWED:-no}" = yes ] || fail "${MESSAGE:-not allowed}"
+[ -n "${REPO_PATH:-}" ] || fail "the server named no repository."
+
+status=0
+# HIDE_ARGS is deliberately unquoted: it is a list of -c options, and the server
+# builds it from branch names it validated itself.
+# shellcheck disable=SC2086
+HP_ALLOWED_REFS="$ALLOWED_REFS" HP_DENY_MESSAGE="$DENY_MESSAGE" \
+	git $HIDE_ARGS "$SERVICE" --strict "$REPO_PATH" || status=$?
+
+if [ "$SERVICE" = receive-pack ]; then
+	# The working trees on the server follow the push — the same step the HTTPS
+	# handler takes when receive-pack returns.
+	notify=$(REPO="$REPO_ARG" python3 -c '
+import json, os
+print(json.dumps({"repo": os.environ["REPO"]}))')
+	ask "$notify" /api/git/ssh/synced >/dev/null 2>&1 || \
+		echo "home-projects: the push arrived, but the server could not update its working tree. It will catch up on the next change." >&2
+fi
+
+exit "$status"

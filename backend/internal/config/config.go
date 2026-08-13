@@ -44,6 +44,16 @@ type Config struct {
 	OwnerUsername string
 	OwnerPassword string
 
+	// Git over SSH. Empty means it is not set up on this machine; the API then
+	// says so instead of handing out an address that does not work.
+	//
+	// GitSSHHost is what the clone address starts with (git@offlinebot.xyz),
+	// GitSSHWrapper the forced command the keys carry, and GitSSHSecret the
+	// shared secret sshd and the wrapper authenticate to this server with.
+	GitSSHHost    string
+	GitSSHWrapper string
+	GitSSHSecret  string
+
 	GitBinary string
 	// GitHTTPBackend is the path to git-http-backend. Alpine's git package does
 	// not ship it — that lives in git-daemon (see README).
@@ -71,6 +81,9 @@ func Load() (*Config, error) {
 		MaxUploadSize:  int64(envInt("MAX_UPLOAD_MB", 512)) << 20,
 		OwnerUsername:  os.Getenv("OWNER_USERNAME"),
 		OwnerPassword:  os.Getenv("OWNER_PASSWORD"),
+		GitSSHHost:     os.Getenv("GIT_SSH_HOST"),
+		GitSSHWrapper:  envOr("GIT_SSH_WRAPPER", "/usr/local/bin/hp-git-shell"),
+		GitSSHSecret:   os.Getenv("GIT_SSH_SECRET"),
 		GitBinary:      envOr("GIT_BINARY", "git"),
 		GitHTTPBackend: envOr("GIT_HTTP_BACKEND", ""),
 		Env:            envOr("ENV", "production"),
@@ -115,6 +128,13 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) IsDev() bool { return c.Env == "development" }
+
+// SSHEnabled reports whether git over SSH is set up. Without the secret the
+// wrapper on the host could not authenticate, so half a configuration counts
+// as off rather than as a clone address that does not work.
+func (c *Config) SSHEnabled() bool {
+	return c.GitSSHHost != "" && c.GitSSHSecret != ""
+}
 
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {

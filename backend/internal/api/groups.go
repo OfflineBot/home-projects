@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/access"
 	"github.com/offlinebot/home-projects/backend/internal/auth"
+	"github.com/offlinebot/home-projects/backend/internal/gitsrv"
 	"github.com/offlinebot/home-projects/backend/internal/httpx"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/secret"
@@ -399,13 +400,19 @@ func (s *Server) mountGroups(r fiber.Router) {
 			return httpx.Internal("the repository could not be read").WithCause(err)
 		}
 		commits, _ := s.Git.Log(c.UserContext(), grp.Slug, "main", 20)
-		return c.JSON(fiber.Map{
+		payload := fiber.Map{
 			"cloneUrl": s.Git.CloneURL(grp.Slug),
 			"exists":   s.Git.RepoExists(grp.Slug),
 			"branches": branches,
 			"commits":  commits,
 			"hint":     "git clone -b <project-slug> --single-branch " + s.Git.CloneURL(grp.Slug),
-		})
+		}
+		if s.Cfg.SSHEnabled() {
+			ssh := gitsrv.SSHCloneURL(s.Cfg.GitSSHHost, grp.Slug)
+			payload["sshCloneUrl"] = ssh
+			payload["sshHint"] = "git clone -b <project-slug> --single-branch " + ssh
+		}
+		return c.JSON(payload)
 	})
 }
 

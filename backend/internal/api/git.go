@@ -35,14 +35,20 @@ func (s *Server) mountProjectGit(r fiber.Router) {
 			return httpx.Internal("the history could not be read").WithCause(err)
 		}
 		head, headErr := s.Git.BranchHead(ctx, repo, p.Slug)
+		sshClone := ""
+		if s.Cfg.SSHEnabled() {
+			sshClone = "git clone -b " + p.Slug + " --single-branch " +
+				gitsrv.SSHCloneURL(s.Cfg.GitSSHHost, repo)
+		}
 		return c.JSON(fiber.Map{
-			"branch":       p.Slug,
-			"repository":   s.Git.CloneURL(repo),
-			"cloneCommand": "git clone -b " + p.Slug + " --single-branch " + s.Git.CloneURL(repo),
-			"tracked":      p.GitTracked,
-			"head":         head,
-			"hasHistory":   headErr == nil,
-			"commits":      commits,
+			"sshCloneCommand": sshClone,
+			"branch":          p.Slug,
+			"repository":      s.Git.CloneURL(repo),
+			"cloneCommand":    "git clone -b " + p.Slug + " --single-branch " + s.Git.CloneURL(repo),
+			"tracked":         p.GitTracked,
+			"head":            head,
+			"hasHistory":      headErr == nil,
+			"commits":         commits,
 		})
 	})
 

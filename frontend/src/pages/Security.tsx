@@ -22,10 +22,17 @@ export default function Security() {
   const audit = useQuery<{ entries: { id: number; action: string; subject: string; ip: string; createdAt: string }[] }>(
     "/api/auth/audit",
   );
+  const sshKeys = useQuery<{
+    keys: { id: string; name: string; fingerprint: string; lastUsedAt?: string }[];
+    enabled: boolean;
+    host: string;
+    note?: string;
+  }>("/api/ssh-keys");
   const [totp, setTotp] = useState<{ secret: string; url: string } | null>(null);
   const [code, setCode] = useState("");
   const [newToken, setNewToken] = useState<Token | null>(null);
   const [creatingToken, setCreatingToken] = useState(false);
+  const [addingKey, setAddingKey] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   if (!session.user) return <Empty icon="lock">Sign in first.</Empty>;
@@ -147,6 +154,44 @@ export default function Security() {
         ) : null}
       </div>
 
+      <h2 style={{ fontSize: 17, marginTop: 28 }}>Keys for git over SSH</h2>
+      {sshKeys.data?.enabled ? (
+        <p style={{ color: "var(--ctp-subtext0)", marginTop: 0 }}>
+          A registered key can clone and push over{" "}
+          <code className="mono">{sshKeys.data.host}:&lt;group&gt;.git</code> — and nothing else on that
+          machine: no shell, no forwarding. A push over SSH goes through the same checks as one over HTTPS.
+        </p>
+      ) : (
+        <div className="warning">{sshKeys.data?.note ?? "Git over SSH is not set up on this server."}</div>
+      )}
+      <button className="btn" style={{ marginBottom: 10 }} onClick={() => setAddingKey(true)}>
+        <Icon name="plus" size={15} /> Add a key
+      </button>
+      <div className="list">
+        {sshKeys.data?.keys.map((k) => (
+          <div key={k.id} className="list-row">
+            <Icon name="key" size={16} />
+            <span className="grow">{k.name}</span>
+            <code className="mono meta">{k.fingerprint}</code>
+            <span className="meta">{k.lastUsedAt ? `last used ${formatDate(k.lastUsedAt)}` : "never used"}</span>
+            <button
+              className="btn small danger"
+              onClick={async () => {
+                await api(`/api/ssh-keys/${k.id}`, { method: "DELETE" });
+                sshKeys.reload();
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        {sshKeys.data && sshKeys.data.keys.length === 0 ? (
+          <div className="list-row">
+            <span className="meta">none yet</span>
+          </div>
+        ) : null}
+      </div>
+
       <h2 style={{ fontSize: 17, marginTop: 28 }}>Log</h2>
       <div className="list">
         {audit.data?.entries.slice(0, 40).map((e) => (
@@ -194,6 +239,16 @@ export default function Security() {
             <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoFocus />
           </Field>
         </Modal>
+      ) : null}
+
+      {addingKey ? (
+        <AddSSHKey
+          onClose={() => setAddingKey(false)}
+          onAdded={() => {
+            setAddingKey(false);
+            sshKeys.reload();
+          }}
+        />
       ) : null}
 
       {creatingToken ? (
@@ -277,6 +332,54 @@ function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <option value="git">clone and push</option>
           <option value="webhook">trigger a webhook</option>
         </select>
+      </Field>
+    </Modal>
+  );
+}
+
+function AddSSHKey({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const guarded = useGuarded();
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<Error | null>(null);
+
+  return (
+    <Modal
+      title="Add a key"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button
+            className="btn primary"
+            disabled={!key.trim()}
+            onClick={async () => {
+              try {
+                await guarded("adding a key that may reach the repositories", () =>
+                  api("/api/ssh-keys", { body: { name, key } }),
+                );
+                onAdded();
+              } catch (err) {
+                setError(err as Error);
+              }
+            }}
+          >
+            Add
+          </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+      <p style={{ marginTop: 0, color: "var(--ctp-subtext0)" }}>
+        The <strong>public</strong> key — the file ending in <code className="mono">.pub</code>. On your
+        machine: <code className="mono">cat ~/.ssh/id_ed25519.pub</code>. If you have none yet:{" "}
+        <code className="mono">ssh-keygen -t ed25519</code>.
+      </p>
+      <Field label="What machine is this">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="laptop" autoFocus />
+      </Field>
+      <Field label="Public key">
+        <textarea value={key} onChange={(e) => setKey(e.target.value)} placeholder="ssh-ed25519 AAAA… you@laptop" />
       </Field>
     </Modal>
   );

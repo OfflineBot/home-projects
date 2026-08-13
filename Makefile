@@ -9,8 +9,18 @@ SHELL := /bin/bash
 
 # .env is local and never committed. It carries the owner password the test
 # scripts sign in with, so nothing in this repository is a working credential.
+# .env is local and never committed. It is read for the few values the targets
+# below need — and only HP_PASSWORD is exported. A blanket `export` would push
+# GIT_DIR into every `git` this Makefile runs, and that git would then take the
+# server's repository directory for its own.
 -include .env
-export
+
+# The check scripts sign in as the owner, so they take the password from the
+# same place the server does. Nothing in this repository is a credential.
+HP_PASSWORD ?= $(OWNER_PASSWORD)
+export HP_PASSWORD
+# The SSH check speaks to the server the way sshd and the wrapper do.
+export GIT_SSH_SECRET
 TEST_DB_PORT ?= 5545
 TEST_DB_URL  ?= postgres://hp:hp@127.0.0.1:$(TEST_DB_PORT)/hptest?sslmode=disable
 API          ?= http://127.0.0.1:5000
@@ -71,8 +81,12 @@ sweep: ## walk every endpoint and complain at any non-2xx
 git-roundtrip: ## clone, push, and check the working tree followed
 	python3 scripts/git_roundtrip.py --url $(API)
 
+.PHONY: ssh-access
+ssh-access: ## check what a key over SSH may see and write
+	python3 scripts/ssh_access.py --url $(API)
+
 .PHONY: check
-check: test sweep git-roundtrip ## what has to be green before a deploy
+check: test sweep git-roundtrip ssh-access ## what has to be green before a deploy
 
 .PHONY: build
 build: ## compile both halves

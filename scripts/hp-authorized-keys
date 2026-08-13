@@ -1,0 +1,24 @@
+#!/bin/sh
+# home-projects: what sshd asks for the git user's keys.
+#
+# Install as /usr/local/bin/hp-authorized-keys, owned by root, mode 0755, and
+# point sshd at it:
+#
+#   Match User git
+#       AuthorizedKeysCommand /usr/local/bin/hp-authorized-keys
+#       AuthorizedKeysCommandUser nobody
+#
+# There is no authorized_keys file. sshd asks the server on every connection, so
+# a key removed in the UI stops working at once and nothing can drift from what
+# the database says.
+#
+# It prints nothing when the server is unreachable — sshd then refuses the
+# connection, which is the right way round: no answer means no access.
+
+set -eu
+
+API="${HP_API:-http://127.0.0.1:5000}"
+SECRET_FILE="${HP_SECRET_FILE:-/etc/home-projects/git-ssh-secret}"
+
+[ -r "$SECRET_FILE" ] || exit 0
+curl -sS --max-time 5 -H "X-Git-Ssh-Secret: $(cat "$SECRET_FILE")" "$API/api/git/ssh/keys" 2>/dev/null || exit 0

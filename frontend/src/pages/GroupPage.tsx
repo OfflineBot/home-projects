@@ -167,9 +167,11 @@ export default function GroupPage() {
 function GitPanel({ group, onClose }: { group: Group; onClose: () => void }) {
   const { data, error } = useQuery<{
     cloneUrl: string;
+    sshCloneUrl?: string;
     branches: string[];
     commits: { short: string; message: string; author: string; at: string }[];
     hint: string;
+    sshHint?: string;
   }>(`/api/groups/${group.slug}/git`);
 
   return (
@@ -184,6 +186,11 @@ function GitPanel({ group, onClose }: { group: Group; onClose: () => void }) {
       <Field label="Clone a single project">
         <Copyable value={data?.hint ?? ""} />
       </Field>
+      {data?.sshCloneUrl ? (
+        <Field label="Over SSH" hint="Needs a key registered under Security.">
+          <Copyable value={`git clone ${data.sshCloneUrl}`} />
+        </Field>
+      ) : null}
       <Field label={`Branches (${data?.branches?.length ?? 0})`}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {(data?.branches ?? []).map((b) => (

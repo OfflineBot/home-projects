@@ -130,7 +130,30 @@ download; `POST /api/projects/:project/files/import-zip` is its counterpart, and
 the create dialog offers it as "start from a zip". Entries that would leave the
 project, and symlinks, are refused rather than quietly cleaned up.
 
-## 10. CSRF
+## 10. Git over SSH asks the server, and keeps no key file
+
+Not in the brief, asked for during the build: `git clone git@offlinebot.xyz:…`.
+
+A push over SSH never touches this server's HTTP handler, so on its own it would
+ignore everything that handler enforces — hidden branches, read-only projects,
+and the working tree that has to follow a push. Two ways in with two sets of
+rules is the doubling section 12 warns about, so there is only one set:
+
+- Every key sshd hands out carries a forced command. That wrapper asks this
+  server what the key may see and write, runs git with exactly that answer, and
+  reports back afterwards so the working trees follow.
+- The `pre-receive` hook that already guards HTTPS refuses every ref the answer
+  did not name. It is the same hook, unchanged.
+- There is **no `authorized_keys` file**. sshd asks the server for the keys on
+  every connection (`AuthorizedKeysCommand`). The first version did write that
+  file, and it was wrong twice over: the container could not own a file in the
+  git user's home, and a key could end up in the database while the write
+  failed — two truths that can drift apart.
+
+The cost is that SSH access needs the server to be up. It needed that anyway:
+the wrapper cannot ask anyone else what a key may do.
+
+## 11. CSRF
 
 The brief asks for *"CSRF protection for everything that writes via cookie"*.
 Nothing writes via cookie: every write carries the access token in an
@@ -138,7 +161,7 @@ Nothing writes via cookie: every write carries the access token in an
 do exist — the refresh token and the binding cookie — are `httpOnly`, `Secure`
 and `SameSite=Strict`, so a cross-site request never carries them either.
 
-## 11. What is not built
+## 12. What is not built
 
 - **The Android app.** Everything it needs exists on the server side.
 - **WebAuthn / passkeys.** TOTP is in; the brief lists passkeys as optional.

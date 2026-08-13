@@ -66,6 +66,12 @@ services:
 
       ALLOW_PROJECT_COMMANDS: ${ALLOW_PROJECT_COMMANDS:-false}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
+
+      # Git over SSH: `git clone git@your-host:<group>.git`. Off until these are
+      # set — run scripts/setup-git-ssh.sh on the host, it prints them.
+      GIT_SSH_HOST: ${GIT_SSH_HOST:-}
+      GIT_SSH_SECRET: ${GIT_SSH_SECRET:-}
+      GIT_SSH_WRAPPER: ${GIT_SSH_WRAPPER:-/usr/local/bin/hp-git-shell}
     volumes:
       # These two must be directories on the host, not volumes inside the
       # image — otherwise every deploy takes the repositories and the project
@@ -73,6 +79,10 @@ services:
       # mounts once this file is parsed.
       - ${GIT_DIR:-/srv/home-projects/git}:/srv/git
       - ${DATA_DIR:-/srv/home-projects/data}:/srv/data
+    # The wrapper that sshd runs lives on the host and has to reach this
+    # container. Local only — nothing outside the machine gets in this way.
+    ports:
+      - "127.0.0.1:5000:5000"
     depends_on:
       db:
         condition: service_healthy

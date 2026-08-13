@@ -36,9 +36,16 @@ p = c.call("POST", "/api/projects", {"title": "pushed", "groupId": g["slug"], "p
 auth = "Authorization: Basic " + base64.b64encode(f"{USER}:{PW}".encode()).decode()
 url = f"{API}/git/{g['slug']}.git"
 
+# A shell that has the server's configuration in its environment would hand
+# GIT_DIR to every git we run here, and that git would work on the server's
+# repositories instead of the clone.
+CLEAN_ENV = {k: v for k, v in os.environ.items()
+             if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")}
+
+
 def git(*args, cwd=None):
     return subprocess.run(["git", "-c", f"http.extraHeader={auth}", *args],
-                          cwd=cwd, capture_output=True, text=True)
+                          cwd=cwd, capture_output=True, text=True, env=CLEAN_ENV)
 
 ok = True
 def check(cond, what):
@@ -53,10 +60,10 @@ with tempfile.TemporaryDirectory() as tmp:
     open(w + "/from-push.txt", "w").write("this arrived by push\n")
     os.makedirs(w + "/deep", exist_ok=True)
     open(w + "/deep/nested.md", "w").write("# nested\n")
-    subprocess.run(["git", "config", "user.email", "t@t"], cwd=w)
-    subprocess.run(["git", "config", "user.name", "tester"], cwd=w)
-    subprocess.run(["git", "add", "-A"], cwd=w)
-    subprocess.run(["git", "commit", "-qm", "from the outside"], cwd=w)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=w, env=CLEAN_ENV)
+    subprocess.run(["git", "config", "user.name", "tester"], cwd=w, env=CLEAN_ENV)
+    subprocess.run(["git", "add", "-A"], cwd=w, env=CLEAN_ENV)
+    subprocess.run(["git", "commit", "-qm", "from the outside"], cwd=w, env=CLEAN_ENV)
     r = git("push", "--quiet", "origin", p["slug"], cwd=w)
     check(r.returncode == 0, f"push into the project branch ({r.stderr.strip()[:160]})")
 
@@ -68,8 +75,8 @@ with tempfile.TemporaryDirectory() as tmp:
     # A frozen project refuses a push even with valid credentials.
     c.call("PATCH", f"/api/projects/{p['id']}", {"readOnly": True})
     open(w + "/second.txt", "w").write("no\n")
-    subprocess.run(["git", "add", "-A"], cwd=w)
-    subprocess.run(["git", "commit", "-qm", "second"], cwd=w)
+    subprocess.run(["git", "add", "-A"], cwd=w, env=CLEAN_ENV)
+    subprocess.run(["git", "commit", "-qm", "second"], cwd=w, env=CLEAN_ENV)
     r = git("push", "origin", p["slug"], cwd=w)
     check(r.returncode != 0, "a push into a read-only project is refused")
     check("read-only" in (r.stderr + r.stdout).lower() or "refused" in (r.stderr + r.stdout).lower(),

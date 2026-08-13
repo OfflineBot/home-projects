@@ -242,6 +242,7 @@ function GitTab({ project }: { project: Project }) {
     branch: string;
     repository: string;
     cloneCommand: string;
+    sshCloneCommand?: string;
     tracked: boolean;
     hasHistory: boolean;
     commits: { short: string; message: string; author: string; at: string }[];
@@ -297,6 +298,12 @@ function GitTab({ project }: { project: Project }) {
         <div className="tile" style={{ marginTop: 16 }}>
           <h3>Clone</h3>
           <Copyable value={data?.cloneCommand ?? ""} />
+          {data?.sshCloneCommand ? (
+            <>
+              <div className="sub" style={{ marginTop: 8 }}>or over SSH, with a registered key:</div>
+              <Copyable value={data.sshCloneCommand} />
+            </>
+          ) : null}
           <div className="sub">
             The project is the branch <code className="mono">{data?.branch}</code> in its group's repository.
             A markdown project stays in sync with an Obsidian vault this way.

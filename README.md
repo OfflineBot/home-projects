@@ -91,7 +91,13 @@ backend/
 frontend/
   src/caps/index.ts      ← the frontend registry: one line each
   src/pages/             dashboard, groups, project, structure, accounts, …
-scripts/sweep.py         the endpoint sweep
+scripts/
+  sweep.py               the endpoint sweep
+  git_roundtrip.py       clone, push, and check the working tree followed
+  ssh_access.py          what a key over SSH may see and write
+  setup-git-ssh.sh       the one-time host setup for git@<host>
+  hp-git-shell           the forced command every registered key carries
+  hp-authorized-keys     what sshd asks for the keys
 ```
 
 ## Storage
@@ -123,6 +129,34 @@ branch is refused with a message that says why.
 
 Basic auth takes either your account password or the group's own password; a
 machine token works too (any user name, the token as the password).
+
+### Over SSH
+
+```bash
+git clone git@<host>:<group-slug>.git
+git clone -b <project-slug> --single-branch git@<host>:<group-slug>.git
+```
+
+Set it up once on the host:
+
+```bash
+sudo ./scripts/setup-git-ssh.sh     # creates the git user, installs two scripts,
+                                    # configures sshd, prints the variables
+```
+
+Then add your public key under **Security → Keys for git over SSH**.
+
+A key can do nothing on that machine except talk to this server about
+repositories: no shell, no pty, no forwarding. There is no `authorized_keys`
+file — sshd asks the server for the keys on every connection, so a key you
+remove stops working at once and nothing can drift from what the database says.
+
+And a push over SSH goes through exactly the checks a push over HTTPS does: a
+read-only project refuses it, a project you may not see is not advertised, and
+the working tree on the server follows the push. That is not a second
+implementation — the wrapper asks this server the same questions the HTTP
+handler asks itself, and the same `pre-receive` hook refuses everything the
+answer did not name.
 
 ## The rule that outranks everything else
 
@@ -212,6 +246,8 @@ in a project becomes variables, whether it arrived by upload, by API or by push.
 | `OWNER_USERNAME`, `OWNER_PASSWORD` | only for the very first start |
 | `COOKIE_SECURE` | `true` behind HTTPS |
 | `ALLOW_PROJECT_COMMANDS` | lets `project.yaml` run shell commands |
+| `GIT_SSH_HOST` | `git@your-host` — switches git over SSH on |
+| `GIT_SSH_SECRET` | what sshd and the wrapper authenticate to the server with |
 | `MAX_UPLOAD_MB` | upload limit, default 512 |
 
 Changing `SECRET_KEY` makes every stored credential unreadable — they then have

@@ -40,11 +40,19 @@ services:
       OWNER_USERNAME: ${OWNER_USERNAME:-}
       OWNER_PASSWORD: ${OWNER_PASSWORD:-}
       ALLOW_PROJECT_COMMANDS: ${ALLOW_PROJECT_COMMANDS:-false}
+      # Git over SSH. Empty means off; see scripts/setup-git-ssh.sh.
+      GIT_SSH_HOST: ${GIT_SSH_HOST:-}
+      GIT_SSH_SECRET: ${GIT_SSH_SECRET:-}
+      GIT_SSH_WRAPPER: ${GIT_SSH_WRAPPER:-/usr/local/bin/hp-git-shell}
     volumes:
       # Both must be bind mounts. In the image they would be gone after every
       # deploy — that cost a weekend on the old server.
       - ${GIT_DIR:-./srv/git}:/srv/git
       - ${DATA_DIR:-./srv/data}:/srv/data
+    # Git over SSH needs the backend reachable on the host: sshd asks it for the
+    # keys and the wrapper asks it what a key may do. Local only.
+    ports:
+      - "${BACKEND_PORT:-127.0.0.1:5000}:5000"
     depends_on:
       db:
         condition: service_healthy

@@ -334,7 +334,6 @@ def main() -> int:
         else:
             global ok_count
             ok_count += 1
-            import os
             check(os.path.exists(tmp + "/clone/docs/renamed.txt"), "the clone contains the project's files")
 
     # -------------------------------------------------------------- accounts

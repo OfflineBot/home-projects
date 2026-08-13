@@ -54,6 +54,7 @@ func (s *Server) Mount(app *fiber.App) {
 	s.mountAccounts(api)
 	s.mountSchedulers(api)
 	s.mountDashboard(api)
+	s.mountSSH(api)
 
 	// Capability routes: /api/projects/:project/<name>/… and the shared
 	// /api/capabilities/<name>/…. The core does not know a single name here.
