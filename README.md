@@ -262,6 +262,28 @@ hold links into the pulled material. `scripts/two_projects.py` walks exactly
 that and checks the part that makes a link worth having — that a change at the
 source arrives, while a copy stays as it was.
 
+## The arrangement as one document
+
+**Structure → Export as JSON** writes the shape of the server: which groups
+exist, which projects hang in them, what each can do, the schedulers and the
+links between them. **Import…** reads one back.
+
+Two rules it keeps:
+
+- **No secrets.** Not a password, not a hash, not a token. A group that was
+  password-protected says so and arrives private, because a password inside an
+  export is a password inside wherever the export is pasted.
+- **It never deletes.** It creates what is missing and brings what it recognises
+  in line. Something the document no longer mentions is left alone — removing
+  things stays a deliberate act with a dialog in front of it.
+
+An import says what it would do before it does anything, and it is worth
+reading: a scheduler whose account does not exist here arrives paused and says
+so, rather than failing on its first run.
+
+Files are not in it. Those travel by git and by the zip download, which is the
+point of keeping them as files in the first place.
+
 ## A project as a tool
 
 A `project.yaml` in a project's own folder turns it into a tool without a line

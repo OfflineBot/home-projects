@@ -93,8 +93,12 @@ password-push: ## check pushing with the repository password, and its limits
 two-projects: ## one project pulls, another arranges: link, copy, move
 	python3 scripts/two_projects.py --url $(API)
 
+.PHONY: blueprint
+blueprint: ## the arrangement as JSON, out and back in
+	python3 scripts/blueprint.py --url $(API)
+
 .PHONY: check
-check: test sweep git-roundtrip ssh-access password-push two-projects ## what has to be green before a deploy
+check: test sweep git-roundtrip ssh-access password-push two-projects blueprint ## what has to be green before a deploy
 
 .PHONY: build
 build: ## compile both halves
