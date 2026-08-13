@@ -24,6 +24,7 @@ export default function FilesView({ project, reload }: { project: Project; reloa
   const [newFolder, setNewFolder] = useState(false);
   const [newFile, setNewFile] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [sending, setSending] = useState<FileEntry | null>(null);
   const [dragging, setDragging] = useState(false);
   const [actionError, setActionError] = useState<Error | null>(null);
   const upload = useRef<HTMLInputElement>(null);
@@ -198,6 +199,7 @@ export default function FilesView({ project, reload }: { project: Project; reloa
                         (location.href = `/api/projects/${project.id}/files/download?path=${encodeURIComponent(entry.path)}`),
                     },
                     { label: "Rename", icon: "wrench", onClick: () => void rename(entry) },
+                    { label: "Send to another project…", icon: "link", onClick: () => setSending(entry) },
                     "separator",
                     {
                       label: entry.linkId ? "Remove link (the original stays)" : "Delete",
@@ -244,6 +246,18 @@ export default function FilesView({ project, reload }: { project: Project; reloa
               method: "PUT",
               body: { path: path ? `${path}/${name}` : name, content: "" },
             });
+            reloadList();
+          }}
+        />
+      ) : null}
+
+      {sending ? (
+        <SendElsewhere
+          project={project}
+          entry={sending}
+          onClose={() => setSending(null)}
+          onDone={() => {
+            setSending(null);
             reloadList();
           }}
         />
@@ -314,6 +328,111 @@ function NameDialog({
       <ErrorBox error={error} />
       <Field label={label}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} autoFocus />
+      </Field>
+    </Modal>
+  );
+}
+
+/**
+ * One project pulls material in, another is where it gets arranged. This is the
+ * step between them, in the three ways that are meaningfully different: a link
+ * keeps pointing at what the scheduler refreshes, a copy freezes it as it is,
+ * and a move takes it out of the first project.
+ */
+function SendElsewhere({
+  project,
+  entry,
+  onClose,
+  onDone,
+}: {
+  project: Project;
+  entry: FileEntry;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const projects = useQuery<{ projects: Project[] }>("/api/projects");
+  const [target, setTarget] = useState("");
+  const [targetPath, setTargetPath] = useState(entry.name);
+  const [mode, setMode] = useState<"link" | "copy" | "move">("link");
+  const [error, setError] = useState<Error | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const others = (projects.data?.projects ?? []).filter((p) => p.id !== project.id && !p.readOnly);
+
+  return (
+    <Modal
+      title={`Send ${entry.name} to another project`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn primary"
+            disabled={busy || !target}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await api(`/api/projects/${project.id}/files/send`, {
+                  body: { path: entry.path, targetProject: target, targetPath, mode },
+                });
+                onDone();
+              } catch (err) {
+                setError(err as Error);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {mode === "link" ? "Link it" : mode === "copy" ? "Copy it" : "Move it"}
+          </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+
+      <Field label="Into which project">
+        <select value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">— pick one —</option>
+          {others.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.groupSlug ? `${p.groupSlug} / ` : ""}
+              {p.title}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Under which name" hint="Folders are allowed: semester-1/analysis">
+        <input value={targetPath} onChange={(e) => setTargetPath(e.target.value)} />
+      </Field>
+
+      <Field label="How">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label className="check" style={{ margin: 0 }}>
+            <input type="radio" checked={mode === "link"} onChange={() => setMode("link")} />
+            <span>
+              <strong>Link</strong> — a second name for the same thing. No copy: edits act on the original,
+              and what a scheduler refreshes stays fresh here. Removing the link never deletes anything.
+            </span>
+          </label>
+          <label className="check" style={{ margin: 0 }}>
+            <input type="radio" checked={mode === "copy"} onChange={() => setMode("copy")} />
+            <span>
+              <strong>Copy</strong> — a second, independent thing. From now on the two drift apart, and the
+              next scheduler run does not touch this one.
+            </span>
+          </label>
+          <label className="check" style={{ margin: 0 }}>
+            <input type="radio" checked={mode === "move"} onChange={() => setMode("move")} />
+            <span>
+              <strong>Move</strong> — it leaves this project. Careful with anything a scheduler wrote: it
+              comes back here on the next run.
+            </span>
+          </label>
+        </div>
       </Field>
     </Modal>
   );

@@ -242,6 +242,26 @@ and the server still builds and runs; projects that used it then show their
 files. A test (`internal/capability/isolation_test.go`) keeps the core from ever
 naming a capability.
 
+## Two projects: one pulls, one arranges
+
+The shape most of the work has. A scheduler writes into one project — Moodle
+material, a timetable, mail — and the folders you actually use live in another,
+arranged the way you think rather than the way the source hands it over.
+
+The step between them is one action on any file or folder, **Send to another
+project**, with three meanings:
+
+| | |
+|---|---|
+| **Link** | a second name for the same thing. No copy: edits act on the original, and what the next scheduler run refreshes stays fresh where you put it. Removing the link never deletes anything. |
+| **Copy** | a second, independent thing. From then on the two drift apart, and the next run does not touch it. |
+| **Move** | it leaves the first project. Careful with anything a scheduler wrote — it comes back on the next run. |
+
+So: one project per source, one project per semester, and the semester projects
+hold links into the pulled material. `scripts/two_projects.py` walks exactly
+that and checks the part that makes a link worth having — that a change at the
+source arrives, while a copy stays as it was.
+
 ## A project as a tool
 
 A `project.yaml` in a project's own folder turns it into a tool without a line

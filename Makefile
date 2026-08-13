@@ -89,8 +89,12 @@ ssh-access: ## check what a key over SSH may see and write
 password-push: ## check pushing with the repository password, and its limits
 	python3 scripts/password_push.py --url $(API)
 
+.PHONY: two-projects
+two-projects: ## one project pulls, another arranges: link, copy, move
+	python3 scripts/two_projects.py --url $(API)
+
 .PHONY: check
-check: test sweep git-roundtrip ssh-access password-push ## what has to be green before a deploy
+check: test sweep git-roundtrip ssh-access password-push two-projects ## what has to be green before a deploy
 
 .PHONY: build
 build: ## compile both halves
