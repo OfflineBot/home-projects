@@ -53,7 +53,12 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 		Description:     "Signs in once, then downloads the courses' files into the project — one folder per course.",
 		AccountKinds:    []string{"moodle"},
 		AccountRequired: true,
-		Run:             runMoodle,
+		Options: []capability.AccountField{
+			{Name: "onlyCurrent", Label: "Only courses that are still running", Type: "bool"},
+			{Name: "courses", Label: "Only these courses (short names, comma separated)", Type: "text",
+				Placeholder: "leave empty for all of them"},
+		},
+		Run: runMoodle,
 	}}
 }
 
@@ -129,7 +134,14 @@ func runMoodle(ctx context.Context, env *capability.Env, job capability.Job) (ca
 	wanted := map[string]bool{}
 	if list, ok := job.Options["courses"].([]any); ok {
 		for _, item := range list {
-			wanted[fmt.Sprint(item)] = true
+			wanted[strings.TrimSpace(fmt.Sprint(item))] = true
+		}
+	}
+	if text, ok := job.Options["courses"].(string); ok {
+		for _, item := range strings.Split(text, ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				wanted[item] = true
+			}
 		}
 	}
 

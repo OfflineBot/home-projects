@@ -171,8 +171,9 @@ function CreateScheduler({
     title: "",
     schedule: "0 */6 * * *",
     targetPath: "",
-    url: "",
   });
+  // Each kind says what it can be told; this holds those answers.
+  const [options, setOptions] = useState<Record<string, string | number | boolean>>({});
   const [error, setError] = useState<Error | null>(null);
   const kind = kinds.find((k) => k.name === form.kind);
   const usable = (accounts.data?.accounts ?? []).filter(
@@ -199,7 +200,7 @@ function CreateScheduler({
                     title: form.title,
                     schedule: form.schedule,
                     targetPath: form.targetPath,
-                    options: form.url ? { url: form.url } : {},
+                    options,
                   },
                 });
                 onCreated();
@@ -215,7 +216,13 @@ function CreateScheduler({
     >
       <ErrorBox error={error} />
       <Field label="What it does">
-        <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+        <select
+          value={form.kind}
+          onChange={(e) => {
+            setForm({ ...form, kind: e.target.value });
+            setOptions({});
+          }}
+        >
           {kinds.map((k) => (
             <option key={k.name} value={k.name}>
               {k.title}
@@ -257,9 +264,32 @@ function CreateScheduler({
         </Field>
       ) : null}
 
-      <Field label="URL" hint="For the kinds that fetch something: an ICS address, a feed, any URL.">
-        <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
-      </Field>
+      {(kind?.options ?? []).map((o) =>
+        o.type === "bool" ? (
+          <label className="check" key={o.name}>
+            <input
+              type="checkbox"
+              checked={Boolean(options[o.name])}
+              onChange={(e) => setOptions({ ...options, [o.name]: e.target.checked })}
+            />
+            <span>{o.label}</span>
+          </label>
+        ) : (
+          <Field key={o.name} label={o.label}>
+            <input
+              type={o.type === "number" ? "number" : "text"}
+              placeholder={o.placeholder}
+              value={String(options[o.name] ?? "")}
+              onChange={(e) =>
+                setOptions({
+                  ...options,
+                  [o.name]: o.type === "number" ? Number(e.target.value) : e.target.value,
+                })
+              }
+            />
+          </Field>
+        ),
+      )}
 
       <div className="row">
         <Field label="Schedule" hint="A cron expression, or manual.">

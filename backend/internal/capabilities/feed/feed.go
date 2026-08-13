@@ -94,14 +94,22 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 			Title:        "Feed",
 			Description:  "Fetches an RSS or Atom feed into feed.json and writes the articles as files.",
 			AccountKinds: nil,
-			Run:          runFeed,
+			Options: []capability.AccountField{
+				{Name: "url", Label: "Feed URL", Type: "url", Required: true},
+				{Name: "articles", Label: "Write each entry as a file too", Type: "bool"},
+			},
+			Run: runFeed,
 		},
 		{
 			Name:         "http",
 			Title:        "HTTP → file",
 			Description:  "Fetches a URL and stores the answer in the project.",
 			AccountKinds: nil,
-			Run:          runHTTPToFile,
+			Options: []capability.AccountField{
+				{Name: "url", Label: "URL", Type: "url", Required: true},
+				{Name: "path", Label: "Where to put the answer", Type: "text", Placeholder: "fetched.json"},
+			},
+			Run: runHTTPToFile,
 		},
 	}
 }

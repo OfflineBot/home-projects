@@ -268,6 +268,7 @@ export interface SchedulerKind {
   description: string;
   accountKinds: string[] | null;
   accountRequired: boolean;
+  options?: AccountField[];
 }
 
 export interface AccountField {

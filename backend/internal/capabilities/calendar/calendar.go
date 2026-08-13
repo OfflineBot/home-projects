@@ -142,7 +142,11 @@ func (c Capability) SchedulerKinds() []capability.SchedulerKind {
 		Title:        "ICS subscription",
 		Description:  "Fetches a calendar from a URL and keeps it in the project as a read-only calendar. An account is only needed when the URL asks for a login.",
 		AccountKinds: []string{"ics", "http"},
-		Run:          runICSSubscription,
+		Options: []capability.AccountField{
+			{Name: "url", Label: "Calendar URL", Type: "url", Placeholder: "https://…/timetable.ics"},
+			{Name: "name", Label: "Name for the file it writes", Type: "text"},
+		},
+		Run: runICSSubscription,
 	}}
 }
 

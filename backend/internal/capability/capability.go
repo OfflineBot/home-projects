@@ -74,6 +74,9 @@ type SchedulerKind struct {
 	// AccountRequired marks the kinds that cannot run without credentials. An
 	// ICS subscription to a public URL needs none; a Dualis fetch does.
 	AccountRequired bool `json:"accountRequired"`
+	// Options describes what this kind can be told, so the UI can ask for it
+	// without knowing which kind it is looking at.
+	Options []AccountField `json:"options,omitempty"`
 	// Run does the work. It writes files through Env.Files and returns a short
 	// report for the run log.
 	Run func(ctx context.Context, env *Env, job Job) (Report, error) `json:"-"`

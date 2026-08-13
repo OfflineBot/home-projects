@@ -84,7 +84,11 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 		Description:     "Fetches the newest messages into the project as .eml files.",
 		AccountKinds:    []string{"mail"},
 		AccountRequired: true,
-		Run:             runFetch,
+		Options: []capability.AccountField{
+			{Name: "mailbox", Label: "Which folder", Type: "text", Placeholder: "INBOX"},
+			{Name: "count", Label: "How many of the newest", Type: "number", Placeholder: "50"},
+		},
+		Run: runFetch,
 	}}
 }
 
