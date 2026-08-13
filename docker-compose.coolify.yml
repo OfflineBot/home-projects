@@ -6,10 +6,15 @@
 # no API address to bake into the build.
 #
 # ---------------------------------------------------------------------------
-# Set these in Coolify under Environment Variables. Every one is required, and
-# the deploy stops with a readable message if one is missing — rather than
-# starting a database with an empty password and leaving you with a container
-# that is merely "unhealthy".
+# Set these in Coolify under Environment Variables. Every one is required.
+#
+# They are written as plain ${VAR} on purpose. Compose's own guard, ${VAR:?…},
+# does not work here: Coolify reads the compose file to offer you the variables
+# it finds, and takes everything after the ? as a default value — so a missing
+# password would quietly become the sentence explaining that it is missing.
+# Left plain, an empty one is reported by whoever needs it: postgres says it
+# will not initialise without a password, and the backend names the variable it
+# is missing and stops.
 #
 #   POSTGRES_PASSWORD    anything long and random
 #   JWT_SECRET           anything long and random — signs the access tokens
@@ -35,7 +40,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-homeprojects}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Coolify}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-homeprojects}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -54,23 +59,23 @@ services:
     environment:
       TZ: ${TZ:-Europe/Berlin}
       ADDR: ":5000"
-      DATABASE_URL: postgres://${POSTGRES_USER:-homeprojects}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Coolify}@db:5432/${POSTGRES_DB:-homeprojects}?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-homeprojects}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-homeprojects}?sslmode=disable
       DATA_DIR: /srv/data
       GIT_DIR: /srv/git
 
       # The address this server is reachable at from outside: the domain you set
       # on the frontend service, with https://.
-      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL to the frontend service's domain}
+      PUBLIC_URL: ${PUBLIC_URL}
 
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
-      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in Coolify}
+      JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY: ${SECRET_KEY}
 
       # Behind Coolify's proxy this is HTTPS, so the cookies say so.
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
 
       # Only used on the very first start, when no user exists yet.
-      OWNER_USERNAME: ${OWNER_USERNAME:?set OWNER_USERNAME for the first start}
-      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD for the first start}
+      OWNER_USERNAME: ${OWNER_USERNAME}
+      OWNER_PASSWORD: ${OWNER_PASSWORD}
 
       ALLOW_PROJECT_COMMANDS: ${ALLOW_PROJECT_COMMANDS:-false}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
