@@ -21,9 +21,12 @@
 #   SECRET_KEY           anything long and random — encrypts the credentials in
 #                        the accounts menu. Changing it later makes every stored
 #                        password unreadable.
-#   PUBLIC_URL           https://<the domain you set on the frontend service>.
-#                        Clone addresses, calendar subscription links and
-#                        webhook URLs are built from it.
+#   PUBLIC_URL           the address this server is reached at. With a domain,
+#                        https://<that domain>; without one, something like
+#                        http://192.168.178.54:8091. Clone addresses, calendar
+#                        subscription links and webhook URLs are built from it.
+#   COOKIE_SECURE        false while that address is plain http, or the browser
+#                        will not send the session cookies back.
 #   OWNER_USERNAME       only used on the very first start …
 #   OWNER_PASSWORD       … when no user exists yet. At least 10 characters.
 #
@@ -110,6 +113,13 @@ services:
   frontend:
     build:
       context: ./frontend
+    # With a domain on this service, Coolify's proxy reaches it over the stack's
+    # own network and this port is not needed. Without one — while the server
+    # only answers on the home network — it is the way in. The default binds to
+    # localhost only; set FRONTEND_PORT=0.0.0.0:8091 to open it to the network
+    # on purpose, and PUBLIC_URL to the address that then reaches it.
+    ports:
+      - "${FRONTEND_PORT:-127.0.0.1:8080}:80"
     depends_on:
       backend:
         condition: service_healthy
