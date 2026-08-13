@@ -36,6 +36,15 @@ CLEAN_ENV = {
     for k, v in os.environ.items()
     if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")
 }
+# Without this git would sit and wait for someone to type a password, and the
+# "no credentials at all" checks below would hang instead of failing.
+CLEAN_ENV["GIT_TERMINAL_PROMPT"] = "0"
+CLEAN_ENV["GIT_ASKPASS"] = "/bin/true"
+
+
+def git_bare(*cmd, cwd=None):
+    """git with no credentials whatsoever."""
+    return subprocess.run(["git", *cmd], cwd=cwd, capture_output=True, text=True, env=CLEAN_ENV)
 
 
 def check(cond: bool, what: str) -> None:
@@ -86,6 +95,12 @@ with tempfile.TemporaryDirectory() as tmp:
     r = git_as(REPO_PASSWORD, "push", "origin", project["slug"], cwd=w)
     check(r.returncode != 0, "and cannot push while the group has not allowed it")
 
+    # Nothing at all gets nothing at all, before and after the switch.
+    r = git_bare("ls-remote", url)
+    check(r.returncode != 0, "without credentials there is not even a listing")
+    r = git_bare("push", "origin", project["slug"], cwd=w)
+    check(r.returncode != 0, "and certainly no push")
+
     # --- with the switch on ----------------------------------------------
     c.call("PATCH", f"/api/groups/{group['slug']}", {"pushWithPassword": True})
 
@@ -96,9 +111,14 @@ with tempfile.TemporaryDirectory() as tmp:
     names = [e["name"] for e in (listing or {}).get("entries", [])]
     check("from-a-stranger.txt" in names, "and the working tree on the server follows it")
 
-    # A wrong password is still a wrong password.
+    # A wrong password is still a wrong password, and no password is still no
+    # password — the switch lets the password write, it does not open the door.
     r = git_as("not-the-password", "ls-remote", url)
     check(r.returncode != 0, "a wrong password gets nothing")
+    r = git_bare("push", "origin", project["slug"], cwd=w)
+    check(r.returncode != 0, "and with the switch on, a push still needs the password")
+    check("401" in (r.stderr + r.stdout) or "auth" in (r.stderr + r.stdout).lower(),
+          "the server asks for it rather than refusing silently")
 
     # Read-only outranks the switch.
     c.call("PATCH", f"/api/projects/{project['id']}", {"readOnly": True})

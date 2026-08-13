@@ -5,33 +5,47 @@
 # everything sits behind one domain the app calls relative paths — so there is
 # no API address to bake into the build.
 #
-# In Coolify:
-#   1. New resource → Docker Compose → this repository, compose file
-#      `docker-compose.coolify.yml`.
-#   2. Set the domain on the **frontend** service. Nothing else gets one:
-#      the backend and the database are only reachable inside the stack.
-#   3. Fill in the environment variables below (Coolify generates the ones
-#      written as `$SERVICE_PASSWORD_*` / `$SERVICE_BASE64_*` itself).
-#   4. Set the two host paths for the storage — see the note at `volumes`.
+# ---------------------------------------------------------------------------
+# Set these in Coolify under Environment Variables. Every one is required, and
+# the deploy stops with a readable message if one is missing — rather than
+# starting a database with an empty password and leaving you with a container
+# that is merely "unhealthy".
 #
-# No ports are published here on purpose. Coolify's proxy talks to the
-# containers over its own network; a published port would only be a second,
-# unprotected way in.
+#   POSTGRES_PASSWORD    anything long and random
+#   JWT_SECRET           anything long and random — signs the access tokens
+#   SECRET_KEY           anything long and random — encrypts the credentials in
+#                        the accounts menu. Changing it later makes every stored
+#                        password unreadable.
+#   PUBLIC_URL           https://<the domain you set on the frontend service>.
+#                        Clone addresses, calendar subscription links and
+#                        webhook URLs are built from it.
+#   OWNER_USERNAME       only used on the very first start …
+#   OWNER_PASSWORD       … when no user exists yet. At least 10 characters.
+#
+# Then:
+#   1. Set the domain on the **frontend** service. Nothing else gets one — the
+#      backend and the database are only reachable inside the stack.
+#   2. Under Storages, point the two directory mounts at real host paths. In the
+#      image they would be gone after every deploy, and the repositories and the
+#      project files with them.
+# ---------------------------------------------------------------------------
 
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-homeprojects}
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Coolify}
       POSTGRES_DB: ${POSTGRES_DB:-homeprojects}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB:-homeprojects}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 20
+      # The very first start initialises the database. That is not a failure.
+      start_period: 60s
     restart: unless-stopped
 
   backend:
@@ -40,29 +54,23 @@ services:
     environment:
       TZ: ${TZ:-Europe/Berlin}
       ADDR: ":5000"
-      DATABASE_URL: postgres://${POSTGRES_USER:-homeprojects}:${SERVICE_PASSWORD_POSTGRES}@db:5432/${POSTGRES_DB:-homeprojects}?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-homeprojects}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Coolify}@db:5432/${POSTGRES_DB:-homeprojects}?sslmode=disable
       DATA_DIR: /srv/data
       GIT_DIR: /srv/git
 
-      # The address the server is reachable at from outside. Clone URLs,
-      # calendar subscription links and webhook addresses are built from it, so
-      # it has to be the real domain — Coolify fills it in from the domain you
-      # set on the frontend service.
-      PUBLIC_URL: ${SERVICE_URL_FRONTEND}
+      # The address this server is reachable at from outside: the domain you set
+      # on the frontend service, with https://.
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL to the frontend service's domain}
 
-      # Signs the access tokens. Coolify generates it once and keeps it.
-      JWT_SECRET: ${SERVICE_BASE64_64_JWT}
-      # Encrypts the credentials in the accounts menu. Changing it makes every
-      # stored password unreadable — they then have to be entered again.
-      SECRET_KEY: ${SERVICE_BASE64_64_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in Coolify}
 
       # Behind Coolify's proxy this is HTTPS, so the cookies say so.
-      COOKIE_SECURE: "true"
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
 
-      # Only used on the very first start, when no user exists yet. Set them,
-      # deploy once, sign in, then you may clear them again.
-      OWNER_USERNAME: ${OWNER_USERNAME}
-      OWNER_PASSWORD: ${OWNER_PASSWORD}
+      # Only used on the very first start, when no user exists yet.
+      OWNER_USERNAME: ${OWNER_USERNAME:?set OWNER_USERNAME for the first start}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD for the first start}
 
       ALLOW_PROJECT_COMMANDS: ${ALLOW_PROJECT_COMMANDS:-false}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
@@ -75,14 +83,14 @@ services:
     volumes:
       # These two must be directories on the host, not volumes inside the
       # image — otherwise every deploy takes the repositories and the project
-      # files with it. In Coolify they show up under "Storages" as directory
-      # mounts once this file is parsed.
+      # files with it. In Coolify they show up under "Storages".
       - ${GIT_DIR:-/srv/home-projects/git}:/srv/git
       - ${DATA_DIR:-/srv/home-projects/data}:/srv/data
-    # The wrapper that sshd runs lives on the host and has to reach this
-    # container. Local only — nothing outside the machine gets in this way.
+    # Only git over SSH needs this: sshd and the wrapper run on the host and
+    # have to reach the backend. Local only — nothing outside the machine gets
+    # in this way. Set BACKEND_PORT if 5000 is already taken on the host.
     ports:
-      - "127.0.0.1:5000:5000"
+      - "${BACKEND_PORT:-127.0.0.1:5000}:5000"
     depends_on:
       db:
         condition: service_healthy
@@ -91,16 +99,12 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-      start_period: 30s
+      start_period: 40s
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-    environment:
-      # This is the one service with a domain. Set it in Coolify on this
-      # service; the backend reads it back as PUBLIC_URL above.
-      SERVICE_FQDN_FRONTEND: /
     depends_on:
       backend:
         condition: service_healthy

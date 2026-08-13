@@ -34,8 +34,17 @@ Deploy it as **one** "Docker Compose" resource, not as two applications:
 2. Set the domain on the **frontend** service only. The backend and the database
    stay inside the stack; the frontend's nginx forwards `/api`, `/git` and `/s`
    to the backend by its service name.
-3. Set `OWNER_USERNAME` and `OWNER_PASSWORD` for the first start. Coolify
-   generates the database password and the two secrets itself.
+3. Set these environment variables. All of them are required, and a missing one
+   stops the deploy with a message naming it:
+
+   | | |
+   |---|---|
+   | `POSTGRES_PASSWORD` | anything long and random |
+   | `JWT_SECRET` | signs the access tokens |
+   | `SECRET_KEY` | encrypts the credentials in the accounts menu |
+   | `PUBLIC_URL` | `https://` plus the domain you gave the frontend |
+   | `OWNER_USERNAME`, `OWNER_PASSWORD` | only for the very first start |
+
 4. Under **Storages**, point the two directory mounts at real host paths:
    `/srv/home-projects/git` and `/srv/home-projects/data`, or wherever you want
    them. **This is the one that bites:** in the image they would be gone after
