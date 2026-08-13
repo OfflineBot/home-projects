@@ -1,0 +1,429 @@
+/* Catppuccin is the colour basis, Mocha the default.
+ *
+ * Every colour in this file comes from the palette below. There is no hex
+ * value anywhere else in the codebase — switching flavour swaps the variable
+ * set and nothing else. */
+
+:root[data-flavor="mocha"] {
+  --ctp-rosewater: #f5e0dc; --ctp-flamingo: #f2cdcd; --ctp-pink: #f5c2e7;
+  --ctp-mauve: #cba6f7;     --ctp-red: #f38ba8;      --ctp-maroon: #eba0ac;
+  --ctp-peach: #fab387;     --ctp-yellow: #f9e2af;   --ctp-green: #a6e3a1;
+  --ctp-teal: #94e2d5;      --ctp-sky: #89dceb;      --ctp-sapphire: #74c7ec;
+  --ctp-blue: #89b4fa;      --ctp-lavender: #b4befe;
+  --ctp-text: #cdd6f4;      --ctp-subtext1: #bac2de; --ctp-subtext0: #a6adc8;
+  --ctp-overlay2: #9399b2;  --ctp-overlay1: #7f849c; --ctp-overlay0: #6c7086;
+  --ctp-surface2: #585b70;  --ctp-surface1: #45475a; --ctp-surface0: #313244;
+  --ctp-base: #1e1e2e;      --ctp-mantle: #181825;   --ctp-crust: #11111b;
+  color-scheme: dark;
+}
+
+:root[data-flavor="macchiato"] {
+  --ctp-rosewater: #f4dbd6; --ctp-flamingo: #f0c6c6; --ctp-pink: #f5bde6;
+  --ctp-mauve: #c6a0f6;     --ctp-red: #ed8796;      --ctp-maroon: #ee99a0;
+  --ctp-peach: #f5a97f;     --ctp-yellow: #eed49f;   --ctp-green: #a6da95;
+  --ctp-teal: #8bd5ca;      --ctp-sky: #91d7e3;      --ctp-sapphire: #7dc4e4;
+  --ctp-blue: #8aadf4;      --ctp-lavender: #b7bdf8;
+  --ctp-text: #cad3f5;      --ctp-subtext1: #b8c0e0; --ctp-subtext0: #a5adcb;
+  --ctp-overlay2: #939ab7;  --ctp-overlay1: #8087a2; --ctp-overlay0: #6e738d;
+  --ctp-surface2: #5b6078;  --ctp-surface1: #494d64; --ctp-surface0: #363a4f;
+  --ctp-base: #24273a;      --ctp-mantle: #1e2030;   --ctp-crust: #181926;
+  color-scheme: dark;
+}
+
+:root[data-flavor="frappe"] {
+  --ctp-rosewater: #f2d5cf; --ctp-flamingo: #eebebe; --ctp-pink: #f4b8e4;
+  --ctp-mauve: #ca9ee6;     --ctp-red: #e78284;      --ctp-maroon: #ea999c;
+  --ctp-peach: #ef9f76;     --ctp-yellow: #e5c890;   --ctp-green: #a6d189;
+  --ctp-teal: #81c8be;      --ctp-sky: #99d1db;      --ctp-sapphire: #85c1dc;
+  --ctp-blue: #8caaee;      --ctp-lavender: #babbf1;
+  --ctp-text: #c6d0f5;      --ctp-subtext1: #b5bfe2; --ctp-subtext0: #a5adce;
+  --ctp-overlay2: #949cbb;  --ctp-overlay1: #838ba7; --ctp-overlay0: #737994;
+  --ctp-surface2: #626880;  --ctp-surface1: #51576d; --ctp-surface0: #414559;
+  --ctp-base: #303446;      --ctp-mantle: #292c3c;   --ctp-crust: #232634;
+  color-scheme: dark;
+}
+
+/* Latte is the one light flavour. It has to hold WCAG AA just like the others,
+ * which is why text sits on --ctp-text (#4c4f69) and never on an overlay. */
+:root[data-flavor="latte"] {
+  --ctp-rosewater: #dc8a78; --ctp-flamingo: #dd7878; --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;     --ctp-red: #d20f39;      --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;     --ctp-yellow: #df8e1d;   --ctp-green: #40a02b;
+  --ctp-teal: #179299;      --ctp-sky: #04a5e5;      --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;      --ctp-lavender: #7287fd;
+  --ctp-text: #4c4f69;      --ctp-subtext1: #5c5f77; --ctp-subtext0: #6c6f85;
+  --ctp-overlay2: #7c7f93;  --ctp-overlay1: #8c8fa1; --ctp-overlay0: #9ca0b0;
+  --ctp-surface2: #acb0be;  --ctp-surface1: #bcc0cc; --ctp-surface0: #ccd0da;
+  --ctp-base: #eff1f5;      --ctp-mantle: #e6e9ef;   --ctp-crust: #dce0e8;
+  color-scheme: light;
+}
+
+/* The accent colours buttons, focus and active states. */
+:root { --accent: var(--ctp-mauve); }
+:root[data-accent="blue"] { --accent: var(--ctp-blue); }
+:root[data-accent="green"] { --accent: var(--ctp-green); }
+:root[data-accent="peach"] { --accent: var(--ctp-peach); }
+:root[data-accent="pink"] { --accent: var(--ctp-pink); }
+:root[data-accent="teal"] { --accent: var(--ctp-teal); }
+:root[data-accent="red"] { --accent: var(--ctp-red); }
+:root[data-accent="yellow"] { --accent: var(--ctp-yellow); }
+:root[data-accent="sapphire"] { --accent: var(--ctp-sapphire); }
+:root[data-accent="lavender"] { --accent: var(--ctp-lavender); }
+:root[data-accent="sky"] { --accent: var(--ctp-sky); }
+:root[data-accent="maroon"] { --accent: var(--ctp-maroon); }
+:root[data-accent="flamingo"] { --accent: var(--ctp-flamingo); }
+:root[data-accent="rosewater"] { --accent: var(--ctp-rosewater); }
+:root[data-accent="mauve"] { --accent: var(--ctp-mauve); }
+
+:root {
+  --radius: 14px;
+  --radius-sm: 9px;
+  --gap: 16px;
+  --sidebar: 236px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.18), 0 8px 24px -12px rgb(0 0 0 / 0.35);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* The focus ring has to be visible in every flavour, Latte included. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ------------------------------------------------------------------ layout */
+
+.layout { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: 100%; }
+.layout.wide { grid-template-columns: 1fr; }
+
+.sidebar {
+  background: var(--ctp-mantle);
+  border-right: 1px solid var(--ctp-surface0);
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 10px 14px;
+  font-weight: 650; letter-spacing: -0.01em;
+}
+.brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: var(--radius-sm);
+  color: var(--ctp-subtext0); text-decoration: none;
+  border: 1px solid transparent;
+}
+.nav-item:hover { background: var(--ctp-surface0); color: var(--ctp-text); text-decoration: none; }
+.nav-item.active { background: var(--ctp-surface0); color: var(--ctp-text); border-color: var(--ctp-surface1); }
+.nav-section { margin-top: 14px; padding: 0 11px 4px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--ctp-overlay0); }
+
+.main { padding: 26px 30px 80px; max-width: 1500px; width: 100%; }
+
+.page-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--gap); flex-wrap: wrap; margin-bottom: 22px;
+}
+.page-head h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+.page-head p { margin: 4px 0 0; color: var(--ctp-subtext0); }
+.head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------- tiles */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--gap);
+}
+
+.tile {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  position: relative;
+  color: inherit; text-decoration: none;
+  box-shadow: var(--shadow);
+  transition: border-color .12s ease, transform .12s ease;
+}
+a.tile:hover { text-decoration: none; border-color: var(--tile-color, var(--accent)); transform: translateY(-1px); }
+.tile-top { display: flex; align-items: center; gap: 10px; }
+.tile-icon {
+  width: 34px; height: 34px; flex: none; border-radius: 10px;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--tile-color, var(--accent)) 22%, transparent);
+  color: var(--tile-color, var(--accent));
+}
+.tile h3 { margin: 0; font-size: 15.5px; font-weight: 600; }
+.tile .sub { color: var(--ctp-subtext0); font-size: 13px; }
+.tile-foot { margin-top: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Controls sit on the object, and nothing is hover-only: the menu button is
+ * always visible and large enough for a finger. */
+.tile-menu { position: absolute; top: 10px; right: 10px; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--ctp-surface0); color: var(--ctp-subtext0);
+  font-size: 12px; white-space: nowrap;
+}
+.badge.warn { background: color-mix(in srgb, var(--ctp-peach) 22%, transparent); color: var(--ctp-peach); }
+.badge.bad { background: color-mix(in srgb, var(--ctp-red) 22%, transparent); color: var(--ctp-red); }
+.badge.good { background: color-mix(in srgb, var(--ctp-green) 22%, transparent); color: var(--ctp-green); }
+
+/* ----------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  background: var(--ctp-surface0); color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: var(--ctp-surface1); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--ctp-crust); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--ctp-red); border-color: color-mix(in srgb, var(--ctp-red) 45%, transparent); }
+.btn.danger:hover { background: color-mix(in srgb, var(--ctp-red) 16%, transparent); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ctp-subtext0); }
+.btn.ghost:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn.icon { padding: 6px; }
+
+/* ------------------------------------------------------------------ inputs */
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field > label { font-size: 13px; color: var(--ctp-subtext0); }
+.field .hint { font-size: 12.5px; color: var(--ctp-overlay1); }
+
+input[type="text"], input[type="password"], input[type="number"], input[type="url"],
+input[type="email"], input[type="datetime-local"], input[type="date"], select, textarea {
+  background: var(--ctp-crust);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  width: 100%;
+  color: var(--ctp-text);
+}
+textarea { resize: vertical; min-height: 90px; font-family: var(--mono); font-size: 13.5px; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.row > * { flex: 1 1 180px; }
+.check { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* ------------------------------------------------------------------ modals */
+
+.backdrop {
+  position: fixed; inset: 0; background: rgb(0 0 0 / 0.55);
+  display: grid; place-items: center; padding: 18px; z-index: 60;
+}
+.modal {
+  background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius); width: min(620px, 100%);
+  max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow);
+}
+.modal header { padding: 18px 20px 6px; }
+.modal header h2 { margin: 0; font-size: 19px; }
+.modal .body { padding: 12px 20px 18px; }
+.modal footer { padding: 14px 20px 18px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------- menus */
+
+.menu-wrap { position: relative; display: inline-block; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+  background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  min-width: 210px; padding: 6px; display: flex; flex-direction: column;
+}
+.menu button {
+  text-align: left; background: none; border: none; cursor: pointer;
+  padding: 8px 10px; border-radius: 7px; color: var(--ctp-text);
+  display: flex; align-items: center; gap: 8px;
+}
+.menu button:hover { background: var(--ctp-surface0); }
+.menu button.danger { color: var(--ctp-red); }
+.menu hr { border: none; border-top: 1px solid var(--ctp-surface0); margin: 5px 2px; }
+
+/* -------------------------------------------------------------------- tabs */
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--ctp-surface0); margin-bottom: 20px; flex-wrap: wrap; }
+.tab {
+  padding: 9px 14px; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--ctp-subtext0); cursor: pointer; background: none; border: none;
+  border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 7px;
+}
+.tab:hover { color: var(--ctp-text); }
+.tab.active { color: var(--ctp-text); border-bottom-color: var(--accent); }
+
+/* ------------------------------------------------------------------- lists */
+
+.list { display: flex; flex-direction: column; border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius); overflow: hidden; background: var(--ctp-mantle); }
+.list-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border-bottom: 1px solid var(--ctp-surface0); color: inherit; text-decoration: none;
+}
+.list-row:last-child { border-bottom: none; }
+.list-row:hover { background: var(--ctp-surface0); text-decoration: none; }
+.list-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-row .meta { color: var(--ctp-overlay1); font-size: 12.5px; white-space: nowrap; }
+
+.empty { padding: 34px; text-align: center; color: var(--ctp-subtext0);
+  border: 1px dashed var(--ctp-surface1); border-radius: var(--radius); }
+
+/* Errors are shown. Nothing is swallowed. */
+.error {
+  background: color-mix(in srgb, var(--ctp-red) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-red) 45%, transparent);
+  color: var(--ctp-text);
+  padding: 11px 14px; border-radius: var(--radius-sm); margin-bottom: 14px;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.error .what { color: var(--ctp-red); font-weight: 600; }
+.notice {
+  background: color-mix(in srgb, var(--ctp-blue) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-blue) 40%, transparent);
+  padding: 11px 14px; border-radius: var(--radius-sm); margin-bottom: 14px;
+}
+.warning {
+  background: color-mix(in srgb, var(--ctp-peach) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-peach) 40%, transparent);
+  padding: 11px 14px; border-radius: var(--radius-sm); margin-bottom: 14px;
+}
+
+/* ---------------------------------------------------------------- calendar */
+
+.cal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.cal-head .title { font-size: 18px; font-weight: 600; min-width: 190px; }
+
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px;
+  background: var(--ctp-surface0); border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius); overflow: hidden; }
+.cal-dow { background: var(--ctp-mantle); padding: 7px 9px; font-size: 12px;
+  color: var(--ctp-subtext0); text-align: center; }
+.cal-day { background: var(--ctp-base); min-height: 118px; padding: 6px; display: flex;
+  flex-direction: column; gap: 3px; cursor: pointer; }
+.cal-day.other { background: var(--ctp-mantle); color: var(--ctp-overlay0); }
+.cal-day:hover { background: var(--ctp-surface0); }
+.cal-day .num { font-size: 12.5px; color: var(--ctp-subtext0); align-self: flex-end; }
+.cal-day.today .num {
+  background: var(--accent); color: var(--ctp-crust); border-radius: 999px;
+  min-width: 22px; height: 22px; display: grid; place-items: center; font-weight: 700;
+}
+.cal-event {
+  font-size: 12px; padding: 2px 6px; border-radius: 6px; cursor: pointer;
+  background: color-mix(in srgb, var(--ev-color, var(--accent)) 26%, transparent);
+  border-left: 3px solid var(--ev-color, var(--accent));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-week { display: grid; grid-template-columns: 54px repeat(7, minmax(0, 1fr)); gap: 1px;
+  background: var(--ctp-surface0); border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--ctp-surface0); }
+.cal-hour { background: var(--ctp-mantle); font-size: 11px; color: var(--ctp-overlay1);
+  padding: 2px 6px; text-align: right; height: 44px; }
+.cal-slot { background: var(--ctp-base); height: 44px; position: relative; cursor: pointer; }
+.cal-slot:hover { background: var(--ctp-surface0); }
+.cal-abs {
+  position: absolute; left: 2px; right: 2px; border-radius: 6px; font-size: 11.5px;
+  padding: 2px 5px; overflow: hidden; z-index: 2;
+  background: color-mix(in srgb, var(--ev-color, var(--accent)) 30%, transparent);
+  border-left: 3px solid var(--ev-color, var(--accent));
+}
+
+/* ------------------------------------------------------------------- files */
+
+.crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;
+  color: var(--ctp-subtext0); font-size: 13.5px; }
+.crumbs button { background: none; border: none; color: var(--accent); cursor: pointer; padding: 2px 4px; }
+
+.editor { width: 100%; min-height: 460px; font-family: var(--mono); font-size: 13.5px;
+  background: var(--ctp-crust); border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm); padding: 12px; color: var(--ctp-text); }
+
+.dropzone { border: 2px dashed var(--ctp-surface2); border-radius: var(--radius);
+  padding: 26px; text-align: center; color: var(--ctp-subtext0); }
+.dropzone.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* -------------------------------------------------------------- dashboard */
+
+.stat { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; }
+.stat .unit { font-size: 15px; color: var(--ctp-subtext0); margin-left: 4px; font-weight: 500; }
+.dot-status { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.dot-status.on { background: var(--ctp-green); }
+.dot-status.off { background: var(--ctp-overlay0); }
+
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 44px; }
+.spark span { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .8; }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.data th, table.data td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--ctp-surface0); }
+table.data th { color: var(--ctp-subtext0); font-weight: 500; font-size: 12.5px; }
+table.data tr:last-child td { border-bottom: none; }
+
+code, .mono { font-family: var(--mono); font-size: 13px; }
+pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius-sm); padding: 12px; overflow-x: auto; font-size: 12.5px; }
+
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 30px; height: 30px; border-radius: 9px; border: 2px solid transparent; cursor: pointer; }
+.swatch.selected { border-color: var(--ctp-text); }
+
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ctp-surface2);
+  border-top-color: var(--accent); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap); }
+
+/* ------------------------------------------------------------------ mobile */
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 70;
+    transform: translateX(-100%); transition: transform .18s ease;
+  }
+  .sidebar.open { transform: none; }
+  .main { padding: 18px 16px 90px; }
+  .cal-day { min-height: 84px; }
+}
+.mobile-bar {
+  display: none; position: sticky; top: 0; z-index: 30;
+  background: var(--ctp-mantle); border-bottom: 1px solid var(--ctp-surface0);
+  padding: 8px 12px; align-items: center; gap: 10px;
+}
+@media (max-width: 860px) { .mobile-bar { display: flex; } }

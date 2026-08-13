@@ -1,0 +1,72 @@
+# home-projects — the whole server.
+#
+#   docker compose up -d --build
+#
+# The two bind mounts matter: /srv/git holds the group repositories and
+# /srv/data the project working trees. Both live on the host, not in the image
+# — otherwise every deploy would take the data with it.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-homeprojects}
+    ports:
+      - "${DB_PORT:-127.0.0.1:5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB:-homeprojects}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      ADDR: ":5000"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-homeprojects}?sslmode=disable
+      DATA_DIR: /srv/data
+      GIT_DIR: /srv/git
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      OWNER_USERNAME: ${OWNER_USERNAME:-}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
+      ALLOW_PROJECT_COMMANDS: ${ALLOW_PROJECT_COMMANDS:-false}
+    volumes:
+      # Both must be bind mounts. In the image they would be gone after every
+      # deploy — that cost a weekend on the old server.
+      - ${GIT_DIR:-./srv/git}:/srv/git
+      - ${DATA_DIR:-./srv/data}:/srv/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      # Local only by default. Put a tunnel or a reverse proxy in front of it,
+      # or set FRONTEND_PORT=0.0.0.0:8080 to open it to the network on purpose.
+      - "${FRONTEND_PORT:-127.0.0.1:8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

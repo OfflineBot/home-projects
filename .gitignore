@@ -1,0 +1,9 @@
+# The brief this was built from stays local — it is a personal document.
+PROMPT.md
+
+.env
+srv/
+node_modules/
+dist/
+backend/server
+*.log

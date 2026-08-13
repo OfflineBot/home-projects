@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-flavor="mocha">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>home-projects</title>
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      // The flavour is applied before the first paint, so nothing flashes
+      // light. Dark stays the default, whatever the system says.
+      try {
+        var f = localStorage.getItem("flavor") || "mocha";
+        document.documentElement.dataset.flavor = f;
+        var a = localStorage.getItem("accent") || "mauve";
+        document.documentElement.dataset.accent = a;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
