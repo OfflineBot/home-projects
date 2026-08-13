@@ -201,7 +201,7 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
       {children}
       {request ? (
         <Modal
-          title="Your password, once more"
+          title="Your home-projects password"
           onClose={() => close(false)}
           footer={
             <>
@@ -229,10 +229,11 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
           }
         >
           <p style={{ marginTop: 0 }}>
-            This step needs it: <strong>{request.action}</strong>.
+            This step needs it: <strong>{request.action}</strong>. Asked for is the password you sign in to
+            home-projects with — not the password of the service the account belongs to.
           </p>
           {error ? <div className="error">{error}</div> : null}
-          <Field label="Password">
+          <Field label="Your home-projects password">
             <input
               type="password"
               autoFocus

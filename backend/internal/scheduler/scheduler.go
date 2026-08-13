@@ -228,6 +228,15 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 				"the password for "+account.Title+" was used up. Enter it again — there is no automatic second attempt.", 0)
 		}
 
+		// Whatever can be checked without the credential is checked first, so a
+		// wrong address costs a run and not a password.
+		if kind, ok := capability.AccountKindByName(account.Kind); ok && kind.Precheck != nil {
+			if err := kind.Precheck(ctx, r.env, account); err != nil {
+				logf("stopped before the credential was touched: %v", err)
+				return finish("error", err.Error()+" — the stored password was not touched", 0)
+			}
+		}
+
 		// Reserve first: persistently, before anything is sent.
 		secret, err := st.ReserveAttempt(ctx, *sched.AccountID)
 		if err != nil {

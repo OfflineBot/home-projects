@@ -132,6 +132,11 @@ type AccountKind struct {
 	// an SSH private key cannot be "used up" by a failed connection, and no
 	// remote side locks an account over it. Everything else is single-use.
 	SecretIsKey bool `json:"secretIsKey,omitempty"`
+	// Precheck looks at everything that can be wrong *without* the credential —
+	// an address that is not what it claims to be, a service switched off at
+	// the other end. It runs before the credential is reserved, so finding out
+	// that a URL was pasted wrong does not cost a password.
+	Precheck func(ctx context.Context, env *Env, a *model.Account) error `json:"-"`
 	// Test performs exactly one sign-in attempt. Returning nil means an
 	// unambiguous success; anything else consumes the credential.
 	Test func(ctx context.Context, env *Env, a *model.Account, secret []byte) error `json:"-"`

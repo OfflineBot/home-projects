@@ -103,6 +103,13 @@ func Test(ctx context.Context, env *capability.Env, accountID uuid.UUID) error {
 	if kind.Test == nil {
 		return httpx.BadRequest("This kind of account cannot be tested on its own.")
 	}
+	// Everything that can be answered without the password is answered first.
+	if kind.Precheck != nil {
+		if err := kind.Precheck(ctx, env, account); err != nil {
+			return httpx.New(400, "precheck_failed",
+				"%v. The stored password was not touched.", err)
+		}
+	}
 	if kind.SecretLabel == "" {
 		// Nothing secret involved, so nothing can be consumed.
 		if err := kind.Test(ctx, env, account, nil); err != nil {

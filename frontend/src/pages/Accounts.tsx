@@ -64,10 +64,9 @@ export default function Accounts() {
       </div>
 
       <div className="warning">
-        <strong>A password here is single-use.</strong> It is reserved before it is sent; only a confirmed
-        sign-in keeps it. Everything else — a wrong password, a timeout, an abort, an answer we cannot read,
-        even the server stopping mid-attempt — deletes it and pauses the schedulers that used it. There is no
-        automatic second attempt anywhere. Dualis and Moodle lock accounts after a few tries; this is why.
+        <strong>A password here is single-use.</strong> Only a confirmed sign-in keeps it; anything else deletes
+        it and pauses the schedulers that used it. The password wanted for an account is always the one of that
+        service — your home-projects password is only ever asked for by the grey confirmation dialog.
       </div>
 
       <ErrorBox error={actionError ?? error} onRetry={reload} />
@@ -303,8 +302,8 @@ function EnterSecret({
     >
       <ErrorBox error={error} />
       <p style={{ marginTop: 0 }}>
-        Typing it in again is the only way back. It is stored encrypted and never comes out of the API again —
-        not even for you.
+        Wanted here is the password of <strong>{kind?.title ?? account.kind}</strong> itself. Saving it asks for
+        your home-projects password afterwards — that is a different one.
       </p>
       <Field label={kind?.secretLabel ?? "Password"}>
         {kind?.secretIsKey ? (

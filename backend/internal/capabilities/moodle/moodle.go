@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -35,13 +36,15 @@ func (Capability) AccountKinds() []capability.AccountKind {
 	return []capability.AccountKind{{
 		Name:        "moodle",
 		Title:       "Moodle",
-		Description: "User and password for a Moodle instance. Moodle locks accounts after failed attempts too, so the password is single-use here as well.",
+		Description: "The user name and password you sign in to Moodle with.",
 		Fields: []capability.AccountField{
-			{Name: "url", Label: "Moodle address", Type: "url", Required: true, Placeholder: "https://moodle.example.com"},
-			{Name: "user", Label: "User", Type: "text", Required: true},
+			{Name: "url", Label: "Moodle address — only the part before the first slash",
+				Type: "url", Required: true, Placeholder: "https://elearning.example.de"},
+			{Name: "user", Label: "Your Moodle user name", Type: "text", Required: true},
 		},
-		SecretLabel: "Password",
+		SecretLabel: "Your Moodle password",
 		Locks:       true,
+		Precheck:    precheckMoodle,
 		Test:        testMoodle,
 	}}
 }
@@ -67,12 +70,33 @@ type config struct {
 	User string `json:"user"`
 }
 
+// baseURL reduces whatever was pasted in to the address Moodle's web service
+// lives under. People copy the address bar, and the address bar says
+// .../login/index.php — appending /login/token.php to that gives a 404 page,
+// which is not JSON, which used to look like a failed sign-in and cost a
+// password. It does not any more.
+func baseURL(raw string) string {
+	url := strings.TrimSpace(raw)
+	url = strings.TrimRight(url, "/")
+	// Longest first: /course/index.php has to be recognised before /index.php
+	// gets a chance to leave /course behind.
+	for _, tail := range []string{
+		"/login/index.php", "/login/token.php", "/course/index.php", "/user/profile.php",
+		"/my/index.php", "/index.php", "/login", "/my",
+	} {
+		if strings.HasSuffix(strings.ToLower(url), tail) {
+			url = url[:len(url)-len(tail)]
+		}
+	}
+	return strings.TrimRight(url, "/")
+}
+
 func readConfig(a *model.Account) (config, error) {
 	var cfg config
 	if err := json.Unmarshal(a.Config, &cfg); err != nil {
 		return cfg, fmt.Errorf("the account's settings cannot be read: %w", err)
 	}
-	cfg.URL = strings.TrimRight(cfg.URL, "/")
+	cfg.URL = baseURL(cfg.URL)
 	if cfg.URL == "" {
 		return cfg, fmt.Errorf("the account has no Moodle address")
 	}
@@ -87,12 +111,50 @@ func readConfig(a *model.Account) (config, error) {
 func signIn(cfg config, secret []byte) (string, error) {
 	pair, err := lib.GetToken(cfg.URL, cfg.User, string(secret))
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid character '<'") {
+			return "", fmt.Errorf("%s answered with a web page instead of Moodle's web service — "+
+				"the address is wrong", cfg.URL)
+		}
 		return "", fmt.Errorf("sign-in failed: %w", err)
 	}
 	if pair == nil || pair.Token == "" {
 		return "", fmt.Errorf("sign-in gave no token — treating it as failed")
 	}
 	return pair.Token, nil
+}
+
+// precheckMoodle asks the address whether it is a Moodle at all — without the
+// password. Moodle's token endpoint answers a request with no credentials by
+// complaining, in JSON, that the user name is missing. Anything else means the
+// address is wrong, and finding that out must not cost the password.
+func precheckMoodle(ctx context.Context, env *capability.Env, a *model.Account) error {
+	cfg, err := readConfig(a)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.URL+"/login/token.php", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("%s is not reachable: %w", cfg.URL, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+
+	var answer map[string]any
+	if json.Unmarshal(body, &answer) != nil {
+		return fmt.Errorf("%s/login/token.php answered with a web page, not with Moodle's web service. "+
+			"Use the address you sign in at, without /login/index.php — for example "+
+			"https://elearning.dhbw-ravensburg.de", cfg.URL)
+	}
+	if code, _ := answer["errorcode"].(string); code != "" && code != "missingparam" && code != "invalidparameter" {
+		// enablewsdocumentation / disabled service and friends land here.
+		return fmt.Errorf("%s answered: %v. The mobile web service is probably switched off there, "+
+			"and no password would get through", cfg.URL, answer["error"])
+	}
+	return nil
 }
 
 func testMoodle(ctx context.Context, env *capability.Env, a *model.Account, secret []byte) error {
