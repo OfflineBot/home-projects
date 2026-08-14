@@ -1,3 +1,5 @@
+github.com/Azure/go-ntlmssp v0.1.1 h1:l+FM/EEMb0U9QZE7mKNEDw5Mu3mFiaa2GKOoTSsNDPw=
+github.com/Azure/go-ntlmssp v0.1.1/go.mod h1:NYqdhxd/8aAct/s4qSYZEerdPuH1liG2/X9DiVTbhpk=
 github.com/OfflineBot/nicht-libs/dualis v0.0.0-20260505080944-a5314085cd3a h1:uNMvdlHcHDck1VHvyVVQzSTSBicswIZ8T61f17Qbw8I=
 github.com/OfflineBot/nicht-libs/dualis v0.0.0-20260505080944-a5314085cd3a/go.mod h1:Mn0bqnoL2Cj3btgG1jV0Xke4jY9qiU1gaSbChp8RtnI=
 github.com/OfflineBot/nicht-libs/moodle v0.0.0-20260505080944-a5314085cd3a h1:kosPYLp4Rzvf5mNqYXHdvcEVeebYedHlcmtYT5eQ2gE=

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Spinner, formatDate } from "../components/ui";
-import { api, type Derived, type Group, type Variable } from "../lib/api";
+import { api, type Derived, type Group, type Project, type Variable } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 import { colorVar } from "../lib/theme";
 
@@ -10,6 +10,8 @@ interface Tile {
   id: string;
   groupId: string;
   groupSlug?: string;
+  projectId?: string;
+  projectSlug?: string;
   variable: string;
   title: string;
   kind: string;
@@ -33,7 +35,33 @@ interface Block {
 export default function Dashboard() {
   const session = useSession();
   const { data, error, loading, reload } = useQuery<{ groups: Block[]; tiles: Tile[] }>("/api/dashboard");
+  const projects = useQuery<{ projects: Project[] }>(session.user ? "/api/projects" : null);
   const [adding, setAdding] = useState(false);
+  const [shut, setShut] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("dashboard.shut") ?? "{}");
+    } catch {
+      return {};
+    }
+  });
+  const fold = (slug: string, closed: boolean) => {
+    const next = { ...shut, [slug]: closed };
+    setShut(next);
+    localStorage.setItem("dashboard.shut", JSON.stringify(next));
+  };
+
+  // Tiles are kept in the order they are shown, so moving one is a swap of the
+  // two positions and nothing else.
+  const move = async (index: number, by: number) => {
+    const tiles = data?.tiles ?? [];
+    const other = index + by;
+    if (other < 0 || other >= tiles.length) return;
+    await Promise.all([
+      api(`/api/dashboard/tiles/${tiles[index].id}`, { method: "PATCH", body: { y: other, x: 0 } }),
+      api(`/api/dashboard/tiles/${tiles[other].id}`, { method: "PATCH", body: { y: index, x: 0 } }),
+    ]);
+    reload();
+  };
 
   const value = (block: Block, name: string) => {
     const [projectSlug, ...rest] = name.split(".");
@@ -78,9 +106,30 @@ export default function Dashboard() {
       {data?.tiles?.length ? (
         <>
           <div className="tiles" style={{ marginBottom: 30 }}>
-            {data.tiles.map((tile) => {
+            {data.tiles.map((tile, index) => {
               const block = data.groups.find((b) => b.group.id === tile.groupId);
               const variable = block ? value(block, tile.variable) : undefined;
+              if (tile.kind === "project") {
+                const project = (projects.data?.projects ?? []).find((p) => p.id === tile.projectId);
+                const numbers = data.groups
+                  .flatMap((b) => b.variables)
+                  .filter((v) => v.projectId === tile.projectId && typeof v.value === "number")
+                  .slice(0, 3);
+                return (
+                  <ProjectTile
+                    key={tile.id}
+                    tile={tile}
+                    project={project}
+                    numbers={numbers}
+                    editable={Boolean(session.user)}
+                    onMove={(by) => move(index, by)}
+                    onRemove={async () => {
+                      await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
+                      reload();
+                    }}
+                  />
+                );
+              }
               return (
                 <div
                   key={tile.id}
@@ -98,16 +147,24 @@ export default function Dashboard() {
                       <h3>{tile.title || tile.variable}</h3>
                     </div>
                     {session.user ? (
-                      <button
-                        className="btn ghost icon"
-                        aria-label="Remove tile"
-                        onClick={async () => {
-                          await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
-                          reload();
-                        }}
-                      >
-                        <Icon name="x" size={15} />
-                      </button>
+                      <div className="tile-tools">
+                        <button className="btn ghost icon" aria-label="Move left" onClick={() => move(index, -1)}>
+                          <Icon name="chevronLeft" size={14} />
+                        </button>
+                        <button className="btn ghost icon" aria-label="Move right" onClick={() => move(index, 1)}>
+                          <Icon name="chevronRight" size={14} />
+                        </button>
+                        <button
+                          className="btn ghost icon"
+                          aria-label="Remove tile"
+                          onClick={async () => {
+                            await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
+                            reload();
+                          }}
+                        >
+                          <Icon name="x" size={15} />
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                   <TileBody tile={tile} variable={variable} />
@@ -125,6 +182,13 @@ export default function Dashboard() {
       {data?.groups.map((block) => (
         <div key={block.group.id} style={{ marginBottom: 26 }}>
           <h2 style={{ fontSize: 17, display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="btn ghost icon"
+              aria-label={shut[block.group.slug] ? "Show" : "Hide"}
+              onClick={() => fold(block.group.slug, !shut[block.group.slug])}
+            >
+              <Icon name={shut[block.group.slug] ? "chevronRight" : "chevronDown"} size={14} />
+            </button>
             <Icon name={block.group.icon} size={17} />
             <Link to={`/groups/${block.group.slug}`}>{block.group.title}</Link>
             {block.group.pinned && session.user ? (
@@ -140,7 +204,7 @@ export default function Dashboard() {
               </button>
             ) : null}
           </h2>
-          {block.variables.length === 0 && block.derived.length === 0 ? (
+          {shut[block.group.slug] ? null : block.variables.length === 0 && block.derived.length === 0 ? (
             <p style={{ color: "var(--ctp-subtext0)", marginTop: 0 }}>
               No project in this group reports anything yet.
             </p>
@@ -185,6 +249,7 @@ export default function Dashboard() {
       {adding && data ? (
         <AddTile
           blocks={data.groups}
+          projects={projects.data?.projects ?? []}
           onClose={() => setAdding(false)}
           onAdded={() => {
             setAdding(false);
@@ -193,6 +258,85 @@ export default function Dashboard() {
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * A project on the dashboard: the way in, and the two or three numbers it
+ * reports, so the page answers before it is clicked.
+ */
+function ProjectTile({
+  tile,
+  project,
+  numbers,
+  editable,
+  onMove,
+  onRemove,
+}: {
+  tile: Tile;
+  project?: Project;
+  numbers: Variable[];
+  editable: boolean;
+  onMove: (by: number) => void;
+  onRemove: () => void;
+}) {
+  const address = project ? `/groups/${project.groupSlug}/${project.slug}` : "/";
+  return (
+    <div className="tile project-tile" style={{ ["--tile-color" as string]: colorVar(project?.color) }}>
+      <div className="tile-top">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="sub">{project?.groupTitle ?? project?.groupSlug ?? "gone"}</div>
+          <h3>
+            <Link to={address}>
+              <Icon name={project?.icon ?? "box"} size={16} /> {tile.title || project?.title || tile.projectSlug}
+            </Link>
+          </h3>
+        </div>
+        {editable ? (
+          <div className="tile-tools">
+            <button className="btn ghost icon" aria-label="Move left" onClick={() => onMove(-1)}>
+              <Icon name="chevronLeft" size={14} />
+            </button>
+            <button className="btn ghost icon" aria-label="Move right" onClick={() => onMove(1)}>
+              <Icon name="chevronRight" size={14} />
+            </button>
+            <button className="btn ghost icon" aria-label="Remove tile" onClick={onRemove}>
+              <Icon name="x" size={15} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {project ? (
+        <>
+          {numbers.length ? (
+            <div className="tile-numbers">
+              {numbers.map((v) => (
+                <div key={v.name}>
+                  <div className="stat" style={{ fontSize: 22 }}>
+                    {format(v.value)}
+                    {v.unit ? <span className="unit">{v.unit}</span> : null}
+                  </div>
+                  <div className="meta">{v.name}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="tile-foot">
+            <Link className="btn small" to={address}>
+              Open
+            </Link>
+            {project.defaultTab && project.defaultTab !== "files" ? (
+              <Link className="btn small ghost" to={`${address}/files`}>
+                Files
+              </Link>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div className="sub">That project is gone.</div>
+      )}
+    </div>
   );
 }
 
@@ -330,14 +474,17 @@ function format(v: any) {
 
 function AddTile({
   blocks,
+  projects,
   onClose,
   onAdded,
 }: {
   blocks: Block[];
+  projects: Project[];
   onClose: () => void;
   onAdded: () => void;
 }) {
   const [groupId, setGroupId] = useState(blocks[0]?.group.id ?? "");
+  const [projectId, setProjectId] = useState("");
   const [variable, setVariable] = useState("");
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("number");
@@ -367,9 +514,14 @@ function AddTile({
           </button>
           <button
             className="btn primary"
-            disabled={!groupId || !variable}
+            disabled={kind === "project" ? !projectId : !groupId || !variable}
             onClick={async () => {
               try {
+                if (kind === "project") {
+                  await api("/api/dashboard/tiles", { body: { kind, projectId, title, w: 1, h: 1 } });
+                  onAdded();
+                  return;
+                }
                 // A formula becomes a variable of the group first; the tile
                 // then points at it by name like any other.
                 if (formula) {
@@ -393,6 +545,40 @@ function AddTile({
       }
     >
       <ErrorBox error={error} />
+      <Field label="Shown as">
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="project">a project, to jump into</option>
+          <option value="number">a large number</option>
+          <option value="text">text</option>
+          <option value="status">a status dot</option>
+          <option value="list">a list</option>
+          <option value="table">a table</option>
+          <option value="history">a small graph over time</option>
+          <option value="button">a button that runs a rule</option>
+        </select>
+      </Field>
+
+      {kind === "project" ? (
+        <>
+          <Field label="Project">
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">— pick one —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {(p.groupSlug ?? "ungrouped") + "/" + p.slug}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Title" hint="Empty keeps the project's own name.">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={
+              projects.find((p) => p.id === projectId)?.title ?? ""
+            } />
+          </Field>
+          <p className="meta">The numbers that project reports are shown on the tile as well.</p>
+        </>
+      ) : (
+      <>
       <Field label="Group">
         <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
           {blocks.map((b) => (
@@ -464,17 +650,8 @@ function AddTile({
       <Field label="Title">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={variable} />
       </Field>
-      <Field label="Shown as">
-        <select value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="number">a large number</option>
-          <option value="text">text</option>
-          <option value="status">a status dot</option>
-          <option value="list">a list</option>
-          <option value="table">a table</option>
-          <option value="history">a small graph over time</option>
-          <option value="button">a button that runs a rule</option>
-        </select>
-      </Field>
+      </>
+      )}
     </Modal>
   );
 }

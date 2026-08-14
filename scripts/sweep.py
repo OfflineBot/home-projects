@@ -393,10 +393,14 @@ def main() -> int:
             check(os.path.exists(tmp + "/clone/docs/renamed.txt"), "the clone contains the project's files")
 
     # -------------------------------------------------------------- accounts
+    # Pointed at the server's own port: it accepts the connection and is not a
+    # mail server, so the attempt gets as far as failing — which is what has to
+    # cost the password. An address that answers nothing never gets that far
+    # any more; that is the precheck, and it is checked further down.
     account = c.call("POST", "/api/accounts", {
         "kind": "mail",
         "title": f"sweep-mail-{stamp}",
-        "config": {"host": "127.0.0.1", "port": 1, "user": "nobody"},
+        "config": {"host": "127.0.0.1", "port": 5000, "user": "nobody"},
         "secret": "this-will-fail",
     }, expect=201)
     if account:
@@ -785,6 +789,38 @@ def main() -> int:
         guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw}, expect=403)
         c.call("DELETE", f"/api/users/{guest_id}")
         guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw}, expect=401)
+
+    # ------------------------------------------------- a project on the dashboard
+    # Half of what a dashboard is for is the way back into a project, so a tile
+    # can be the project itself.
+    ptile = c.call("POST", "/api/dashboard/tiles",
+                   {"kind": "project", "projectId": made["data"]["id"], "title": "straight in"},
+                   expect=201)
+    check(bool(ptile and ptile.get("projectId")), "a tile can be a project")
+    check(bool(ptile and ptile.get("projectSlug")), "and it says which one")
+    c.call("POST", "/api/dashboard/tiles", {"kind": "project"}, expect=400)
+    board = c.call("GET", "/api/dashboard") or {}
+    check(any(t.get("kind") == "project" for t in board.get("tiles", [])),
+          "the dashboard hands it back")
+    if ptile:
+        c.call("PATCH", f"/api/dashboard/tiles/{ptile['id']}", {"y": 3})
+        c.call("DELETE", f"/api/dashboard/tiles/{ptile['id']}")
+
+    # ------------------------------------------------- a mailbox that is not there
+    # The password is single-use, so a wrong server must be caught before it is
+    # spent — that is what the precheck is for.
+    dead = c.call("POST", "/api/accounts", {
+        "kind": "mail", "title": f"nowhere {stamp}",
+        "config": {"protocol": "imap", "host": "127.0.0.1", "port": 9, "user": "nobody"},
+        "secret": "not-a-real-password",
+    }, expect=201)
+    if dead:
+        c.call("POST", f"/api/accounts/{dead['id']}/test", expect=400)
+        listed = c.call("GET", "/api/accounts") or {}
+        row = next((a for a in listed.get("accounts", []) if a["id"] == dead["id"]), None)
+        check(bool(row) and row["hasSecret"], "an unreachable server does not cost the password")
+        check(bool(row) and row["state"] != "needs_password", "and the account is still ready")
+        c.call("DELETE", f"/api/accounts/{dead['id']}")
 
     # ---------------------------------------------------------------- delete
     for key, p in made.items():

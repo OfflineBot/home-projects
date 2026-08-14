@@ -41,10 +41,11 @@ func (s *Server) mountUsers(r fiber.Router) {
 		}
 		ctx := c.UserContext()
 		ip := auth.ClientIP(c)
+		// What is worth limiting is accounts actually made, not typos: a taken
+		// name or a short password costs nothing and is not counted below.
 		if fails, _ := s.Store.RecentFailures(ctx, "register", ip, 15*time.Minute); fails >= 5 {
 			return httpx.TooMany("That is enough for now. Try again later.")
 		}
-		s.Store.RecordAttempt(ctx, "register", ip, ip, false)
 
 		if _, err := s.Store.UserByName(ctx, name); err == nil {
 			return httpx.Conflict("That name is taken.")
@@ -57,6 +58,7 @@ func (s *Server) mountUsers(r fiber.Router) {
 		if err != nil {
 			return httpx.Conflict("That name is taken.")
 		}
+		s.Store.RecordAttempt(ctx, "register", ip, ip, false)
 		if strings.TrimSpace(in.Note) != "" {
 			_, _ = s.Store.SetUserNote(ctx, user.ID, strings.TrimSpace(in.Note))
 		}

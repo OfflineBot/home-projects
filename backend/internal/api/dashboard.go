@@ -59,11 +59,24 @@ func (s *Server) mountDashboard(r fiber.Router) {
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The tile could not be read.")
 		}
-		if in.GroupID == uuid.Nil {
-			return httpx.BadRequest("A tile belongs to a group.")
-		}
-		if _, err := s.Store.GroupByID(c.UserContext(), in.GroupID); err != nil {
-			return httpx.BadRequest("There is no such group.")
+		// Two kinds of tile: a number a group collected, or a project to go
+		// straight into.
+		if in.Kind == "project" {
+			if in.ProjectID == nil {
+				return httpx.BadRequest("A project tile has to name a project.")
+			}
+			p, err := s.Store.ProjectByID(c.UserContext(), *in.ProjectID)
+			if err != nil || !access.CanReadProject(auth.From(c), p) {
+				return httpx.BadRequest("There is no such project.")
+			}
+			in.GroupID = uuid.Nil
+		} else {
+			if in.GroupID == uuid.Nil {
+				return httpx.BadRequest("A tile belongs to a group.")
+			}
+			if _, err := s.Store.GroupByID(c.UserContext(), in.GroupID); err != nil {
+				return httpx.BadRequest("There is no such group.")
+			}
 		}
 		created, err := s.Store.CreateTile(c.UserContext(), auth.From(c).User.ID, in)
 		if err != nil {

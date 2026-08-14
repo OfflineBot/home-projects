@@ -268,13 +268,26 @@ function CreateAccount({
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind?.title} />
       </Field>
       {kind?.fields.map((f) => (
-        <Field key={f.name} label={f.label}>
-          <input
-            type={f.type === "password" ? "password" : f.type === "number" ? "number" : "text"}
-            placeholder={f.placeholder}
-            value={config[f.name] ?? ""}
-            onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
-          />
+        <Field key={f.name} label={f.label} hint={f.hint}>
+          {f.options?.length ? (
+            <select
+              value={config[f.name] ?? String(f.default ?? f.options[0].value)}
+              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
+            >
+              {f.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={f.type === "password" ? "password" : f.type === "number" ? "number" : "text"}
+              placeholder={f.placeholder}
+              value={config[f.name] ?? ""}
+              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
+            />
+          )}
         </Field>
       ))}
       {kind?.secretLabel ? (
@@ -444,12 +457,25 @@ function EditAccount({
 
       {(kind?.fields ?? []).map((f) => (
         <Field key={f.name} label={f.label} hint={f.hint}>
-          <input
-            type={f.type === "number" ? "number" : "text"}
-            placeholder={f.placeholder}
-            value={config[f.name] ?? ""}
-            onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
-          />
+          {f.options?.length ? (
+            <select
+              value={config[f.name] ?? String(f.default ?? f.options[0].value)}
+              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
+            >
+              {f.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={f.type === "password" ? "password" : f.type === "number" ? "number" : "text"}
+              placeholder={f.placeholder}
+              value={config[f.name] ?? ""}
+              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
+            />
+          )}
         </Field>
       ))}
       <p className="meta">The password is not shown and is not touched by this.</p>

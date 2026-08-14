@@ -90,6 +90,23 @@ describe("every screen draws something", () => {
     await draw(<Dashboard />, /Dashboard|Nothing pinned/i);
   });
 
+  // A tile that is a project: the way straight back in, which is what the page
+  // is opened for. It is drawn from two answers at once — the tiles and the
+  // projects — so it fails if either is missing.
+  it("a project on the dashboard", async () => {
+    const tile = await api<{ id: string }>("/api/dashboard/tiles", {
+      body: { kind: "project", projectId: project.id, title: "straight in" },
+    });
+    try {
+      const c = await draw(<Dashboard />, /straight in/i);
+      expect(c.querySelector(".project-tile")).not.toBeNull();
+      expect(c.textContent).toContain("Open");
+      expect(c.textContent).not.toMatch(/could not be drawn|That project is gone/i);
+    } finally {
+      await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
+    }
+  });
+
   it("groups", async () => {
     await draw(<Groups />, new RegExp(group.title, "i"));
   });

@@ -224,20 +224,23 @@ func (s *Store) DeleteGroupVariable(ctx context.Context, id uuid.UUID) error {
 
 // ---------------------------------------------------------------- dashboard
 
-const tileCols = `t.id, t.group_id, t.variable, t.title, t.kind, t.options, t.x, t.y, t.w, t.h`
+const tileCols = `t.id, COALESCE(t.group_id, '00000000-0000-0000-0000-000000000000'::uuid), t.project_id,
+	t.variable, t.title, t.kind, t.options, t.x, t.y, t.w, t.h`
 
 func scanTile(r scanner) (*model.DashboardTile, error) {
 	var t model.DashboardTile
-	if err := r.Scan(&t.ID, &t.GroupID, &t.Variable, &t.Title, &t.Kind, &t.Options,
-		&t.X, &t.Y, &t.W, &t.H, &t.GroupSlug); err != nil {
+	if err := r.Scan(&t.ID, &t.GroupID, &t.ProjectID, &t.Variable, &t.Title, &t.Kind, &t.Options,
+		&t.X, &t.Y, &t.W, &t.H, &t.GroupSlug, &t.ProjectSlug); err != nil {
 		return nil, norm(err)
 	}
 	return &t, nil
 }
 
 func (s *Store) ListTiles(ctx context.Context, ownerID uuid.UUID) ([]model.DashboardTile, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+tileCols+`, COALESCE(g.slug,'')
-		FROM dashboard_tiles t LEFT JOIN groups g ON g.id=t.group_id
+	rows, err := s.pool.Query(ctx, `SELECT `+tileCols+`, COALESCE(g.slug,''), COALESCE(p.slug,'')
+		FROM dashboard_tiles t
+		LEFT JOIN groups g ON g.id=t.group_id
+		LEFT JOIN projects p ON p.id=t.project_id
 		WHERE t.owner_id=$1 ORDER BY t.y, t.x`, ownerID)
 	if err != nil {
 		return nil, norm(err)
@@ -264,16 +267,24 @@ func (s *Store) CreateTile(ctx context.Context, ownerID uuid.UUID, t model.Dashb
 	if t.H <= 0 {
 		t.H = 1
 	}
+	// A project tile has no group of its own, and a number tile has no project.
+	var group any = t.GroupID
+	if t.GroupID == uuid.Nil {
+		group = nil
+	}
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO dashboard_tiles (owner_id, group_id, variable, title, kind, options, x, y, w, h)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-		ownerID, t.GroupID, t.Variable, t.Title, t.Kind, t.Options, t.X, t.Y, t.W, t.H).Scan(&id)
+		INSERT INTO dashboard_tiles (owner_id, group_id, project_id, variable, title, kind, options, x, y, w, h)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+		ownerID, group, t.ProjectID, t.Variable, t.Title, t.Kind, t.Options,
+		t.X, t.Y, t.W, t.H).Scan(&id)
 	if err != nil {
 		return nil, norm(err)
 	}
-	return scanTile(s.pool.QueryRow(ctx, `SELECT `+tileCols+`, COALESCE(g.slug,'')
-		FROM dashboard_tiles t LEFT JOIN groups g ON g.id=t.group_id WHERE t.id=$1`, id))
+	return scanTile(s.pool.QueryRow(ctx, `SELECT `+tileCols+`, COALESCE(g.slug,''), COALESCE(p.slug,'')
+		FROM dashboard_tiles t
+		LEFT JOIN groups g ON g.id=t.group_id
+		LEFT JOIN projects p ON p.id=t.project_id WHERE t.id=$1`, id))
 }
 
 type TilePatch struct {

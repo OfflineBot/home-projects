@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/mail"
 	"net/smtp"
 	"path"
@@ -65,7 +66,14 @@ func (Capability) AccountKinds() []capability.AccountKind {
 		Title:       "Mail (IMAP/SMTP)",
 		Description: "Fetches with IMAP and sends with SMTP. The password is single-use: a failed sign-in deletes it, because mail servers lock accounts too.",
 		Fields: []capability.AccountField{
-			{Name: "host", Label: "IMAP server", Type: "text", Required: true, Placeholder: "imap.example.com"},
+			{Name: "protocol", Label: "How", Type: "select", Default: "imap",
+				Options: []capability.Option{
+					{Value: "imap", Label: "IMAP"},
+					{Value: "ews", Label: "Exchange (EWS)"},
+				},
+				Hint: "Exchange is for the servers that have no IMAP — a university or a company."},
+			{Name: "host", Label: "IMAP server", Type: "text", Required: true, Placeholder: "imap.example.com",
+				Hint: "With Exchange, the address of the webmail: webmail.example.de"},
 			{Name: "port", Label: "IMAP port", Type: "number", Placeholder: "993"},
 			{Name: "user", Label: "User", Type: "text", Required: true},
 			{Name: "from", Label: "Sender address", Type: "text"},
@@ -74,42 +82,41 @@ func (Capability) AccountKinds() []capability.AccountKind {
 		},
 		Providers: []capability.Provider{
 			{Name: "gmail", Title: "Gmail", Fields: map[string]string{
-				"host": "imap.gmail.com", "port": "993",
+				"protocol": "imap", "host": "imap.gmail.com", "port": "993",
 				"smtpHost": "smtp.gmail.com", "smtpPort": "587",
 			}, Note: "Gmail refuses your normal password: make an app password with two-factor on."},
 			{Name: "outlook", Title: "Outlook / Microsoft 365", Fields: map[string]string{
-				"host": "outlook.office365.com", "port": "993",
+				"protocol": "imap", "host": "outlook.office365.com", "port": "993",
 				"smtpHost": "smtp.office365.com", "smtpPort": "587",
 			}, Note: "Works where the organisation still allows IMAP; many switch it off."},
 			{Name: "gmx", Title: "GMX", Fields: map[string]string{
-				"host": "imap.gmx.net", "port": "993",
+				"protocol": "imap", "host": "imap.gmx.net", "port": "993",
 				"smtpHost": "mail.gmx.net", "smtpPort": "587",
 			}, Note: "IMAP has to be switched on once in the GMX settings."},
 			{Name: "webde", Title: "WEB.DE", Fields: map[string]string{
-				"host": "imap.web.de", "port": "993",
+				"protocol": "imap", "host": "imap.web.de", "port": "993",
 				"smtpHost": "smtp.web.de", "smtpPort": "587",
 			}, Note: "IMAP has to be switched on once in the WEB.DE settings."},
 			{Name: "posteo", Title: "Posteo", Fields: map[string]string{
-				"host": "posteo.de", "port": "993",
+				"protocol": "imap", "host": "posteo.de", "port": "993",
 				"smtpHost": "posteo.de", "smtpPort": "587",
 			}},
 			{Name: "mailbox", Title: "mailbox.org", Fields: map[string]string{
-				"host": "imap.mailbox.org", "port": "993",
+				"protocol": "imap", "host": "imap.mailbox.org", "port": "993",
 				"smtpHost": "smtp.mailbox.org", "smtpPort": "587",
 			}},
 			{Name: "icloud", Title: "iCloud", Fields: map[string]string{
-				"host": "imap.mail.me.com", "port": "993",
+				"protocol": "imap", "host": "imap.mail.me.com", "port": "993",
 				"smtpHost": "smtp.mail.me.com", "smtpPort": "587",
 			}, Note: "Needs an app-specific password from appleid.apple.com."},
 			{Name: "dhbw", Title: "DHBW Ravensburg", Fields: map[string]string{
-				"host": "webmail.dhbw-ravensburg.de", "port": "993",
-				"smtpHost": "webmail.dhbw-ravensburg.de", "smtpPort": "587",
-			}, Note: "Measured from here: that server answers on neither IMAP port, only on Exchange " +
-				"web services. Until this speaks EWS, the address cannot be fetched — the fields are " +
-				"filled in for the day it can."},
+				"protocol": "ews", "host": "webmail.dhbw-ravensburg.de",
+			}, Note: "That server has no IMAP — it is fetched and sent over Exchange. " +
+				"The user name is the one from Moodle, without a domain in front."},
 		},
 		SecretLabel: "Password",
 		Locks:       true,
+		Precheck:    precheckMail,
 		Test:        testMailAccount,
 	}}
 }
@@ -142,6 +149,9 @@ func (Capability) Actions() []capability.Action {
 // ---------------------------------------------------------------- fetching
 
 type config struct {
+	// Protocol is "imap" or "ews". Empty means IMAP, which is what nearly every
+	// mailbox speaks; "ews" is for the Exchange servers that have no IMAP at all.
+	Protocol string `json:"protocol"`
 	Host     string `json:"host"`
 	Port     any    `json:"port"`
 	User     string `json:"user"`
@@ -183,6 +193,9 @@ func readConfig(a *model.Account) (config, error) {
 		return cfg, fmt.Errorf("the account's settings cannot be read: %w", err)
 	}
 	if cfg.Host == "" {
+		if cfg.isEWS() {
+			return cfg, fmt.Errorf("the account has no webmail address")
+		}
 		return cfg, fmt.Errorf("the account has no IMAP server")
 	}
 	if cfg.User == "" {
@@ -191,10 +204,51 @@ func readConfig(a *model.Account) (config, error) {
 	return cfg, nil
 }
 
+// precheckMail answers what can be answered without the password: whether
+// there is anything at that address listening at all. A mail server that never
+// answers would otherwise eat the password on every attempt — and on a
+// university's Exchange, repeated attempts lock the account for everything
+// else too.
+func precheckMail(ctx context.Context, env *capability.Env, a *model.Account) error {
+	cfg, err := readConfig(a)
+	if err != nil {
+		return err
+	}
+	if cfg.isEWS() {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.ewsURL(), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+		if err != nil {
+			return fmt.Errorf("%s does not answer", cfg.ewsURL())
+		}
+		defer resp.Body.Close()
+		// 401 is the healthy answer here: the service is there and wants a
+		// sign-in, which is the next step and not this one.
+		if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode >= 300 {
+			return fmt.Errorf("%s answered %d instead of asking for a sign-in",
+				cfg.ewsURL(), resp.StatusCode)
+		}
+		return nil
+	}
+	address := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.imapPort()))
+	conn, err := net.DialTimeout("tcp", address, 12*time.Second)
+	if err != nil {
+		return fmt.Errorf("%s does not answer — if this is a university or company mailbox, "+
+			"it may have no IMAP at all; try Exchange (EWS) instead", address)
+	}
+	conn.Close()
+	return nil
+}
+
 func testMailAccount(ctx context.Context, env *capability.Env, a *model.Account, secret []byte) error {
 	cfg, err := readConfig(a)
 	if err != nil {
 		return err
+	}
+	if cfg.isEWS() {
+		return ewsPing(ctx, cfg, cfg.User, string(secret))
 	}
 	client, err := dialIMAP(cfg.Host, cfg.imapPort(), true, 30*time.Second)
 	if err != nil {
@@ -225,28 +279,41 @@ func runFetch(ctx context.Context, env *capability.Env, job capability.Job) (cap
 		count = 50
 	}
 
-	job.Log("connecting to %s:%d", cfg.Host, cfg.imapPort())
-	client, err := dialIMAP(cfg.Host, cfg.imapPort(), true, 30*time.Second)
-	if err != nil {
-		return capability.Report{}, err
-	}
-	defer client.Close()
+	var messages []Message
+	if cfg.isEWS() {
+		// Exchange without IMAP: the same single attempt, over its own web
+		// services. Everything after this point is identical.
+		job.Log("connecting to %s", cfg.ewsURL())
+		found, err := ewsFetchLatest(ctx, cfg, cfg.User, string(job.Secret), mailbox, count)
+		if err != nil {
+			return capability.Report{}, err
+		}
+		job.Log("signed in as %s", cfg.User)
+		messages = found
+	} else {
+		job.Log("connecting to %s:%d", cfg.Host, cfg.imapPort())
+		client, err := dialIMAP(cfg.Host, cfg.imapPort(), true, 30*time.Second)
+		if err != nil {
+			return capability.Report{}, err
+		}
+		defer client.Close()
 
-	// This is the one attempt. Anything other than a tagged OK counts as used.
-	if err := client.Login(cfg.User, string(job.Secret)); err != nil {
-		return capability.Report{}, err
-	}
-	job.Log("signed in as %s", cfg.User)
+		// This is the one attempt. Anything other than a tagged OK counts as used.
+		if err := client.Login(cfg.User, string(job.Secret)); err != nil {
+			return capability.Report{}, err
+		}
+		job.Log("signed in as %s", cfg.User)
 
-	exists, err := client.Select(mailbox)
-	if err != nil {
-		return capability.Report{Authenticated: true}, err
+		exists, err := client.Select(mailbox)
+		if err != nil {
+			return capability.Report{Authenticated: true}, err
+		}
+		messages, err = client.FetchLatest(exists, count)
+		if err != nil {
+			return capability.Report{Authenticated: true}, err
+		}
+		client.Logout()
 	}
-	messages, err := client.FetchLatest(exists, count)
-	if err != nil {
-		return capability.Report{Authenticated: true}, err
-	}
-	client.Logout()
 
 	target := job.Scheduler.TargetPath
 	if target == "" {
@@ -557,11 +624,16 @@ func send(ctx context.Context, env *capability.Env, accountID uuid.UUID, to, sub
 	if err != nil {
 		return httpx.BadRequest("%v", err)
 	}
-	if cfg.SMTPHost == "" {
+	if cfg.SMTPHost == "" && !cfg.isEWS() {
 		return httpx.BadRequest("This account has no SMTP server, so nothing can be sent through it.")
 	}
 	if to == "" {
 		return httpx.BadRequest("A mail needs a recipient.")
+	}
+	if cfg.isEWS() && cfg.SMTPHost == "" {
+		return env.UseAccount(ctx, accountID, func(secret []byte) error {
+			return ewsSend(ctx, cfg, cfg.User, string(secret), to, subject, body)
+		})
 	}
 	from := cfg.From
 	if from == "" {

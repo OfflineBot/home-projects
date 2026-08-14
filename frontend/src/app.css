@@ -189,6 +189,14 @@ a.tile:hover { text-decoration: none; border-color: var(--tile-color, var(--acce
 .tile .sub { color: var(--ctp-subtext0); font-size: 13px; }
 .tile-foot { margin-top: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
+/* The handles on a tile stay out of the way until the tile is under the
+   pointer: a dashboard is for reading, not for its own buttons. */
+.tile-tools { display: flex; gap: 2px; opacity: 0; transition: opacity .12s ease; }
+.tile:hover .tile-tools, .tile:focus-within .tile-tools { opacity: 1; }
+.project-tile h3 a { display: inline-flex; align-items: center; gap: 7px; color: inherit; text-decoration: none; }
+.project-tile h3 a:hover { text-decoration: underline; }
+.tile-numbers { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 12px; }
+
 /* Controls sit on the object, and nothing is hover-only: the menu button is
  * always visible and large enough for a finger. */
 .tile-menu { position: absolute; top: 10px; right: 10px; }

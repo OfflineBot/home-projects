@@ -135,6 +135,14 @@ type AccountField struct {
 	Default any `json:"default,omitempty"`
 	// Hint explains the consequence, not the field.
 	Hint string `json:"hint,omitempty"`
+	// Options make the field a choice instead of a line to type into.
+	Options []Option `json:"options,omitempty"`
+}
+
+// Option is one entry of a field that is a choice.
+type Option struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 // AccountKind is one entry in the accounts menu. Credentials live there and

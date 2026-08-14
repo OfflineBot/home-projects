@@ -279,17 +279,21 @@ type GroupVariable struct {
 }
 
 type DashboardTile struct {
-	ID        uuid.UUID       `json:"id"`
-	GroupID   uuid.UUID       `json:"groupId"`
-	GroupSlug string          `json:"groupSlug,omitempty"`
-	Variable  string          `json:"variable"`
-	Title     string          `json:"title"`
-	Kind      string          `json:"kind"`
-	Options   json.RawMessage `json:"options"`
-	X         int             `json:"x"`
-	Y         int             `json:"y"`
-	W         int             `json:"w"`
-	H         int             `json:"h"`
+	ID        uuid.UUID `json:"id"`
+	GroupID   uuid.UUID `json:"groupId"`
+	GroupSlug string    `json:"groupSlug,omitempty"`
+	// ProjectID is set when the tile is a project rather than a number: a way
+	// straight into the thing itself, which is half of what a dashboard is for.
+	ProjectID   *uuid.UUID      `json:"projectId,omitempty"`
+	ProjectSlug string          `json:"projectSlug,omitempty"`
+	Variable    string          `json:"variable"`
+	Title       string          `json:"title"`
+	Kind        string          `json:"kind"`
+	Options     json.RawMessage `json:"options"`
+	X           int             `json:"x"`
+	Y           int             `json:"y"`
+	W           int             `json:"w"`
+	H           int             `json:"h"`
 }
 
 // AuditEntry is what the security page lists.

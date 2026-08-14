@@ -301,6 +301,11 @@ export interface SchedulerKind {
   options?: AccountField[];
 }
 
+export interface FieldOption {
+  value: string;
+  label: string;
+}
+
 export interface AccountField {
   name: string;
   label: string;
@@ -310,6 +315,7 @@ export interface AccountField {
   /** What the field means when nothing was said — the box shows what the server does. */
   default?: unknown;
   hint?: string;
+  options?: FieldOption[];
 }
 
 export interface Provider {
