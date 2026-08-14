@@ -43,6 +43,7 @@ func (s *Server) Mount(app *fiber.App) {
 	s.mountGitTransport(app)
 	// Static sites are served from the project files, outside /api as well.
 	s.mountSites(app)
+	s.mountOnewayPublic(app)
 
 	api := app.Group("/api", s.Auth.Attach())
 

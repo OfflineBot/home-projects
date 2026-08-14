@@ -159,3 +159,33 @@ func TestClaimedOnce(t *testing.T) {
 		t.Errorf("the rest went to %q and %q", plan[1].Project, plan[2].Project)
 	}
 }
+
+// A list is the answer to "these three, into that project" — a sentence people
+// say, and one rule per line is not.
+func TestList(t *testing.T) {
+	rules, bad := ParseText("[alpha, beta gamma, delta*] -> {G/p}")
+	if len(bad) != 0 || len(rules) != 1 {
+		t.Fatalf("rules=%v bad=%v", rules, bad)
+	}
+	items := []Item{
+		{Name: "alpha"},
+		{Name: "beta gamma"},
+		{Name: "delta something"},
+		{Name: "epsilon"},
+	}
+	var got []string
+	for i, d := range Plan(rules, items) {
+		if d.Matched {
+			got = append(got, items[i].Name)
+		}
+	}
+	if strings.Join(got, "|") != "alpha|beta gamma|delta something" {
+		t.Errorf("matched %v", got)
+	}
+
+	// And it survives being written back out as one line.
+	again, _ := ParseText(Text(rules))
+	if len(again) != 1 || again[0].Match != "[alpha, beta gamma, delta*]" {
+		t.Errorf("the list did not survive: %+v", again)
+	}
+}

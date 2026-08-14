@@ -136,6 +136,20 @@ func Destinations(to string) (project, folder string, skip bool) {
 
 func (r Rule) matches(item Item) bool {
 	needle := strings.TrimSpace(r.Match)
+	// A list matches if any of its entries does: [one, two, three] is the
+	// answer to "these three folders, into that project", which is a sentence
+	// people say and a rule per line is not.
+	if strings.HasPrefix(needle, "[") && strings.HasSuffix(needle, "]") {
+		for _, part := range strings.Split(needle[1:len(needle)-1], ",") {
+			if part = strings.TrimSpace(part); part == "" {
+				continue
+			}
+			if (Rule{Match: part}).matches(item) {
+				return true
+			}
+		}
+		return false
+	}
 	// A pattern between slashes is a regular expression.
 	if len(needle) > 1 && strings.HasPrefix(needle, "/") && strings.HasSuffix(needle, "/") {
 		re, err := regexp.Compile("(?i)" + needle[1:len(needle)-1])

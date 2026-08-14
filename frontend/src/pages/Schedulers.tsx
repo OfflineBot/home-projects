@@ -4,6 +4,7 @@ import { Empty, ErrorBox, Field, Modal, Spinner, formatDate } from "../component
 import {
   api,
   type Account,
+  type Filter,
   type Project,
   type Scheduler,
   type SchedulerKind,
@@ -107,6 +108,7 @@ export default function Schedulers() {
               {s.schedule === "manual" ? "by hand only" : s.schedule}
               {s.nextRun ? ` · next ${formatDate(s.nextRun)}` : ""}
               {s.accountName ? ` · ${s.accountName}` : ""}
+              {s.filterName ? ` · ${s.filterName}` : ""}
             </div>
             {s.pausedReason ? <div className="warning" style={{ margin: 0 }}>{s.pausedReason}</div> : null}
             <div className="tile-foot">
@@ -259,6 +261,7 @@ function SchedulerDialog({
 }) {
   const projects = useQuery<{ projects: Project[] }>("/api/projects");
   const accounts = useQuery<{ accounts: Account[] }>("/api/accounts");
+  const filters = useQuery<{ filters: Filter[] }>("/api/filters");
   const [form, setForm] = useState({
     kind: existing?.kind ?? kinds[0]?.name ?? "",
     projectId: existing?.projectId ?? "",
@@ -266,6 +269,7 @@ function SchedulerDialog({
     title: existing?.title ?? "",
     schedule: existing?.schedule ?? "0 */6 * * *",
     targetPath: existing?.targetPath ?? "",
+    filterId: existing?.filterId ?? "",
     enabled: existing?.enabled ?? true,
   });
   // Each kind says what it can be told; this holds those answers.
@@ -294,6 +298,7 @@ function SchedulerDialog({
             schedule: form.schedule,
             targetPath: form.targetPath,
             accountId: form.accountId,
+            filterId: form.filterId,
             enabled: form.enabled,
             options,
           },
@@ -304,6 +309,7 @@ function SchedulerDialog({
             kind: form.kind,
             projectId: form.projectId,
             accountId: form.accountId,
+            filterId: form.filterId,
             title: form.title,
             schedule: form.schedule,
             targetPath: form.targetPath,
@@ -437,6 +443,20 @@ function SchedulerDialog({
           </Field>
         ),
       )}
+
+      <Field
+        label="Filter"
+        hint="Sorts what this fetches straight away — no project in between."
+      >
+        <select value={form.filterId} onChange={(e) => setForm({ ...form, filterId: e.target.value })}>
+          <option value="">— none —</option>
+          {(filters.data?.filters ?? []).map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.title}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <div className="row">
         <Field label="How often">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Spinner, useGuarded } from "../components/ui";
 import { api, type Filter, type FilterRule, type Project } from "../lib/api";
@@ -124,6 +124,8 @@ function FilterDialog({
     (existing?.rules ?? []).map(ruleLine).join("\n"),
   );
   const [preview, setPreview] = useState<string[]>(existing?.preview ?? []);
+  const [samples, setSamples] = useState<TryResult[]>([]);
+  const [ticked, setTicked] = useState<string[]>([]);
   const [what, setWhat] = useState("");
   const [how, setHow] = useState("starts");
   const [where, setWhere] = useState("");
@@ -134,8 +136,9 @@ function FilterDialog({
   const [busy, setBusy] = useState(false);
 
   const addresses = (projects.data?.projects ?? []).map((p) => `${p.groupSlug || "ungrouped"}/${p.slug}`);
-  // The names that are really in the projects being tried against.
-  const found = [...new Set((tried?.results ?? []).map((r) => r.name))].sort();
+  // What is really in the projects being tried against. Kept apart from the
+  // last "what would it do?", so editing a rule does not empty the choices.
+  const found = [...new Set(samples.map((r) => r.name))].sort();
 
   /** Writes the line, so nothing has to be typed or remembered. */
   const addRule = () => {
@@ -149,19 +152,36 @@ function FilterDialog({
     setText((t) => (t && !t.endsWith("\n") ? t + "\n" : t) + `${left} -> ${right}`.trimEnd() + "\n");
     setWhat("");
     setFolder("");
-    setTried(null);
   };
 
-  const tryIt = async (against = preview) => {
+  // What an existing filter is tried against is fetched as soon as it opens,
+  // so the choices are there before anything is clicked.
+  useEffect(() => {
+    if (preview.length) void tryIt(preview, text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const tryIt = async (against = preview, rules = text) => {
     try {
-      setTried(
-        await api<{ results: TryResult[]; unusable?: string[] }>("/api/filters/try", {
-          body: { text, projects: against },
-        }),
-      );
+      const res = await api<{ results: TryResult[]; unusable?: string[] }>("/api/filters/try", {
+        body: { text: rules, projects: against },
+      });
+      setTried(res);
+      if (res.results.length) setSamples(res.results);
+      return res;
     } catch (err) {
       setError(err as Error);
+      return null;
     }
+  };
+
+  /** The ticked entries, as one rule: [a, b, c] -> somewhere. */
+  const addTicked = () => {
+    if (!ticked.length) return;
+    const right = where === "folder" ? "./" + folder.replace(/^\.?\//, "") : where;
+    const left = ticked.length === 1 ? ticked[0] : `[${ticked.join(", ")}]`;
+    setText((t) => (t && !t.endsWith("\n") ? t + "\n" : t) + `${left} -> ${right}`.trimEnd() + "\n");
+    setTicked([]);
   };
 
   return (
@@ -272,10 +292,7 @@ function FilterDialog({
       <Field label="Rules">
         <textarea
           value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setTried(null);
-          }}
+          onChange={(e) => setText(e.target.value)}
           style={{ minHeight: 130, fontFamily: "var(--mono)", fontSize: 13 }}
         />
       </Field>
@@ -307,34 +324,67 @@ function FilterDialog({
         What would it do?
       </button>
 
-      {tried ? (
+      {samples.length ? (
         <div className="list" style={{ marginTop: 12 }}>
-          {tried.unusable?.map((u, i) => (
+          {tried?.unusable?.map((u, i) => (
             <div key={"u" + i} className="list-row">
               <span className="badge bad">not a rule</span>
               <span className="grow mono">{u}</span>
             </div>
           ))}
-          {tried.results.map((r, i) => (
-            <div key={i} className="list-row">
-              <Icon name={r.isDir ? "folder" : "file"} size={13} />
-              <span className="grow mono">
-                {r.name}
-                {r.where ? <span className="meta"> · {r.where}</span> : null}
-              </span>
-              <Icon name="chevronRight" size={13} />
-              <span className="mono">
-                {!r.matched ? (
-                  <span className="meta">no rule</span>
-                ) : r.skip ? (
-                  <span className="meta">left alone</span>
-                ) : (
-                  [r.project || "here", r.folder].filter(Boolean).join("/")
-                )}
-              </span>
-              {r.rule ? <span className="meta">{r.rule}</span> : null}
-            </div>
-          ))}
+          {samples.map((r, i) => {
+            const decided = tried?.results.find((x) => x.name === r.name && x.where === r.where);
+            return (
+              <div key={i} className="list-row">
+                <input
+                  type="checkbox"
+                  checked={ticked.includes(r.name)}
+                  onChange={(e) =>
+                    setTicked(e.target.checked ? [...ticked, r.name] : ticked.filter((n) => n !== r.name))
+                  }
+                />
+                <Icon name={r.isDir ? "folder" : "file"} size={13} />
+                <span className="grow mono">
+                  {r.name}
+                  {r.where ? <span className="meta"> · {r.where}</span> : null}
+                </span>
+                <span className="mono">
+                  {!decided?.matched ? (
+                    <span className="meta">—</span>
+                  ) : decided.skip ? (
+                    <span className="meta">left alone</span>
+                  ) : (
+                    [decided.project || "where the project says", decided.folder].filter(Boolean).join("/")
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {ticked.length ? (
+        <div className="builder" style={{ marginTop: 10 }}>
+          <span className="meta">{ticked.length} ticked →</span>
+          <select value={where} onChange={(e) => setWhere(e.target.value)}>
+            <option value="">where this project says</option>
+            <option value="skip">leave them alone</option>
+            <option value="folder">a folder here…</option>
+            {addresses.map((ref) => (
+              <option key={ref} value={"{" + ref + "}"}>
+                {ref}
+              </option>
+            ))}
+          </select>
+          {where === "folder" ? (
+            <input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="folder" />
+          ) : null}
+          <button className="btn small primary" onClick={addTicked}>
+            Make that a rule
+          </button>
+          <button className="btn small" onClick={() => setTicked([])}>
+            Clear
+          </button>
         </div>
       ) : null}
     </Modal>

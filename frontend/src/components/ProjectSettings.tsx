@@ -45,6 +45,9 @@ export default function ProjectSettings({
   const [preview, setPreview] = useState<any>(null);
   const [note, setNote] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
+  const [onewayKinds, setOnewayKinds] = useState<{ name: string; title: string }[]>([]);
+  const [onewayKind, setOnewayKind] = useState("");
+  const [onewayLink, setOnewayLink] = useState("");
 
   useEffect(() => {
     void api<{ groups: Group[] }>("/api/groups")
@@ -55,6 +58,9 @@ export default function ProjectSettings({
         .then((r) => setCandidates(r.candidates))
         .catch(() => undefined);
     }
+    void api<{ kinds: { name: string; title: string }[] }>(`/api/projects/${project.id}/oneway`)
+      .then((r) => setOnewayKinds(r.kinds))
+      .catch(() => undefined);
   }, [project.id, project.capabilities]);
 
   const save = async () => {
@@ -467,6 +473,39 @@ export default function ProjectSettings({
         />
         <span>Archive — out of the listings, still readable, data stays.</span>
       </label>
+
+      <Field
+        label="One-way drop-off"
+        hint="A link that lets someone hand over their material without an account here. Nothing is stored — no account, no password."
+      >
+        <div className="builder">
+          <select value={onewayKind} onChange={(e) => setOnewayKind(e.target.value)}>
+            <option value="">— what they have —</option>
+            {onewayKinds.map((k) => (
+              <option key={k.name} value={k.name}>
+                {k.title}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn small"
+            disabled={!onewayKind}
+            onClick={async () => {
+              try {
+                const res = await api<{ url: string }>(`/api/projects/${project.id}/oneway/link`, {
+                  body: { kind: onewayKind, days: 7 },
+                });
+                setOnewayLink(res.url);
+              } catch (err) {
+                setError(err as Error);
+              }
+            }}
+          >
+            Make a link
+          </button>
+        </div>
+        {onewayLink ? <Copyable value={onewayLink} /> : null}
+      </Field>
 
       <Field label="Filters" hint="Rules that sort what lands here. Written once under Filters.">
         <ProjectFilters project={project} />

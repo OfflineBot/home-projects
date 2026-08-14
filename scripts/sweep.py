@@ -495,6 +495,26 @@ def main() -> int:
     if formula:
         c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
 
+    # --------------------------------------------------------------- one-way
+    # Someone hands their material over without having an account here: a link,
+    # a form, one sign-in, nothing stored.
+    kinds = c.call("GET", f"/api/projects/{data}/oneway")
+    check(bool(kinds) and any(k["name"] == "moodle" for k in kinds["kinds"]),
+          "a project can say what may be dropped off into it")
+    drop = c.call("POST", f"/api/projects/{data}/oneway/link", {"kind": "moodle", "days": 1})
+    check(bool(drop) and "/oneway/" in drop.get("url", ""), "and hand out a link for it")
+    if drop:
+        path = "/oneway/" + drop["url"].split("/oneway/")[1]
+        page = c.call("GET", path)
+        check(isinstance(page, str) and 'name="secret"' in page and "<form" in page,
+              "the link shows a form and nothing else")
+        # A made-up token opens nothing.
+        c.call("GET", "/oneway/not-a-real-token", expect=404)
+        # And the form refuses an empty password rather than trying one.
+        c.call("POST", path, raw=b"url=https://example.com&user=x&secret=",
+               content_type="application/x-www-form-urlencoded", expect=400)
+    c.call("POST", f"/api/projects/{data}/oneway/link", {"kind": "nonsense"}, expect=400)
+
     # ---------------------------------------------------------- emptying a project
     # A project can be emptied without being deleted — with the password, and
     # with its name typed.
