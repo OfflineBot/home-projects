@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -142,10 +143,50 @@ func (in filterInput) rules() ([]filter.Rule, []string) {
 	return in.Rules, nil
 }
 
-// mountProjectFilter is the other half: running a project's own files through a
-// filter. It answers with what it would do unless told to do it, because moving
-// files is not something to discover afterwards.
+// mountProjectFilter is the other half: a project says which filters it uses,
+// and runs them over its own files. It answers with what it would do unless
+// told to do it, because moving files is not something to discover afterwards.
 func (s *Server) mountProjectFilter(r fiber.Router) {
+	r.Get("/filters", func(c *fiber.Ctx) error {
+		p := project(c)
+		list, err := s.Store.FiltersForProject(c.UserContext(), p.ID)
+		if err != nil {
+			return httpx.Internal("the project's filters could not be read").WithCause(err)
+		}
+		return c.JSON(fiber.Map{"filters": list})
+	})
+
+	r.Post("/filters", requireOwner, func(c *fiber.Ctx) error {
+		p := project(c)
+		var in struct {
+			Filter    string `json:"filter"`
+			Automatic bool   `json:"automatic"`
+		}
+		if err := c.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The request could not be read.")
+		}
+		f, err := s.filterOf(c, in.Filter)
+		if err != nil {
+			return err
+		}
+		if err := s.Store.AddFilterToProject(c.UserContext(), p.ID, f.ID, in.Automatic); err != nil {
+			return httpx.Internal("the filter could not be added").WithCause(err)
+		}
+		return c.Status(fiber.StatusCreated).JSON(f)
+	})
+
+	r.Delete("/filters/:id", requireOwner, func(c *fiber.Ctx) error {
+		p := project(c)
+		id, err := uuid.Parse(c.Params("id"))
+		if err != nil {
+			return httpx.BadRequest("That is not a filter id.")
+		}
+		if err := s.Store.RemoveFilterFromProject(c.UserContext(), p.ID, id); err != nil {
+			return httpx.Internal("the filter could not be removed").WithCause(err)
+		}
+		return httpx.OK(c)
+	})
+
 	r.Post("/filter", func(c *fiber.Ctx) error {
 		p := project(c)
 		var in struct {
@@ -161,9 +202,29 @@ func (s *Server) mountProjectFilter(r fiber.Router) {
 				return err
 			}
 		}
-		rules, err := s.rulesOf(c, in.Filter)
-		if err != nil {
-			return err
+		// Without a name, the project runs the filters it has picked up, in
+		// order — what an earlier one takes, a later one does not see.
+		var rules []filter.Rule
+		if strings.TrimSpace(in.Filter) != "" {
+			named, err := s.rulesOf(c, in.Filter)
+			if err != nil {
+				return err
+			}
+			rules = named
+		} else {
+			mine, err := s.Store.FiltersForProject(c.UserContext(), p.ID)
+			if err != nil {
+				return httpx.Internal("the project's filters could not be read").WithCause(err)
+			}
+			for _, f := range mine {
+				var part []filter.Rule
+				if json.Unmarshal(f.Rules, &part) == nil {
+					rules = append(rules, part...)
+				}
+			}
+			if len(rules) == 0 {
+				return httpx.BadRequest("This project has no filters yet. Add one first.")
+			}
 		}
 
 		// One level: the folders and files where you are standing. That is what
@@ -287,4 +348,121 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// filterOf resolves a filter by id or slug for the routes that need the whole
+// thing rather than its rules.
+func (s *Server) filterOf(c *fiber.Ctx, ref string) (*model.Filter, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil, httpx.BadRequest("Which filter?")
+	}
+	if id, err := uuid.Parse(ref); err == nil {
+		f, err := s.Store.FilterByID(c.UserContext(), id)
+		if err != nil {
+			return nil, httpx.NotFound("There is no such filter.")
+		}
+		return f, nil
+	}
+	f, err := s.Store.FilterBySlug(c.UserContext(), slug.Make(ref))
+	if err != nil {
+		return nil, httpx.NotFound("There is no filter called %q.", ref)
+	}
+	return f, nil
+}
+
+// SortProject runs the filters a project has picked up and marked automatic.
+//
+// It is the same walk the button does, without a request behind it: the
+// scheduler calls it after a run, and the core hands it to capabilities as
+// Env.SortProject so nothing outside this file knows what a filter is.
+func (s *Server) SortProject(ctx context.Context, p *model.Project) (int, error) {
+	mine, err := s.Store.FiltersForProject(ctx, p.ID)
+	if err != nil {
+		return 0, err
+	}
+	var rules []filter.Rule
+	for _, f := range mine {
+		if !f.Automatic {
+			continue
+		}
+		var part []filter.Rule
+		if json.Unmarshal(f.Rules, &part) == nil {
+			rules = append(rules, part...)
+		}
+	}
+	if len(rules) == 0 {
+		return 0, nil
+	}
+
+	fs := s.WS.Open(p.ID)
+	entries, err := fs.List("")
+	if err != nil {
+		return 0, err
+	}
+	items := make([]filter.Item, len(entries))
+	for i, e := range entries {
+		items[i] = filter.Item{Name: e.Name, Path: e.Path, IsDir: e.IsDir, Changed: e.ModifiedAt}
+	}
+
+	op := files.Op{Author: "the project's filters", Email: "filters@home-projects", Commit: true}
+	moved := 0
+	for i, d := range filter.Plan(rules, items) {
+		e := entries[i]
+		if !d.Matched || d.Skip {
+			continue
+		}
+		target := p
+		if d.Project != "" {
+			found, err := s.projectByRef(ctx, d.Project)
+			if err != nil {
+				continue // named a project that is not here; the button says so
+			}
+			target = found
+		}
+		dest := e.Name
+		if d.Folder != "" {
+			dest = d.Folder + "/" + e.Name
+		}
+		if target.ID == p.ID {
+			if dest == e.Path {
+				continue
+			}
+			if err := s.Files.Move(ctx, p, e.Path, dest, op); err == nil {
+				moved++
+			}
+			continue
+		}
+		if err := s.Files.Copy(ctx, p, e.Path, target, dest, op); err != nil {
+			continue
+		}
+		if err := s.Files.Remove(ctx, p, e.Path, e.IsDir, op); err == nil {
+			moved++
+		}
+	}
+	return moved, nil
+}
+
+// projectByRef finds a project named group/project or project, without a
+// request behind it.
+func (s *Server) projectByRef(ctx context.Context, ref string) (*model.Project, error) {
+	groupSlug, projectSlug := "", strings.Trim(strings.TrimSpace(ref), "/")
+	if a, b, ok := strings.Cut(projectSlug, "/"); ok {
+		groupSlug, projectSlug = a, b
+	}
+	all, err := s.Store.ListProjects(ctx, nil, false, true)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		p := all[i]
+		if !strings.EqualFold(p.Slug, projectSlug) && !strings.EqualFold(p.Title, projectSlug) {
+			continue
+		}
+		if groupSlug != "" && !strings.EqualFold(p.GroupSlug, groupSlug) {
+			continue
+		}
+		return &p, nil
+	}
+	return nil, httpx.NotFound("There is no project called %q.", ref)
 }

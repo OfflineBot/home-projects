@@ -197,6 +197,9 @@ func run() error {
 		Cfg: cfg, Store: st, Auth: auth.New(cfg, st), Files: fileSvc, Git: git,
 		WS: ws, Env: env, Sched: sched, Vars: vars, Bus: bus,
 	}
+	// The project sorts what arrives in it. This is wired here because the walk
+	// lives next to the button that does the same thing by hand.
+	env.SortProject = server.SortProject
 	server.Mount(app)
 
 	go func() {

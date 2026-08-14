@@ -337,6 +337,19 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 		return finish("error", runErr.Error(), report.FilesChanged)
 	}
 
+	// What arrived is now the project's business. A filter it picked up and
+	// marked automatic runs here — the scheduler never learns what a filter is,
+	// and a project nothing fetches into can use the same one by hand.
+	if report.FilesChanged > 0 && r.env.SortProject != nil {
+		moved, err := r.env.SortProject(ctx, project)
+		switch {
+		case err != nil:
+			logf("the project's own filters could not be run: %v", err)
+		case moved > 0:
+			logf("the project's filters moved %d thing(s) into place", moved)
+		}
+	}
+
 	for _, v := range report.Variables {
 		if v.Source == "" {
 			v.Source = "scheduler:" + sched.Kind

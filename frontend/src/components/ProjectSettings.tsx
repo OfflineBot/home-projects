@@ -3,6 +3,7 @@ import { api, type Group, type Project } from "../lib/api";
 import { useMeta } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon } from "./Icon";
+import ProjectFilters from "./ProjectFilters";
 import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, useGuarded } from "./ui";
 
 /** Everything the settings table in section 7 lists for a project. */
@@ -466,6 +467,10 @@ export default function ProjectSettings({
         />
         <span>Archive — out of the listings, still readable, data stays.</span>
       </label>
+
+      <Field label="Filters" hint="Rules that sort what lands here. Written once under Filters.">
+        <ProjectFilters project={project} />
+      </Field>
 
       {project.cloneUrl ? (
         <Field label="Clone">

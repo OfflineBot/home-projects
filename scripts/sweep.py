@@ -437,6 +437,17 @@ def main() -> int:
         # A line that is not a rule is refused rather than silently dropped.
         c.call("POST", "/api/filters", {"title": "broken", "text": "this is not a rule"}, expect=400)
 
+        # A project picks up the filters it wants; the filter itself belongs to
+        # nobody.
+        c.call("POST", f"/api/projects/{data}/filters", {"filter": fid, "automatic": True}, expect=201)
+        attached = c.call("GET", f"/api/projects/{data}/filters")
+        check(bool(attached) and any(x["id"] == fid and x["automatic"] for x in attached["filters"]),
+              "a project adds a filter, rather than being assigned one")
+        c.call("DELETE", f"/api/projects/{data}/filters/{fid}")
+        after = c.call("GET", f"/api/projects/{data}/filters")
+        check(bool(after) and not after["filters"], "and can drop it again")
+        c.call("POST", f"/api/projects/{data}/filters", {"filter": fid}, expect=201)
+
         # And a project can be run through one, saying what it would do first.
         c.call("PUT", f"/api/projects/{data}/files/content",
                {"path": "loose/Übung 3.txt", "content": "x"})

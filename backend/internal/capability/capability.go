@@ -44,6 +44,10 @@ type Env struct {
 	// does this belong?". It returns nil when the name is empty or unknown —
 	// the caller then puts things where it was going to anyway.
 	Router func(ctx context.Context, nameOrID string) func([]RouteItem) []RouteTo
+	// SortProject runs the filters a project has picked up and marked
+	// automatic, over its own files. The core fills it in; nothing here knows
+	// what a filter is.
+	SortProject func(ctx context.Context, p *model.Project) (int, error)
 }
 
 // Preset is the typed way into creating a project. A preset only ever sets
