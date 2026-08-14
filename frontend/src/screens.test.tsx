@@ -17,7 +17,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import GroupSettings from "./components/GroupSettings";
 import ProjectSettings from "./components/ProjectSettings";
 import { api, login, type Group, type Project } from "./lib/api";
+import { Route, Routes } from "react-router-dom";
 import FilesView from "./caps/FilesView";
+import ProjectPage from "./pages/ProjectPage";
 import Accounts from "./pages/Accounts";
 import Dashboard from "./pages/Dashboard";
 import FiltersPage from "./pages/Filters";
@@ -145,6 +147,52 @@ describe("every screen draws something", () => {
     );
     await waitFor(() => expect(view.container.querySelector(".prose h1")).not.toBeNull(), { timeout: 8000 });
     expect(view.container.querySelector(".prose h1")?.textContent).toBe("Oben");
+  });
+
+  // Not a project made for the test: every project that actually exists on the
+  // server, because the one that breaks is always the real one.
+  it("the settings of every project that exists", async () => {
+    const { projects } = await api<{ projects: Project[] }>("/api/projects");
+    for (const p of projects) {
+      const view = render(
+        <MemoryRouter>
+          <ProjectSettings project={p} onClose={() => {}} onChanged={() => {}} onDeleted={() => {}} />
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(view.container.textContent ?? "").toMatch(/Visibility/i), { timeout: 8000 });
+      const text = view.container.textContent ?? "";
+      if (/could not be drawn/i.test(text)) {
+        throw new Error(`settings for ${p.slug} failed: ${text.slice(0, 300)}`);
+      }
+      view.unmount();
+    }
+  });
+
+  // The project page itself, for every project and every one of its tabs —
+  // this is where an error box would show up, and a test that only renders the
+  // dialog would never see it.
+  it("every project page, and every tab it offers", async () => {
+    const { projects } = await api<{ projects: Project[] }>("/api/projects");
+    for (const p of projects) {
+      for (const tab of ["files", "git", ...p.capabilities]) {
+        const view = render(
+          <MemoryRouter initialEntries={[`/p/${p.id}?tab=${tab}`]}>
+            <Routes>
+              <Route path="/p/:project/*" element={<ProjectPage />} />
+            </Routes>
+          </MemoryRouter>,
+        );
+        await waitFor(() => expect(view.container.textContent ?? "").toMatch(new RegExp(p.title, "i")), {
+          timeout: 10000,
+        });
+        const text = view.container.textContent ?? "";
+        const complaint = /could not be drawn|Something went wrong|no endpoint|not right|cannot|failed/i.exec(text);
+        if (complaint) {
+          throw new Error(`${p.slug} · tab ${tab}: ${text.slice(0, 400)}`);
+        }
+        view.unmount();
+      }
+    }
   });
 
   it("a group's settings", async () => {

@@ -7,6 +7,7 @@ import { loadMeta, setUser, startSession, useSession } from "./lib/store";
 import Accounts from "./pages/Accounts";
 import Filters from "./pages/Filters";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { api } from "./lib/api";
 import Dashboard from "./pages/Dashboard";
 import GroupPage from "./pages/GroupPage";
 import Groups from "./pages/Groups";
@@ -153,6 +154,15 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("render failed", error, info.componentStack);
+    // And to the server log, so the person who can fix it sees the sentence
+    // rather than a description of it.
+    void api("/api/client-errors", {
+      body: {
+        message: error.message,
+        where: location.pathname + location.search,
+        stack: info.componentStack ?? error.stack ?? "",
+      },
+    }).catch(() => undefined);
   }
 
   render() {

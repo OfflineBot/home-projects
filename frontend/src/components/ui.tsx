@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ApiError, stepUp } from "../lib/api";
+import { ApiError, report, stepUp } from "../lib/api";
 import { Icon, type IconName } from "./Icon";
 
 export function Spinner() {
@@ -18,6 +18,20 @@ export function Spinner() {
 
 /** Errors are shown. Never a catch that swallows. */
 export function ErrorBox({ error, onRetry }: { error: ApiError | Error | null; onRetry?: () => void }) {
+  // A fault on the server, or no answer at all, is reported to the server log —
+  // the person who can fix it is not the one reading this box. A refusal (a 4xx
+  // with a sentence) is not a fault and stays where it is.
+  useEffect(() => {
+    if (!error) return;
+    const status = error instanceof ApiError ? error.status : 0;
+    if (status !== 0 && status < 500) return;
+    void report({
+      message: error.message,
+      where: location.pathname + location.search,
+      stack: (error instanceof ApiError ? `status ${error.status} ${error.code}` : error.stack) ?? "",
+    });
+  }, [error]);
+
   if (!error) return null;
   const api = error instanceof ApiError ? error : null;
   return (

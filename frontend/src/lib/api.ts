@@ -159,6 +159,18 @@ export async function logout() {
   }
 }
 
+/**
+ * report tells the server what the browser could not do. It is best-effort and
+ * silent: a failure to report a failure helps nobody.
+ */
+export async function report(what: { message: string; where: string; stack?: string }) {
+  try {
+    await api("/api/client-errors", { body: what, retry: false });
+  } catch {
+    /* nothing to be done about it here */
+  }
+}
+
 /** stepUp confirms the password again for a sensitive step. */
 export async function stepUp(password: string) {
   await api("/api/auth/step-up", { method: "POST", body: { password } });
