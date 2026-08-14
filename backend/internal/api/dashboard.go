@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -45,13 +46,48 @@ func (s *Server) mountDashboard(r fiber.Router) {
 		}
 
 		tiles := []model.DashboardTile{}
+		hidden := []store.Hidden{}
 		if actor.IsUser() {
 			tiles, err = s.Store.ListTiles(ctx, actor.User.ID)
 			if err != nil {
 				return httpx.Internal("the tiles could not be read").WithCause(err)
 			}
+			hidden, err = s.Store.ListHidden(ctx, actor.User.ID)
+			if err != nil {
+				return httpx.Internal("what was put away could not be read").WithCause(err)
+			}
 		}
-		return c.JSON(fiber.Map{"groups": blocks, "tiles": tiles})
+		return c.JSON(fiber.Map{"groups": blocks, "tiles": tiles, "hidden": hidden})
+	})
+
+	// Putting one thing away, and bringing it back. Not a deletion: the project
+	// keeps reporting, this page just stops showing it.
+	g.Post("/hidden", requireOwner, func(c *fiber.Ctx) error {
+		var in store.Hidden
+		if err := c.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The request could not be read.")
+		}
+		if in.Kind != "project" && in.Kind != "variable" {
+			return httpx.BadRequest("Only a project or a variable can be put away.")
+		}
+		if strings.TrimSpace(in.Ref) == "" {
+			return httpx.BadRequest("Nothing was named.")
+		}
+		if err := s.Store.Hide(c.UserContext(), auth.From(c).User.ID, in.Kind, in.Ref); err != nil {
+			return httpx.Internal("it could not be put away").WithCause(err)
+		}
+		return httpx.OK(c)
+	})
+
+	g.Delete("/hidden", requireOwner, func(c *fiber.Ctx) error {
+		kind, ref := c.Query("kind"), c.Query("ref")
+		if kind == "" || ref == "" {
+			return httpx.BadRequest("Nothing was named.")
+		}
+		if err := s.Store.Unhide(c.UserContext(), auth.From(c).User.ID, kind, ref); err != nil {
+			return httpx.Internal("it could not be brought back").WithCause(err)
+		}
+		return httpx.OK(c)
 	})
 
 	g.Post("/tiles", requireOwner, func(c *fiber.Ctx) error {

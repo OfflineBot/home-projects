@@ -806,6 +806,27 @@ def main() -> int:
         c.call("PATCH", f"/api/dashboard/tiles/{ptile['id']}", {"y": 3})
         c.call("DELETE", f"/api/dashboard/tiles/{ptile['id']}")
 
+    # ------------------------------------------------- putting one thing away
+    # Not only a whole group: a single project, and a single number.
+    c.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": made["data"]["id"]})
+    c.call("POST", "/api/dashboard/hidden", {"kind": "variable", "ref": made["data"]["id"] + ":files"})
+    c.call("POST", "/api/dashboard/hidden", {"kind": "group", "ref": "x"}, expect=400)
+    c.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": ""}, expect=400)
+    board = c.call("GET", "/api/dashboard") or {}
+    put_away = {(h["kind"], h["ref"]) for h in board.get("hidden", [])}
+    check(("project", made["data"]["id"]) in put_away, "a single project can be put away")
+    check(("variable", made["data"]["id"] + ":files") in put_away, "and a single number too")
+    # Twice is not an error, and it does not pile up.
+    c.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": made["data"]["id"]})
+    again = c.call("GET", "/api/dashboard") or {}
+    check(len(again.get("hidden", [])) == len(board.get("hidden", [])), "putting it away twice changes nothing")
+    c.call("DELETE", f"/api/dashboard/hidden?kind=project&ref={made['data']['id']}")
+    c.call("DELETE", f"/api/dashboard/hidden?kind=variable&ref={made['data']['id']}:files")
+    back = c.call("GET", "/api/dashboard") or {}
+    check(not [h for h in back.get("hidden", []) if h["ref"].startswith(made["data"]["id"])],
+          "and both come back")
+    anon.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": made["data"]["id"]}, expect=401)
+
     # ------------------------------------------------- a mailbox that is not there
     # The password is single-use, so a wrong server must be caught before it is
     # spent — that is what the precheck is for.

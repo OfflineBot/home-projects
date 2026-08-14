@@ -27,6 +27,12 @@ interface Block {
   derived: Derived[];
 }
 
+/** One thing somebody took off their dashboard. */
+interface Hidden {
+  kind: "project" | "variable";
+  ref: string;
+}
+
 /**
  * The dashboard is made of added groups. Every project exports variables into
  * its group, the group collects them, and the dashboard shows them — there is
@@ -34,7 +40,11 @@ interface Block {
  */
 export default function Dashboard() {
   const session = useSession();
-  const { data, error, loading, reload } = useQuery<{ groups: Block[]; tiles: Tile[] }>("/api/dashboard");
+  const { data, error, loading, reload } = useQuery<{
+    groups: Block[];
+    tiles: Tile[];
+    hidden: Hidden[];
+  }>("/api/dashboard");
   const projects = useQuery<{ projects: Project[] }>(session.user ? "/api/projects" : null);
   const [adding, setAdding] = useState(false);
   const [shut, setShut] = useState<Record<string, boolean>>(() => {
@@ -49,6 +59,21 @@ export default function Dashboard() {
     setShut(next);
     localStorage.setItem("dashboard.shut", JSON.stringify(next));
   };
+
+  // Putting something away and bringing it back. A project keeps reporting
+  // either way — this only decides what the page shows.
+  const hidden = data?.hidden ?? [];
+  const isHidden = (kind: Hidden["kind"], ref: string) =>
+    hidden.some((h) => h.kind === kind && h.ref === ref);
+  const hide = async (kind: Hidden["kind"], ref: string) => {
+    await api("/api/dashboard/hidden", { body: { kind, ref } });
+    reload();
+  };
+  const unhide = async (kind: string, ref: string) => {
+    await api(`/api/dashboard/hidden?kind=${kind}&ref=${encodeURIComponent(ref)}`, { method: "DELETE" });
+    reload();
+  };
+  const [showHidden, setShowHidden] = useState(false);
 
   // Tiles are kept in the order they are shown, so moving one is a swap of the
   // two positions and nothing else.
@@ -209,42 +234,134 @@ export default function Dashboard() {
               No project in this group reports anything yet.
             </p>
           ) : (
-            <div className="tiles">
-              {block.derived.map((d) => (
-                <div key={d.name} className="tile" style={{ ["--tile-color" as string]: colorVar(block.group.color) }}>
-                  <div className="sub">{d.op} · the group's own</div>
-                  <h3>{d.name}</h3>
-                  <div className="stat">
-                    {format(d.value)}
-                    {d.unit ? <span className="unit">{d.unit}</span> : null}
-                  </div>
-                  {d.error ? <div className="sub" style={{ color: "var(--ctp-peach)" }}>{d.error}</div> : null}
+            <>
+              {block.derived.filter((d) => !isHidden("variable", `${block.group.id}:${d.name}`)).length ? (
+                <div className="tiles">
+                  {block.derived
+                    .filter((d) => !isHidden("variable", `${block.group.id}:${d.name}`))
+                    .map((d) => (
+                      <div
+                        key={d.name}
+                        className="tile"
+                        style={{ ["--tile-color" as string]: colorVar(block.group.color) }}
+                      >
+                        <div className="tile-top">
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div className="sub">{d.op} · the group's own</div>
+                            <h3>{d.name}</h3>
+                          </div>
+                          {session.user ? (
+                            <div className="tile-tools">
+                              <button
+                                className="btn ghost icon"
+                                title="Take this off the dashboard"
+                                onClick={() => hide("variable", `${block.group.id}:${d.name}`)}
+                              >
+                                <Icon name="x" size={14} />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="stat">
+                          {format(d.value)}
+                          {d.unit ? <span className="unit">{d.unit}</span> : null}
+                        </div>
+                        {d.error ? <div className="sub" style={{ color: "var(--ctp-peach)" }}>{d.error}</div> : null}
+                      </div>
+                    ))}
                 </div>
-              ))}
-              {block.variables.map((v) => (
-                <div
-                  key={v.projectId + v.name}
-                  className="tile"
-                  style={{ ["--tile-color" as string]: colorVar(block.group.color) }}
-                >
-                  <div className="sub">{v.projectSlug}</div>
-                  <h3>{v.name}</h3>
-                  {v.error ? (
-                    <div className="sub" style={{ color: "var(--ctp-red)" }}>{v.error}</div>
-                  ) : (
-                    <VariableValue variable={v} />
-                  )}
-                  <div className="tile-foot">
-                    <span className="meta" style={{ color: "var(--ctp-overlay1)" }}>
-                      {formatDate(v.updatedAt)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+              ) : null}
+
+              {/* Per project, so a project that is finished can go in one move
+                  instead of one tile at a time. */}
+              {byProject(block)
+                .filter(([projectId]) => !isHidden("project", projectId))
+                .map(([projectId, list]) => {
+                  const shown = list.filter((v) => !isHidden("variable", `${projectId}:${v.name}`));
+                  if (!shown.length) return null;
+                  return (
+                    <div key={projectId} className="project-block">
+                      <div className="project-block-head">
+                        <Link to={`/groups/${block.group.slug}/${list[0].projectSlug}`}>
+                          {list[0].projectSlug}
+                        </Link>
+                        {session.user ? (
+                          <button
+                            className="btn ghost icon"
+                            title="Take this project off the dashboard"
+                            onClick={() => hide("project", projectId)}
+                          >
+                            <Icon name="x" size={13} />
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="tiles">
+                        {shown.map((v) => (
+                          <div
+                            key={v.projectId + v.name}
+                            className="tile"
+                            style={{ ["--tile-color" as string]: colorVar(block.group.color) }}
+                          >
+                            <div className="tile-top">
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <h3>{v.name}</h3>
+                              </div>
+                              {session.user ? (
+                                <div className="tile-tools">
+                                  <button
+                                    className="btn ghost icon"
+                                    title="Take this off the dashboard"
+                                    onClick={() => hide("variable", `${v.projectId}:${v.name}`)}
+                                  >
+                                    <Icon name="x" size={14} />
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            {v.error ? (
+                              <div className="sub" style={{ color: "var(--ctp-red)" }}>{v.error}</div>
+                            ) : (
+                              <VariableValue variable={v} />
+                            )}
+                            <div className="tile-foot">
+                              <span className="meta" style={{ color: "var(--ctp-overlay1)" }}>
+                                {formatDate(v.updatedAt)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+            </>
           )}
         </div>
       ))}
+
+      {/* Nothing disappears for good: what was put away is listed, with the way
+          back. */}
+      {session.user && hidden.length ? (
+        <div className="put-away">
+          <button className="btn ghost small" onClick={() => setShowHidden(!showHidden)}>
+            <Icon name={showHidden ? "chevronDown" : "chevronRight"} size={13} />
+            {hidden.length} put away
+          </button>
+          {showHidden ? (
+            <div className="list" style={{ marginTop: 8 }}>
+              {hidden.map((h) => (
+                <div key={h.kind + h.ref} className="list-row">
+                  <Icon name={h.kind === "project" ? "box" : "grid"} size={14} />
+                  <span className="grow mono">{label(h, data?.groups ?? [], projects.data?.projects ?? [])}</span>
+                  <button className="btn small" onClick={() => unhide(h.kind, h.ref)}>
+                    Bring back
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {adding && data ? (
         <AddTile
@@ -338,6 +455,32 @@ function ProjectTile({
       )}
     </div>
   );
+}
+
+/** The group's variables, gathered under the project that reported them. */
+function byProject(block: Block): [string, Variable[]][] {
+  const out = new Map<string, Variable[]>();
+  for (const v of block.variables) {
+    const list = out.get(v.projectId) ?? [];
+    list.push(v);
+    out.set(v.projectId, list);
+  }
+  return [...out.entries()];
+}
+
+/** What to call something that is currently put away. */
+function label(h: Hidden, blocks: Block[], projects: Project[]): string {
+  if (h.kind === "project") {
+    const p = projects.find((x) => x.id === h.ref);
+    return p ? `${p.groupSlug ?? "ungrouped"}/${p.slug}` : h.ref;
+  }
+  const [owner, ...rest] = h.ref.split(":");
+  const name = rest.join(":");
+  const variable = blocks.flatMap((b) => b.variables).find((v) => v.projectId === owner && v.name === name);
+  if (variable) return `${variable.projectSlug}.${name}`;
+  const group = blocks.find((b) => b.group.id === owner);
+  if (group) return `${group.group.slug} · ${name}`;
+  return name || h.ref;
 }
 
 function TileBody({ tile, variable }: { tile: Tile; variable?: Variable }) {

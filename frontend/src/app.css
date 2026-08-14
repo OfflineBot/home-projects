@@ -197,6 +197,19 @@ a.tile:hover { text-decoration: none; border-color: var(--tile-color, var(--acce
 .project-tile h3 a:hover { text-decoration: underline; }
 .tile-numbers { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 12px; }
 
+/* A project's own numbers, kept together under its name so the project can be
+   put away in one move. */
+.project-block { margin-bottom: 16px; }
+.project-block-head {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 13px; color: var(--ctp-subtext0); margin: 0 0 6px 2px;
+}
+.project-block-head a { color: inherit; text-decoration: none; }
+.project-block-head a:hover { text-decoration: underline; }
+.project-block-head button { opacity: 0; transition: opacity .12s ease; }
+.project-block:hover .project-block-head button { opacity: 1; }
+.put-away { margin-top: 8px; }
+
 /* Controls sit on the object, and nothing is hover-only: the menu button is
  * always visible and large enough for a finger. */
 .tile-menu { position: absolute; top: 10px; right: 10px; }

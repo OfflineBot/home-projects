@@ -90,6 +90,22 @@ describe("every screen draws something", () => {
     await draw(<Dashboard />, /Dashboard|Nothing pinned/i);
   });
 
+  // What was put away is listed with a way back — otherwise hiding something
+  // by mistake would be final, which is not what a view is.
+  it("things put away can be brought back", async () => {
+    await api("/api/dashboard/hidden", { body: { kind: "project", ref: project.id } });
+    try {
+      const c = await draw(<Dashboard />, /put away/i);
+      expect(c.textContent).toMatch(/1 put away/);
+      const open = [...c.querySelectorAll("button")].find((b) => /put away/i.test(b.textContent ?? ""));
+      fireEvent.click(open!);
+      await waitFor(() => expect(c.textContent).toMatch(/Bring back/i));
+      expect(c.textContent).toContain(project.slug);
+    } finally {
+      await api(`/api/dashboard/hidden?kind=project&ref=${project.id}`, { method: "DELETE" });
+    }
+  });
+
   // A tile that is a project: the way straight back in, which is what the page
   // is opened for. It is drawn from two answers at once — the tiles and the
   // projects — so it fails if either is missing.

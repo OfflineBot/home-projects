@@ -354,3 +354,43 @@ func (s *Store) DeleteTile(ctx context.Context, ownerID, id uuid.UUID) error {
 	}
 	return nil
 }
+
+// ------------------------------------------------------- put away, per person
+
+// Hidden is one thing somebody took off their dashboard: a project, or a single
+// variable. The ref is "<uuid>:<name>" for a variable and the project's id for a
+// project.
+type Hidden struct {
+	Kind string `json:"kind"`
+	Ref  string `json:"ref"`
+}
+
+func (s *Store) ListHidden(ctx context.Context, ownerID uuid.UUID) ([]Hidden, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT kind, ref FROM dashboard_hidden WHERE owner_id=$1 ORDER BY created_at`, ownerID)
+	if err != nil {
+		return nil, norm(err)
+	}
+	defer rows.Close()
+	out := []Hidden{}
+	for rows.Next() {
+		var h Hidden
+		if err := rows.Scan(&h.Kind, &h.Ref); err != nil {
+			return nil, norm(err)
+		}
+		out = append(out, h)
+	}
+	return out, norm(rows.Err())
+}
+
+func (s *Store) Hide(ctx context.Context, ownerID uuid.UUID, kind, ref string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO dashboard_hidden (owner_id, kind, ref)
+		VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, ownerID, kind, ref)
+	return norm(err)
+}
+
+func (s *Store) Unhide(ctx context.Context, ownerID uuid.UUID, kind, ref string) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM dashboard_hidden WHERE owner_id=$1 AND kind=$2 AND ref=$3`, ownerID, kind, ref)
+	return norm(err)
+}
