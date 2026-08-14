@@ -59,6 +59,7 @@ func (s *Server) Mount(app *fiber.App) {
 	s.mountSSH(api)
 	s.mountGitAttempts(api)
 	s.mountBlueprint(api)
+	s.mountBundle(api)
 	s.mountFilters(api)
 	s.mountGraph(api)
 	s.mountClientErrors(api)

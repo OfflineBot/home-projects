@@ -83,7 +83,7 @@ export function Modal({
 
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={wide ? { width: "min(900px, 100%)" } : undefined} role="dialog" aria-modal="true">
+      <div className="modal" style={wide ? { width: "min(1180px, 100%)" } : undefined} role="dialog" aria-modal="true">
         <header>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <h2>{title}</h2>

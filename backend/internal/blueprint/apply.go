@@ -43,6 +43,15 @@ func (a *Applier) Apply(ctx context.Context, doc *Document, dryRun bool) (*Resul
 	result := &Result{DryRun: dryRun, Steps: []Step{}}
 	a.planned = map[string]bool{}
 
+	// Filters and accounts come first: a project refers to a filter by its
+	// address, and a scheduler looks for its account by name.
+	if err := a.applyFilters(ctx, doc, dryRun, result); err != nil {
+		return result, err
+	}
+	if err := a.applyAccounts(ctx, doc, dryRun, result); err != nil {
+		return result, err
+	}
+
 	for _, g := range doc.Groups {
 		grp, err := a.applyGroup(ctx, g, dryRun, result)
 		if err != nil {
@@ -69,6 +78,19 @@ func (a *Applier) Apply(ctx context.Context, doc *Document, dryRun bool) (*Resul
 
 	for _, p := range doc.Ungrouped {
 		if _, err := a.applyProject(ctx, p, nil, dryRun, result); err != nil {
+			return result, err
+		}
+	}
+
+	for _, g := range doc.Groups {
+		for _, p := range g.Projects {
+			if err := a.attachFilters(ctx, p, dryRun, result); err != nil {
+				return result, err
+			}
+		}
+	}
+	for _, p := range doc.Ungrouped {
+		if err := a.attachFilters(ctx, p, dryRun, result); err != nil {
 			return result, err
 		}
 	}
@@ -426,4 +448,112 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ------------------------------------------------- filters and accounts
+
+// applyFilters brings the patterns over. A filter is recognised by its address;
+// one that is already here is left as it is, because the other side may have
+// changed it on purpose.
+func (a *Applier) applyFilters(ctx context.Context, doc *Document, dryRun bool, result *Result) error {
+	if len(doc.Filters) == 0 {
+		return nil
+	}
+	for _, f := range doc.Filters {
+		if _, err := a.Store.FilterBySlug(ctx, f.Slug); err == nil {
+			result.add("skip", "filter", f.Slug, "already here")
+			continue
+		}
+		result.add("create", "filter", f.Slug, "")
+		if dryRun {
+			continue
+		}
+		if _, err := a.Store.CreateFilter(ctx, store.NewFilter{
+			OwnerID: a.OwnerID, Slug: f.Slug, Title: f.Title,
+			Description: f.Description, Rules: f.Rules, Preview: f.Preview,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyAccounts creates the accounts a scheduler will look for — empty, waiting
+// for their password. Nothing here carries a secret, and nothing here can: the
+// export never had one.
+func (a *Applier) applyAccounts(ctx context.Context, doc *Document, dryRun bool, result *Result) error {
+	if len(doc.Accounts) == 0 {
+		return nil
+	}
+	existing, err := a.Store.ListAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	here := map[string]bool{}
+	for _, acc := range existing {
+		here[acc.Title] = true
+	}
+	for _, acc := range doc.Accounts {
+		if here[acc.Title] {
+			result.add("skip", "account", acc.Title, "already here")
+			continue
+		}
+		result.add("create", "account", acc.Title, "needs its password typed in here")
+		if dryRun {
+			continue
+		}
+		if _, err := a.Store.CreateAccount(ctx, a.OwnerID, acc.Kind, acc.Title, acc.Config, nil); err != nil {
+			return err
+		}
+		here[acc.Title] = true
+	}
+	return nil
+}
+
+// attachFilters hangs the filters back on the project, with the destination
+// that project gave them.
+func (a *Applier) attachFilters(ctx context.Context, p Project, dryRun bool, result *Result) error {
+	if len(p.Filters) == 0 {
+		return nil
+	}
+	project, err := a.findProject(ctx, p.Slug)
+	if err != nil {
+		if dryRun {
+			return nil
+		}
+		return err
+	}
+	for _, f := range p.Filters {
+		filter, err := a.Store.FilterBySlug(ctx, f.Filter)
+		if err != nil {
+			result.add("skip", "filter", p.Slug+" → "+f.Filter, "there is no such filter here")
+			continue
+		}
+		var target *uuid.UUID
+		note := ""
+		if f.Target != "" {
+			if to, terr := a.findProject(ctx, lastSegment(f.Target)); terr == nil {
+				target = &to.ID
+			} else {
+				note = "the project " + f.Target + " is not here, so it sorts within itself"
+			}
+		}
+		result.add("create", "filter", p.Slug+" → "+f.Filter, note)
+		if dryRun {
+			continue
+		}
+		if err := a.Store.AddFilterToProject(ctx, project.ID, filter.ID, f.Automatic, target, f.Folder); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// lastSegment turns "group/project" into "project": addresses travel with their
+// group, and a project is found by its own name.
+func lastSegment(address string) string {
+	if i := strings.LastIndexByte(address, '/'); i >= 0 {
+		return address[i+1:]
+	}
+	return address
 }

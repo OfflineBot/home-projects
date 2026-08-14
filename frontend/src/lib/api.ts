@@ -72,7 +72,10 @@ type Options = {
 export async function api<T = any>(path: string, options: Options = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
   let body: BodyInit | undefined = options.raw;
-  if (options.body !== undefined) {
+  if (options.body instanceof FormData) {
+    // The browser writes the content type itself, with the boundary in it.
+    body = options.body;
+  } else if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(options.body);
   }

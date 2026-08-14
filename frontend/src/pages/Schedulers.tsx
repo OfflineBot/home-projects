@@ -333,6 +333,7 @@ function SchedulerDialog({
     <Modal
       title={existing ? existing.title || existing.kind : "New scheduler"}
       onClose={onClose}
+      wide
       footer={
         <>
           <button className="btn" onClick={onClose}>Cancel</button>

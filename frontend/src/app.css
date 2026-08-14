@@ -273,16 +273,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
   position: fixed; inset: 0; background: rgb(0 0 0 / 0.55);
   display: grid; place-items: center; padding: 18px; z-index: 60;
 }
+/* A settings window is a page, not a slot. Everything in one is something
+   someone came to read, and reading it through a 600-pixel letterbox is what
+   made the settings feel cramped. */
 .modal {
   background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
-  border-radius: var(--radius); width: min(620px, 100%);
-  max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow);
+  border-radius: var(--radius); width: min(860px, 100%);
+  max-height: 92vh; overflow-y: auto; box-shadow: var(--shadow);
   scrollbar-gutter: stable;
 }
-.modal header { padding: 22px 26px 8px; }
+.modal header { padding: 24px 30px 8px; }
 .modal header h2 { margin: 0; font-size: 19px; }
-.modal .body { padding: 16px 26px 26px; }
-.modal footer { padding: 18px 26px 22px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.modal .body { padding: 18px 30px 28px; }
+.modal footer { padding: 18px 30px 24px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* ------------------------------------------------------------------- menus */
 

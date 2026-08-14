@@ -39,6 +39,41 @@ type Document struct {
 	Groups    []Group   `json:"groups"`
 	Ungrouped []Project `json:"ungrouped,omitempty"`
 	Links     []Link    `json:"links,omitempty"`
+	// Filters are not owned by a group, so they travel beside them; a project
+	// refers to one by its address.
+	Filters []Filter `json:"filters,omitempty"`
+	// Accounts travel without their passwords. What is described is where an
+	// account points and what it is called, so the other side is one password
+	// away from working rather than a form away.
+	Accounts []Account `json:"accounts,omitempty"`
+}
+
+// Filter is the pattern itself. Where a project sends what it matches is said
+// at the project, not here.
+type Filter struct {
+	Slug        string          `json:"slug"`
+	Title       string          `json:"title"`
+	Description string          `json:"description,omitempty"`
+	Rules       json.RawMessage `json:"rules,omitempty"`
+	Preview     []string        `json:"preview,omitempty"`
+}
+
+// Account is the shape of a credential and never the credential. It arrives
+// needing its password, which is the same state as one whose attempt failed —
+// a state the whole server already knows how to show.
+type Account struct {
+	Kind   string          `json:"kind"`
+	Title  string          `json:"title"`
+	Config json.RawMessage `json:"config,omitempty"`
+}
+
+// AttachedFilter is one filter a project uses, and where that project sends
+// what it matches.
+type AttachedFilter struct {
+	Filter    string `json:"filter"`
+	Automatic bool   `json:"automatic,omitempty"`
+	Target    string `json:"target,omitempty"`
+	Folder    string `json:"folder,omitempty"`
 }
 
 type Group struct {
@@ -82,7 +117,8 @@ type Project struct {
 	Color         string `json:"color,omitempty"`
 	Icon          string `json:"icon,omitempty"`
 
-	Schedulers []Scheduler `json:"schedulers,omitempty"`
+	Schedulers []Scheduler      `json:"schedulers,omitempty"`
+	Filters    []AttachedFilter `json:"filters,omitempty"`
 }
 
 // Scheduler travels without its credentials. The account is named, and the
@@ -118,8 +154,25 @@ type Link struct {
 
 // ------------------------------------------------------------------- export
 
+// What says how much of the arrangement to take along. A group set up on a
+// laptop and carried to the server usually wants all of it; a group handed to
+// somebody else usually wants none of the machinery.
+type What struct {
+	Schedulers bool
+	Accounts   bool
+	Filters    bool
+}
+
+// Everything is the answer for moving your own work to your own server.
+func Everything() What { return What{Schedulers: true, Accounts: true, Filters: true} }
+
 // Export writes the whole arrangement, or one group when groupSlug is given.
 func Export(ctx context.Context, st *store.Store, groupSlug string) (*Document, error) {
+	return ExportWhat(ctx, st, groupSlug, Everything())
+}
+
+// ExportWhat is Export with the parts named.
+func ExportWhat(ctx context.Context, st *store.Store, groupSlug string, what What) (*Document, error) {
 	doc := &Document{
 		Version:    Version,
 		ExportedAt: time.Now().UTC(),
@@ -155,7 +208,7 @@ func Export(ctx context.Context, st *store.Store, groupSlug string) (*Document, 
 			if g.SiteProjectID != nil && *g.SiteProjectID == p.ID {
 				entry.SiteProject = p.Slug
 			}
-			exported, err := exportProject(ctx, st, p)
+			exported, err := exportProject(ctx, st, p, what)
 			if err != nil {
 				return nil, err
 			}
@@ -180,11 +233,64 @@ func Export(ctx context.Context, st *store.Store, groupSlug string) (*Document, 
 			return nil, err
 		}
 		for i := range loose {
-			exported, err := exportProject(ctx, st, &loose[i])
+			exported, err := exportProject(ctx, st, &loose[i], what)
 			if err != nil {
 				return nil, err
 			}
 			doc.Ungrouped = append(doc.Ungrouped, exported)
+		}
+	}
+
+	if what.Filters {
+		filters, err := st.ListFilters(ctx)
+		if err != nil {
+			return nil, err
+		}
+		used := map[string]bool{}
+		for _, g := range doc.Groups {
+			for _, p := range g.Projects {
+				for _, f := range p.Filters {
+					used[f.Filter] = true
+				}
+			}
+		}
+		for _, p := range doc.Ungrouped {
+			for _, f := range p.Filters {
+				used[f.Filter] = true
+			}
+		}
+		for _, f := range filters {
+			// A whole server takes all of them; one group takes the ones it uses.
+			if groupSlug != "" && !used[f.Slug] {
+				continue
+			}
+			doc.Filters = append(doc.Filters, Filter{
+				Slug: f.Slug, Title: f.Title, Description: f.Description,
+				Rules: f.Rules, Preview: f.Preview,
+			})
+		}
+	}
+
+	if what.Accounts {
+		accounts, err := st.ListAccounts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		named := map[string]bool{}
+		for _, g := range doc.Groups {
+			for _, p := range g.Projects {
+				for _, s := range p.Schedulers {
+					named[s.Account] = true
+				}
+			}
+		}
+		for _, a := range accounts {
+			// One group takes the accounts its schedulers point at; a whole
+			// server takes them all. Never the password, in either case.
+			if groupSlug != "" && !named[a.Title] {
+				continue
+			}
+			doc.Accounts = append(doc.Accounts, Account{Kind: a.Kind, Title: a.Title, Config: a.Config})
 		}
 	}
 
@@ -214,7 +320,7 @@ func Export(ctx context.Context, st *store.Store, groupSlug string) (*Document, 
 	return doc, nil
 }
 
-func exportProject(ctx context.Context, st *store.Store, p *model.Project) (Project, error) {
+func exportProject(ctx context.Context, st *store.Store, p *model.Project, what What) (Project, error) {
 	out := Project{
 		Slug: p.Slug, Title: p.Title, Description: p.Description,
 		Preset: p.Preset, Capabilities: p.Capabilities, DefaultTab: p.DefaultTab,
@@ -237,15 +343,29 @@ func exportProject(ctx context.Context, st *store.Store, p *model.Project) (Proj
 		out.Capabilities = []string{}
 	}
 
-	schedulers, err := st.ListSchedulersForProject(ctx, p.ID)
-	if err != nil {
-		return out, err
+	if what.Schedulers {
+		schedulers, err := st.ListSchedulersForProject(ctx, p.ID)
+		if err != nil {
+			return out, err
+		}
+		for _, s := range schedulers {
+			out.Schedulers = append(out.Schedulers, Scheduler{
+				Title: s.Title, Kind: s.Kind, Schedule: s.Schedule, TargetPath: s.TargetPath,
+				Options: s.Options, Enabled: s.Enabled, Account: s.AccountName,
+			})
+		}
 	}
-	for _, s := range schedulers {
-		out.Schedulers = append(out.Schedulers, Scheduler{
-			Title: s.Title, Kind: s.Kind, Schedule: s.Schedule, TargetPath: s.TargetPath,
-			Options: s.Options, Enabled: s.Enabled, Account: s.AccountName,
-		})
+	if what.Filters {
+		attached, err := st.FiltersForProject(ctx, p.ID)
+		if err != nil {
+			return out, err
+		}
+		for _, f := range attached {
+			out.Filters = append(out.Filters, AttachedFilter{
+				Filter: f.Slug, Automatic: f.Automatic,
+				Target: f.TargetProject, Folder: f.TargetFolder,
+			})
+		}
 	}
 	return out, nil
 }

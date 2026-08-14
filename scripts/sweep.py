@@ -11,6 +11,7 @@ measurement, and it runs before every deploy.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import subprocess
@@ -20,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from http.cookiejar import CookieJar
 from typing import Any
 
@@ -52,6 +54,20 @@ class Client:
         except Exception as e:
             failures.append(f"GET {path} → {e}")
             return 0, {}
+
+    def raw_get(self, path: str) -> bytes | None:
+        """The body as bytes — for a zip, which is not a JSON answer."""
+        req = urllib.request.Request(self.base + path, method="GET")
+        if self.token:
+            req.add_header("Authorization", "Bearer " + self.token)
+        try:
+            with self.opener.open(req, timeout=300) as resp:
+                global ok_count
+                ok_count += 1
+                return resp.read()
+        except Exception as e:
+            failures.append(f"GET {path} → {e}")
+            return None
 
     def call(
         self,
@@ -842,6 +858,58 @@ def main() -> int:
         check(bool(row) and row["hasSecret"], "an unreachable server does not cost the password")
         check(bool(row) and row["state"] != "needs_password", "and the account is still ready")
         c.call("DELETE", f"/api/accounts/{dead['id']}")
+
+    # ------------------------------------------------- packed up and carried over
+    # The whole point: a group set up here, taken somewhere else, whole. It is
+    # proved the only way that proves anything — export it, delete it, bring it
+    # back out of the bundle and look for the files again.
+    bundle = c.raw_get(f"/api/export/bundle?group={gslug}")
+    check(bool(bundle) and bundle[:2] == b"PK", "a group exports as a bundle")
+    if bundle:
+        archive = zipfile.ZipFile(io.BytesIO(bundle))
+        names = archive.namelist()
+        check("blueprint.json" in names, "the bundle holds the arrangement")
+        inside = json.loads(archive.read("blueprint.json"))
+        check(any(g["slug"] == gslug for g in inside["groups"]), "and the group is in it")
+        packed = [n for n in names if n.startswith("files/")]
+        check(len(packed) > 0, "and the files are in it")
+        check(not any("secret" in json.dumps(a).lower() for a in inside.get("accounts", [])),
+              "and no password travels with it")
+
+        # Gone, and then back.
+        c.call("DELETE", f"/api/groups/{gslug}?confirm={gslug}")
+        c.call("GET", f"/api/groups/{gslug}", expect=404)
+
+        boundary = "----hpbundle"
+        parts = (f"--{boundary}\r\n".encode()
+                 + b'Content-Disposition: form-data; name="file"; filename="bundle.zip"\r\n'
+                 + b"Content-Type: application/zip\r\n\r\n" + bundle
+                 + f"\r\n--{boundary}--\r\n".encode())
+        plan = c.call("POST", "/api/import/bundle", raw=parts,
+                      content_type=f"multipart/form-data; boundary={boundary}")
+        check(bool(plan) and any(s["what"] == "group" for s in plan.get("steps", [])),
+              "the bundle says what it would do")
+        check(bool(plan) and plan.get("dryRun") is True, "and does none of it yet")
+        done = c.call("POST", "/api/import/bundle?apply=true", raw=parts,
+                      content_type=f"multipart/form-data; boundary={boundary}")
+        check(bool(done) and not done.get("dryRun"), "and then does it")
+
+        back = c.call("GET", f"/api/groups/{gslug}")
+        check(bool(back), "the group is here again")
+        again = c.call("GET", f"/api/projects?group={gslug}") or {}
+        slugs = [p["slug"] for p in again.get("projects", [])]
+        check(len(slugs) > 0, f"with its projects ({len(slugs)})")
+        # One file that was written during this sweep, back where it belongs.
+        restored = next((p for p in again.get("projects", []) if p["slug"] == made["data"]["slug"]), None)
+        if restored:
+            listing = c.call("GET", f"/api/projects/{restored['id']}/files?path=docs") or {}
+            names_back = [e["name"] for e in listing.get("entries", [])]
+            check("renamed.txt" in names_back, "and the files that were in them")
+            made["data"] = restored
+        for key, project in list(made.items()):
+            found = next((p for p in again.get("projects", []) if p["slug"] == project["slug"]), None)
+            if found:
+                made[key] = found
 
     # ---------------------------------------------------------------- delete
     for key, p in made.items():

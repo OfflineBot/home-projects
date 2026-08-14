@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { ErrorBox, Field, Modal, Spinner, useGuarded } from "../components/ui";
-import { api, type Group, type Link as LinkRow, type Project } from "../lib/api";
+import { api, authedUrl, type Group, type Link as LinkRow, type Project } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 import { colorVar } from "../lib/theme";
 
@@ -26,8 +26,11 @@ export default function Structure() {
         </div>
         {session.user ? (
           <div className="head-actions">
-            <a className="btn" href="/api/export?download=true">
-              <Icon name="download" size={16} /> Export as JSON
+            <a className="btn" href={authedUrl("/api/export/bundle")}>
+              <Icon name="archive" size={16} /> Export everything
+            </a>
+            <a className="btn ghost" href="/api/export?download=true">
+              <Icon name="download" size={16} /> Shape only (JSON)
             </a>
             <button className="btn" onClick={() => setImporting(true)}>
               <Icon name="upload" size={16} /> Import…
@@ -133,10 +136,29 @@ function ImportBlueprint({ onClose, onDone }: { onClose: () => void; onDone: () 
   const [busy, setBusy] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
+  const [bundle, setBundle] = useState<File | null>(null);
+
   const send = async (apply: boolean) => {
     setBusy(true);
     setError(null);
     try {
+      if (bundle) {
+        // A bundle carries the files as well, so it is uploaded rather than
+        // pasted. Same two steps: say what it would do, then do it.
+        const form = new FormData();
+        form.append("file", bundle);
+        const result = await guarded("importing a bundle", () =>
+          api<{ steps: Step[]; warnings?: string[] }>(`/api/import/bundle${apply ? "?apply=true" : ""}`, {
+            body: form,
+          }),
+        );
+        setPlan(result);
+        if (apply) {
+          setApplied(true);
+          onDone();
+        }
+        return;
+      }
       let document: unknown;
       try {
         document = JSON.parse(text);
@@ -185,8 +207,30 @@ function ImportBlueprint({ onClose, onDone }: { onClose: () => void; onDone: () 
     >
       <ErrorBox error={error} />
       <p className="meta" style={{ marginTop: 0 }}>
-        Groups, projects, links, schedulers. No files, no passwords. Nothing is deleted.
+        Groups, projects, links, schedulers, filters and accounts. A bundle brings the files too.
+        Passwords never travel — an account arrives asking for its own. Nothing is deleted.
       </p>
+
+      <div className="row" style={{ alignItems: "end", marginBottom: 12 }}>
+        <Field label="A bundle (.zip)" hint="What the export button hands you: the arrangement and the files.">
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            onChange={(e) => {
+              setBundle(e.target.files?.[0] ?? null);
+              setPlan(null);
+              setApplied(false);
+            }}
+          />
+        </Field>
+      </div>
+
+      {bundle ? (
+        <p className="meta">
+          {bundle.name} · {(bundle.size / 1024 / 1024).toFixed(1)} MB — the text below is ignored while a
+          bundle is picked.
+        </p>
+      ) : null}
 
       <Field label="The document">
         <textarea

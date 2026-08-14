@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type Group, type Project } from "../lib/api";
+import { api, authedUrl, type Group, type Project } from "../lib/api";
 import { useMeta } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon, iconNames } from "./Icon";
@@ -140,6 +140,7 @@ export default function GroupSettings({
     <Modal
       title={`Settings · ${group.title}`}
       onClose={onClose}
+      wide
       footer={
         <>
           <button className="btn danger" onClick={openDelete}>
@@ -221,6 +222,30 @@ export default function GroupSettings({
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
         ) : null}
+      </div>
+
+      <Section title="Take it elsewhere" />
+
+      <p className="hint" style={{ marginTop: 0 }}>
+        A bundle is this group as one file: its projects and their files, the filters it uses, the
+        schedulers, and the accounts they point at — without the passwords. On the other server,
+        import it and type the passwords in once.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        {([
+          { label: "Everything", query: "" },
+          { label: "Without the schedulers", query: "&schedulers=false" },
+          { label: "Without the files", query: "&files=false" },
+          { label: "Shape only", query: "&files=false&schedulers=false&accounts=false&filters=false" },
+        ] as const).map((choice) => (
+          <a
+            key={choice.label}
+            className="btn small"
+            href={authedUrl(`/api/export/bundle?group=${group.slug}${choice.query}`)}
+          >
+            <Icon name="archive" size={14} /> {choice.label}
+          </a>
+        ))}
       </div>
 
       <Field label="Colour" >

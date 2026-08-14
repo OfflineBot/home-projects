@@ -357,7 +357,9 @@ describe("every screen draws something", () => {
           timeout: 10000,
         });
         const text = view.container.textContent ?? "";
-        const complaint = /could not be drawn|Something went wrong|no endpoint|not right|cannot|failed/i.exec(text);
+        // The words an error box uses — not every sentence with "failed" in
+        // it, which is how "Failed runs show up here too" became a failure.
+        const complaint = /could not be drawn|Something went wrong|no endpoint|is not right|could not be|cannot be/i.exec(text);
         if (complaint) {
           throw new Error(`${p.slug} · tab ${tab}: ${text.slice(0, 400)}`);
         }

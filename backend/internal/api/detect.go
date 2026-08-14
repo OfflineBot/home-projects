@@ -75,13 +75,27 @@ func (s *Server) detect(p *model.Project) []suggestion {
 // ownsFile matches a capability's patterns against a path. The patterns are the
 // ones a capability already declares — "*.md", "events/*.ics" — so nothing new
 // has to be written down anywhere.
+// ownsFile decides whether a file is one this capability is about.
+//
+// A pattern without a slash is about the project's own top level, not about
+// every folder underneath it. That distinction is the difference between "this
+// project is a website" and "somewhere in three hundred pulled files there is
+// an index.html" — the second is not a reason to offer anything.
+//
+// A pattern that says *.eml is different: the kind of file is the point, so it
+// counts wherever it lies.
 func ownsFile(patterns []string, file string) bool {
 	base := path.Base(file)
+	atRoot := !strings.Contains(file, "/")
 	for _, pattern := range patterns {
 		if strings.Contains(pattern, "/") {
 			if ok, _ := path.Match(pattern, file); ok {
 				return true
 			}
+			continue
+		}
+		// A named file counts only where it was meant: at the top.
+		if !strings.ContainsAny(pattern, "*?[") && !atRoot {
 			continue
 		}
 		if ok, _ := path.Match(pattern, base); ok {
