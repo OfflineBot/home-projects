@@ -409,6 +409,8 @@ func (s *Server) mountGroups(r fiber.Router) {
 	})
 
 	// The whole point of a group: it collects the variables of its projects.
+	s.mountGroupDetect(one)
+
 	one.Get("/variables", func(c *fiber.Ctx) error {
 		grp := groupOf(c)
 		actor := auth.From(c)

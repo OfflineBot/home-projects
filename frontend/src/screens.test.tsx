@@ -286,6 +286,30 @@ describe("every screen draws something", () => {
     }
   });
 
+  // An account can be edited: the dialog has to exist and be filled with what
+  // is stored, without ever showing the password.
+  it("edits an account", async () => {
+    const made = await api<{ id: string }>("/api/accounts", {
+      body: {
+        kind: "mail", title: "ui-test-account",
+        config: { host: "mail.example.org", port: 993, user: "someone" },
+        secret: "never-shown",
+      },
+    });
+    try {
+      const c = await draw(<Accounts />, /ui-test-account/);
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.includes("Edit"))!);
+      const dialogs = await waitFor(() => screen.getAllByRole("dialog"));
+      const dialog = dialogs[dialogs.length - 1];
+      const values = [...dialog.querySelectorAll("input")].map((i) => i.value);
+      expect(values).toContain("ui-test-account");
+      expect(values).toContain("mail.example.org");
+      expect(values).not.toContain("never-shown");
+    } finally {
+      await api(`/api/accounts/${made.id}`, { method: "DELETE" });
+    }
+  });
+
   it("a group's settings", async () => {
     render(
       <MemoryRouter>

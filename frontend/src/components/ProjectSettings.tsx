@@ -48,6 +48,10 @@ export default function ProjectSettings({
   const [onewayKinds, setOnewayKinds] = useState<{ name: string; title: string }[]>([]);
   const [onewayKind, setOnewayKind] = useState("");
   const [onewayLink, setOnewayLink] = useState("");
+  // What the files say this project already is — offered, never switched on by
+  // itself: a project becoming a website because someone pushed an index.html
+  // would be a surprise, not a feature.
+  const [suggested, setSuggested] = useState<{ name: string; title: string; icon: string; matched: string[] }[]>([]);
 
   useEffect(() => {
     void api<{ groups: Group[] }>("/api/groups")
@@ -58,6 +62,11 @@ export default function ProjectSettings({
         .then((r) => setCandidates(r.candidates))
         .catch(() => undefined);
     }
+    void api<{ capabilities: { name: string; title: string; icon: string; matched: string[] }[] }>(
+      `/api/projects/${project.id}/detect`,
+    )
+      .then((r) => setSuggested(r.capabilities))
+      .catch(() => undefined);
     void api<{ kinds: { name: string; title: string }[] }>(`/api/projects/${project.id}/oneway`)
       .then((r) => setOnewayKinds(r.kinds))
       .catch(() => undefined);
@@ -235,6 +244,7 @@ export default function ProjectSettings({
     <Modal
       title={`Settings · ${project.title}`}
       onClose={onClose}
+      wide
       footer={
         <>
           <button
@@ -265,12 +275,13 @@ export default function ProjectSettings({
 
       <Section title="What it is" />
 
-      <Field label="Name">
-        <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-      </Field>
+      <div className="row">
+        <Field label="Name">
+          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        </Field>
 
-      <Field
-        label="Address"
+        <Field
+          label="Address"
         hint={
           form.slug !== project.slug ? (
             <span style={{ color: "var(--ctp-peach)" }}>
@@ -281,8 +292,9 @@ export default function ProjectSettings({
           )
         }
       >
-        <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
-      </Field>
+          <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
+        </Field>
+      </div>
 
       <Field label="Description">
         <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -362,7 +374,25 @@ export default function ProjectSettings({
         </label>
       ) : null}
 
-      <Field label="Capabilities" hint="Views onto the same files.">
+      <Field label="Capabilities" hint="Views onto the same files. Every combination is allowed.">
+        {suggested.filter((sug) => !form.capabilities.includes(sug.name)).length ? (
+          <div className="notice" style={{ margin: "0 0 10px" }}>
+            Already in the files:{" "}
+            {suggested
+              .filter((sug) => !form.capabilities.includes(sug.name))
+              .map((sug) => (
+                <button
+                  key={sug.name}
+                  className="btn small"
+                  style={{ marginRight: 6 }}
+                  title={sug.matched.join(", ")}
+                  onClick={() => setForm({ ...form, capabilities: [...form.capabilities, sug.name] })}
+                >
+                  <Icon name={sug.icon} size={13} /> {sug.title}
+                </button>
+              ))}
+          </div>
+        ) : null}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(meta?.capabilities ?? []).map((c) => {
             const on = form.capabilities.includes(c.name);

@@ -18,6 +18,7 @@ export default function Accounts() {
   const { data, error, loading, reload } = useQuery<{ accounts: Account[]; kinds: AccountKind[] }>("/api/accounts");
   const [creating, setCreating] = useState(false);
   const [entering, setEntering] = useState<Account | null>(null);
+  const [editing, setEditing] = useState<Account | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [actionError, setActionError] = useState<Error | null>(null);
@@ -108,6 +109,9 @@ export default function Accounts() {
                 <span className={`badge ${a.state === "ok" ? "good" : a.needsSecret ? "bad" : ""}`}>{a.state}</span>
                 {a.attemptInFlight ? <span className="badge warn">attempt in flight</span> : null}
                 <div style={{ flex: 1 }} />
+                <button className="btn small" onClick={() => setEditing(a)}>
+                  <Icon name="settings" size={13} /> Edit
+                </button>
                 <button className="btn small" onClick={() => setEntering(a)}>
                   <Icon name="key" size={13} /> {a.needsSecret ? "Enter password" : "Replace password"}
                 </button>
@@ -147,6 +151,18 @@ export default function Accounts() {
           onClose={() => setCreating(false)}
           onCreated={() => {
             setCreating(false);
+            reload();
+          }}
+        />
+      ) : null}
+
+      {editing ? (
+        <EditAccount
+          account={editing}
+          kind={kindOf(editing.kind)}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
             reload();
           }}
         />
@@ -309,6 +325,81 @@ function EnterSecret({
           <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoFocus />
         )}
       </Field>
+    </Modal>
+  );
+}
+
+/**
+ * Everything about an account except the one thing that cannot be read back:
+ * the password. Changing an address does not touch it — a typo in a URL should
+ * not cost a credential.
+ */
+function EditAccount({
+  account,
+  kind,
+  onClose,
+  onSaved,
+}: {
+  account: Account;
+  kind?: AccountKind;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const guarded = useGuarded();
+  const [title, setTitle] = useState(account.title);
+  const [config, setConfig] = useState<Record<string, string>>(
+    Object.fromEntries(Object.entries(account.config ?? {}).map(([k, v]) => [k, String(v ?? "")])),
+  );
+  const [error, setError] = useState<Error | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Modal
+      title={account.title}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn primary"
+            disabled={busy || !title.trim()}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await guarded("changing an account", () =>
+                  api(`/api/accounts/${account.id}`, { method: "PATCH", body: { title, config } }),
+                );
+                onSaved();
+              } catch (err) {
+                setError(err as Error);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save
+          </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+      <Field label="Name">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      </Field>
+      {(kind?.fields ?? []).map((f) => (
+        <Field key={f.name} label={f.label} hint={f.hint}>
+          <input
+            type={f.type === "number" ? "number" : "text"}
+            placeholder={f.placeholder}
+            value={config[f.name] ?? ""}
+            onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
+          />
+        </Field>
+      ))}
+      <p className="meta">The password is not shown and is not touched by this.</p>
     </Modal>
   );
 }

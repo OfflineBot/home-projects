@@ -20,6 +20,11 @@ export default function GroupPage() {
   const [creating, setCreating] = useState(false);
   const [groupSettings, setGroupSettings] = useState(false);
   const [projectSettings, setProjectSettings] = useState<Project | null>(null);
+  // What the files in this group say is there but nobody switched on.
+  const detect = useQuery<{
+    projects: { project: string; projectId: string; capabilities: { name: string; title: string; icon: string; matched: string[] }[] }[];
+  }>(`/api/groups/${slug}/detect`);
+  const missing = detect.data?.projects ?? [];
   const [showGit, setShowGit] = useState(false);
 
   // A protected group asks for its password instead of pretending it is missing.
@@ -126,6 +131,38 @@ export default function GroupPage() {
           </Link>
         ))}
       </div>
+
+      {missing.length ? (
+        <div className="notice" style={{ marginTop: 18 }}>
+          <strong>Already in the files, not switched on:</strong>
+          <div className="list" style={{ background: "transparent", border: "none", marginTop: 6 }}>
+            {missing.map((row) => (
+              <div key={row.projectId} className="list-row" style={{ padding: "6px 0" }}>
+                <span className="grow mono">{row.project}</span>
+                {row.capabilities.map((cap) => (
+                  <button
+                    key={cap.name}
+                    className="btn small"
+                    title={cap.matched.join(", ")}
+                    onClick={async () => {
+                      const p = data?.projects.find((x) => x.id === row.projectId);
+                      if (!p) return;
+                      await api(`/api/projects/${row.projectId}`, {
+                        method: "PATCH",
+                        body: { capabilities: [...p.capabilities, cap.name] },
+                      });
+                      reload();
+                      detect.reload();
+                    }}
+                  >
+                    <Icon name={cap.icon} size={13} /> {cap.title}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {data ? <Graph group={data.group.slug} /> : null}
 

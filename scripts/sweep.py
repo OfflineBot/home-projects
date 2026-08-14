@@ -412,6 +412,14 @@ def main() -> int:
               "the account then asks for the password again")
         # No second attempt with the old password is even possible.
         c.call("POST", f"/api/accounts/{aid}/test", expect=409)
+        # An account can be changed — its address, its name — without the
+        # password being touched.
+        c.call("PATCH", f"/api/accounts/{aid}",
+               {"title": "sweep-mail-renamed", "config": {"host": "127.0.0.2", "port": 2, "user": "someone"}})
+        changed = c.call("GET", "/api/accounts")
+        row = next((a for a in (changed or {}).get("accounts", []) if a["id"] == aid), None)
+        check(bool(row) and row["title"] == "sweep-mail-renamed" and row["config"]["host"] == "127.0.0.2",
+              "an account can be edited after it exists")
         c.call("DELETE", f"/api/accounts/{aid}")
 
     # --------------------------------------------------------------- filters
@@ -494,6 +502,21 @@ def main() -> int:
     c.call("POST", f"/api/groups/{gslug}/variables", {"name": "kaputt", "expr": "(1 +"}, expect=400)
     if formula:
         c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
+
+    # ------------------------------------------------ what the files already are
+    # A project full of .ics files with no calendar switched on is a thing
+    # nobody said out loud. Now something does.
+    c.call("PUT", f"/api/projects/{data}/files/content",
+           {"path": "notes/thought.md", "content": "# hello"})
+    found = c.call("GET", f"/api/projects/{data}/detect")
+    names = {x["name"]: x for x in (found or {}).get("capabilities", [])}
+    check("markdown" in names and not names["markdown"]["on"],
+          "a project says which capabilities its files already call for")
+    check(bool(names.get("markdown", {}).get("matched")),
+          "and which files said so")
+    group_wide = c.call("GET", f"/api/groups/{gslug}/detect")
+    check(bool(group_wide) and any(row["projectId"] == data for row in group_wide["projects"]),
+          "and a group answers for all of its projects at once")
 
     # ------------------------------------------- a project may defer, or lock
     # "As the group" is the default, and it stays deferred: a group that opens
