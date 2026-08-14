@@ -37,6 +37,31 @@ this line has no arrow
 	}
 }
 
+// The real course names from a DHBW Moodle, and the rules a person would
+// actually type for them — including one pasted out of the file tree.
+func TestPickRealCourses(t *testing.T) {
+	routes, _ := parseRoutes(`
+Grundlagen In -> semester1
+Analysis -> semester1
+wds125-fortgeschrittene-informatik-sca -> semester2
+Organisatorisches -> allgemeines
+* -> rest
+`)
+	cases := map[string]string{
+		"WDS125 - Grundlagen Informatik: Betriebssysteme (INA)":        "semester1",
+		"WDS125 - Grundlagen Analysis (TBF)":                           "semester1",
+		"WDS125 - Fortgeschrittene Informatik (SCA)":                   "semester2",
+		"WDS - Organisatorisches":                                      "allgemeines",
+		"WDS125 - Ausgewählte Themen der digitalen Betriebswirtschaft": "rest",
+	}
+	for full, want := range cases {
+		got, ok := pick(routes, lib.Course{Fullname: full, Shortname: full})
+		if !ok || got != want {
+			t.Errorf("%q → %q (matched=%v), want %q", full, got, ok, want)
+		}
+	}
+}
+
 func TestPick(t *testing.T) {
 	routes, _ := parseRoutes("2 -> semester-2\n3 -> semester-3\nArbeitssicherheit -> pflicht\n* -> archiv")
 

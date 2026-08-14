@@ -3,6 +3,7 @@ package moodle
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/url"
 	"path"
 	"strconv"
@@ -38,13 +39,17 @@ type moodleContent struct {
 	Fileurl  string `json:"fileurl"`
 }
 
-// item is one file with the place it belongs in.
+// item is one file with the place it belongs in — or, when Link is set, a
+// pointer to somewhere else, which is written as a small note.
 type item struct {
 	// Rel is the path under the course folder, sections and all.
 	Rel      string
 	Filename string
 	Fileurl  string
 	Filesize int
+	// Link and Name are set for a link activity instead of Fileurl.
+	Link string
+	Name string
 }
 
 // courseTree lists a course's files with the structure Moodle gives them.
@@ -89,6 +94,19 @@ func courseTree(baseURL, token string, courseID int, keepShape bool) ([]item, er
 				if content.Filename == "" || content.Fileurl == "" {
 					continue
 				}
+				// Not everything in a course is a file. A link activity points
+				// at a page somewhere else, and asking that page for a
+				// download gets 403, 503 or a redirect — three failures in the
+				// log for something that was never a file. It becomes a note
+				// with the address in it instead.
+				if content.Type != "" && content.Type != "file" {
+					out = append(out, item{
+						Rel:  path.Join(sectionDir, modDir, sanitise(folderName(mod.Name))+".link.md"),
+						Link: content.Fileurl,
+						Name: html.UnescapeString(mod.Name),
+					})
+					continue
+				}
 				dir := path.Join(sectionDir, modDir)
 				if keepShape {
 					// The tree inside a folder activity travels with it.
@@ -99,8 +117,8 @@ func courseTree(baseURL, token string, courseID int, keepShape bool) ([]item, er
 					}
 				}
 				out = append(out, item{
-					Rel:      path.Join(dir, sanitise(content.Filename)),
-					Filename: content.Filename,
+					Rel:      path.Join(dir, sanitise(html.UnescapeString(content.Filename))),
+					Filename: html.UnescapeString(content.Filename),
 					Fileurl:  content.Fileurl,
 					Filesize: content.Filesize,
 				})
@@ -114,7 +132,9 @@ func courseTree(baseURL, token string, courseID int, keepShape bool) ([]item, er
 // turning it into an unreadable slug — spaces and umlauts are fine in a
 // filesystem, slashes and dots at the front are not.
 func folderName(name string) string {
-	name = strings.TrimSpace(name)
+	// Moodle hands its names out HTML-escaped: "KI &amp; Ethik" is a course
+	// called "KI & Ethik", and a folder should be called what the course is.
+	name = html.UnescapeString(strings.TrimSpace(name))
 	name = strings.NewReplacer("/", "-", "\\", "-", ":", "-", "\n", " ", "\t", " ").Replace(name)
 	name = strings.Trim(name, ". ")
 	if len(name) > 80 {
@@ -185,8 +205,14 @@ func parseRoutes(text string) ([]route, []string) {
 }
 
 // pick returns the project slug for a course, and whether any rule matched.
+//
+// What a rule is compared against is everything the course is called: its short
+// name, its full name, its category — and the folder name it gets here, so a
+// line can be copied straight out of the file tree.
 func pick(routes []route, course lib.Course) (string, bool) {
-	name := strings.ToLower(course.Shortname + " " + course.Fullname + " " + course.CategoryName)
+	haystack := strings.ToLower(strings.Join([]string{
+		course.Shortname, course.Fullname, course.CategoryName, courseFolder(course),
+	}, " "))
 	for _, r := range routes {
 		switch {
 		case r.all:
@@ -195,11 +221,23 @@ func pick(routes []route, course lib.Course) (string, bool) {
 			if course.SemesterNumber == r.semester {
 				return r.project, true
 			}
-		case r.text != "" && strings.Contains(name, r.text):
+		case r.text != "" && matches(haystack, r.text):
 			return r.project, true
 		}
 	}
 	return "", false
+}
+
+// matches is deliberately forgiving: "Grundlagen In" should find "Grundlagen
+// Informatik", and so should the folder name "wds125-grundlagen-informatik-…"
+// pasted out of the tree. Spelling it out beats explaining later why a rule
+// that looks right does nothing.
+func matches(haystack, needle string) bool {
+	if strings.Contains(haystack, needle) {
+		return true
+	}
+	// The same comparison with punctuation and spacing taken out of both sides.
+	return strings.Contains(slug.Make(haystack), slug.Make(needle))
 }
 
 // courseFolder is the name a course gets when it becomes a folder.

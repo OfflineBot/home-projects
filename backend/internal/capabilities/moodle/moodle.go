@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"path"
@@ -263,9 +264,9 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	touched := map[uuid.UUID]*model.Project{}
 
 	for _, course := range courses {
-		name := course.Shortname
+		name := html.UnescapeString(course.Shortname)
 		if name == "" {
-			name = course.Fullname
+			name = html.UnescapeString(course.Fullname)
 		}
 		if onlyCurrent && !course.IsCurrent {
 			passedOver = append(passedOver, name)
@@ -305,6 +306,23 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		}
 		for _, it := range items {
 			rel := path.Join(folder, it.Rel)
+			// A link activity is written, not downloaded.
+			if it.Link != "" {
+				if env.Files.Exists(target, rel) {
+					skipped++
+					continue
+				}
+				note := fmt.Sprintf("# %s\n\n<%s>\n\nA link in Moodle, not a file — this note is the address.\n",
+					it.Name, it.Link)
+				if _, err := env.Files.Write(ctx, target, rel, []byte(note), files.Op{
+					Author: "the Moodle scheduler", Email: "scheduler@home-projects", Commit: false,
+				}); err != nil {
+					return capability.Report{Authenticated: true}, err
+				}
+				touched[target.ID] = target
+				written++
+				continue
+			}
 			key := target.ID.String() + "|" + rel
 			// One filename, one folder, two courses: the later one keeps its
 			// name and gains the course it came from, instead of vanishing.
@@ -451,6 +469,7 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			Password    string `json:"password"`
 			Target      string `json:"target"`
 			Courses     string `json:"courses"`
+			Routes      string `json:"routes"`
 			OnlyCurrent *bool  `json:"onlyCurrent"`
 			Flat        bool   `json:"flat"`
 		}
@@ -487,13 +506,19 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			Options: map[string]any{
 				"onlyCurrent": onlyCurrent,
 				"courses":     in.Courses,
+				"routes":      in.Routes,
 				"flat":        in.Flat,
 			},
 			Log: func(format string, args ...any) {
 				lines = append(lines, fmt.Sprintf(format, args...))
 			},
 		}
-		report, err := pull(ctx.UserContext(), env, job, cfg, token)
+		// Pulling the whole of Moodle takes minutes and hundreds of megabytes.
+		// A browser that gives up waiting, or a proxy that closes the
+		// connection, must not stop the work halfway and leave a project with
+		// eleven of twenty-three courses in it.
+		bg := context.WithoutCancel(ctx.UserContext())
+		report, err := pull(bg, env, job, cfg, token)
 		if err != nil {
 			return httpx.New(502, "pull_failed", "Signed in, but the material could not be fetched: %v", err)
 		}
