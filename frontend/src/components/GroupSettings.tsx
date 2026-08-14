@@ -3,7 +3,7 @@ import { api, type Group, type Project } from "../lib/api";
 import { useMeta } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon, iconNames } from "./Icon";
-import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, useGuarded } from "./ui";
+import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, Section, useGuarded } from "./ui";
 
 /**
  * Everything the settings table in section 7 lists for a group. It opens both
@@ -157,6 +157,8 @@ export default function GroupSettings({
     >
       <ErrorBox error={error} />
 
+      <Section title="What it is" />
+
       <Field label="Name">
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       </Field>
@@ -181,6 +183,8 @@ export default function GroupSettings({
       </Field>
 
       <div className="row">
+      <Section title="Who may see it" />
+
         <Field label="Visibility">
           <select
             value={form.visibility}
@@ -191,6 +195,8 @@ export default function GroupSettings({
             <option value="password">Password — anyone who knows it</option>
           </select>
         </Field>
+
+      <Section title="Repository" />
 
         <Field
           label="Clone"

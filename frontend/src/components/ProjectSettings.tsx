@@ -4,7 +4,7 @@ import { useMeta } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon } from "./Icon";
 import ProjectFilters from "./ProjectFilters";
-import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, useGuarded } from "./ui";
+import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, Section, useGuarded } from "./ui";
 
 /** Everything the settings table in section 7 lists for a project. */
 export default function ProjectSettings({
@@ -263,6 +263,8 @@ export default function ProjectSettings({
       <ErrorBox error={error} />
       {note ? <div className="warning">{note}</div> : null}
 
+      <Section title="What it is" />
+
       <Field label="Name">
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       </Field>
@@ -286,7 +288,7 @@ export default function ProjectSettings({
         <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </Field>
 
-      <Field label="Group" hint="Carries the history over.">
+      <Field label="Group" hint="Moving it carries the branch and its history over.">
         <select
           value={pendingMove?.groupId ?? project.groupId ?? ""}
           onChange={(e) => askAboutMove(e.target.value || "ungrouped")}
@@ -327,6 +329,8 @@ export default function ProjectSettings({
           </div>
         </div>
       ) : null}
+
+      <Section title="Who may see it" />
 
       <div className="row">
         <Field label="Visibility">
@@ -474,9 +478,11 @@ export default function ProjectSettings({
         <span>Archive — out of the listings, still readable, data stays.</span>
       </label>
 
+      <Section title="What comes in" />
+
       <Field
-        label="One-way drop-off"
-        hint="A link that lets someone hand over their material without an account here. Nothing is stored — no account, no password."
+        label="Drop-off"
+        hint="A link for handing material over without an account here. Nothing is stored: no account, no password."
       >
         <div className="builder">
           <select value={onewayKind} onChange={(e) => setOnewayKind(e.target.value)}>
@@ -507,9 +513,11 @@ export default function ProjectSettings({
         {onewayLink ? <Copyable value={onewayLink} /> : null}
       </Field>
 
-      <Field label="Filters" hint="Rules that sort what lands here. Written once under Filters.">
+      <Field label="Filters" hint="Rules that sort what lands here. Written once under Filters, picked up here.">
         <ProjectFilters project={project} />
       </Field>
+
+      <Section title="Getting it out" />
 
       {project.cloneUrl ? (
         <Field label="Clone">

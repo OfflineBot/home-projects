@@ -24,6 +24,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const stale = useNewerVersion();
 
   useEffect(() => {
     void (async () => {
@@ -115,6 +116,14 @@ export default function App() {
             <strong>home-projects</strong>
           </div>
           <main className="main">
+            {stale ? (
+              <div className="warning" role="status">
+                A newer version of this page is on the server.{" "}
+                <button className="btn small" onClick={() => window.location.reload()}>
+                  Reload
+                </button>
+              </div>
+            ) : null}
             <Boundary>
             <Routes>
               <Route path="/" element={<Dashboard />} />
@@ -138,6 +147,37 @@ export default function App() {
       </div>
     </StepUpProvider>
   );
+}
+
+/**
+ * Whether the page in front of you is older than the server.
+ *
+ * The entry point is never cached and names the bundle it wants; the bundle
+ * loaded here knows its own name. When they stop agreeing, the server has been
+ * updated under an open page — which until now showed up as a button that did
+ * nothing, or a part that would not load.
+ */
+function useNewerVersion() {
+  const [stale, setStale] = useState(false);
+  useEffect(() => {
+    const mine = [...document.querySelectorAll("script[src]")]
+      .map((el) => (el as HTMLScriptElement).src)
+      .find((src) => src.includes("/assets/"));
+    if (!mine) return;
+    const check = async () => {
+      try {
+        const html = await (await fetch("/index.html", { cache: "no-store" })).text();
+        const theirs = /\/assets\/[^"']+\.js/.exec(html)?.[0];
+        if (theirs && !mine.endsWith(theirs)) setStale(true);
+      } catch {
+        /* offline is not stale */
+      }
+    };
+    void check();
+    const timer = setInterval(check, 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return stale;
 }
 
 /**
@@ -180,7 +220,7 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
             {this.state.error.message}
           </div>
         )}
-        <button className="btn small" style={{ marginTop: 10 }} onClick={() => location.reload()}>
+        <button className="btn small" style={{ marginTop: 10 }} onClick={() => window.location.reload()}>
           Reload
         </button>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner, formatDate } from "../components/ui";
+import { Empty, ErrorBox, Field, Modal, Section, Spinner, formatDate } from "../components/ui";
 import {
   api,
   type Account,
@@ -351,7 +351,7 @@ function SchedulerDialog({
             else can.
           </p>
           <Field
-            label="Into which project"
+            label="Project"
             hint={
               form.projectId !== existing.projectId
                 ? "From the next run on it writes there. What it already wrote stays where it is."
@@ -387,7 +387,7 @@ function SchedulerDialog({
           </Field>
           {kind?.description ? <p className="hint">{kind.description}</p> : null}
 
-          <Field label="Into which project">
+          <Field label="Project" hint="It writes into this project's files.">
             <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
               <option value="">— pick one —</option>
               {(projects.data?.projects ?? []).map((p) => (
@@ -403,6 +403,8 @@ function SchedulerDialog({
           ) : null}
         </>
       )}
+
+      <Section title="What and where" />
 
       <Field label="Name">
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -463,9 +465,11 @@ function SchedulerDialog({
         ),
       )}
 
+      <Section title="Sorting" />
+
       <Field
         label="Filter"
-        hint="Sorts what this fetches straight away — no project in between."
+        hint="Sorts what this fetches straight away, so no project is needed in between."
       >
         <select value={form.filterId} onChange={(e) => setForm({ ...form, filterId: e.target.value })}>
           <option value="">— none —</option>
@@ -476,6 +480,8 @@ function SchedulerDialog({
           ))}
         </select>
       </Field>
+
+      <Section title="When" />
 
       <div className="row">
         <Field label="How often">
@@ -498,7 +504,7 @@ function SchedulerDialog({
             <option value="custom">a cron expression of my own…</option>
           </select>
         </Field>
-        <Field label="Target folder in the project" hint="Empty means the project itself.">
+        <Field label="Folder" hint="Inside the project. Empty means the project itself.">
           <input
             value={form.targetPath}
             onChange={(e) => setForm({ ...form, targetPath: e.target.value })}

@@ -64,20 +64,15 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 		AccountKinds:    []string{"moodle"},
 		AccountRequired: true,
 		Options: []capability.AccountField{
-			{Name: "onlyCurrent", Label: "Only courses that are still running", Type: "bool",
-				Hint: "Off means every course you are enrolled in, including past semesters."},
-			{Name: "courses", Label: "Only these courses (short names, comma separated)", Type: "text",
-				Placeholder: "leave empty for all of them"},
-			{Name: "routes", Label: "Which course goes into which project", Type: "textarea",
-				Placeholder: "2 -> semester-2\n3 -> semester-3\n* -> moodle-archiv",
-				Hint: "One rule per line, first match wins. A bare number is the semester Moodle " +
-					"derives; anything else matches the course name; * catches the rest. " +
-					"Leave empty and everything lands in this scheduler's own project."},
-			{Name: "prune", Label: "Remove files the course no longer has", Type: "bool",
+			{Name: "onlyCurrent", Label: "Running courses only", Type: "bool",
+				Hint: "Off fetches every course you are enrolled in, past semesters included."},
+			{Name: "courses", Label: "Only these", Type: "text",
+				Placeholder: "short names, comma separated — empty means all",
+				Hint:        "Course short names, comma separated. Empty means all of them."},
+			{Name: "prune", Label: "Mirror", Type: "bool",
 				Hint: "Makes the folders a mirror of Moodle instead of a heap that only grows. " +
 					"Only inside the folders this scheduler writes — anything you keep beside them stays."},
-			{Name: "flat", Label: "No folders at all — every file straight into the target folder",
-				Type: "bool",
+			{Name: "flat", Label: "No folders", Type: "bool",
 				Hint: "Off keeps Moodle's own shape: a folder per course, and the sections and " +
 					"folders inside it as they are there."},
 		},

@@ -255,6 +255,37 @@ describe("every screen draws something", () => {
     expect(c.textContent).not.toMatch(/could not be drawn/i);
   });
 
+  // A scheduler can be moved to another project — the dialog has to offer it,
+  // not merely the API.
+  it("offers to move a scheduler to another project", async () => {
+    const made = await api<{ id: string }>("/api/schedulers", {
+      body: {
+        kind: "ics", projectId: project.id, title: "ui-test-move",
+        schedule: "manual", targetPath: "", options: { url: "https://example.com/x.ics" },
+      },
+    });
+    try {
+      const c = await draw(<Schedulers />, /ui-test-move/);
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.includes("Edit"))!);
+      const dialogs = await waitFor(() => screen.getAllByRole("dialog"));
+      const dialog = dialogs[dialogs.length - 1];
+      expect(dialog.textContent).toContain("Project");
+      // The list of projects arrives on its own; the choice is only real once
+      // it is in the select.
+      await waitFor(
+        () => {
+          const options = [...dialog.querySelectorAll("select")].flatMap((sel) =>
+            [...sel.querySelectorAll("option")].map((o) => o.textContent ?? ""),
+          );
+          expect(options.some((o) => o.includes(project.title))).toBe(true);
+        },
+        { timeout: 8000 },
+      );
+    } finally {
+      await api(`/api/schedulers/${made.id}`, { method: "DELETE" });
+    }
+  });
+
   it("a group's settings", async () => {
     render(
       <MemoryRouter>

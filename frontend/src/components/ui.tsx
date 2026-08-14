@@ -165,6 +165,13 @@ export function Menu({
   );
 }
 
+/**
+ * A label and the thing it names.
+ *
+ * The label is a word or two. Whatever else is worth knowing hangs off it as a
+ * tooltip rather than a paragraph under every input — a dialog of explanations
+ * is a dialog nobody reads.
+ */
 export function Field({
   label,
   hint,
@@ -174,13 +181,25 @@ export function Field({
   hint?: ReactNode;
   children: ReactNode;
 }) {
+  const explained = typeof hint === "string" ? hint : undefined;
   return (
     <div className="field">
-      <label>{label}</label>
+      <label title={explained}>
+        {label}
+        {explained ? <span className="why" aria-hidden="true">?</span> : null}
+      </label>
       {children}
-      {hint ? <div className="hint">{hint}</div> : null}
+      {hint && !explained ? <div className="hint">{hint}</div> : null}
     </div>
   );
+}
+
+/**
+ * A heading with a hairline over it. Settings grew into a long column of
+ * unrelated decisions; this says where one subject ends and the next begins.
+ */
+export function Section({ title }: { title: string }) {
+  return <div className="section-line">{title}</div>;
 }
 
 // --------------------------------------------------------------- step-up
