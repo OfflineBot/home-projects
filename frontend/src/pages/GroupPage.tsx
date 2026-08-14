@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import CreateProject from "../components/CreateProject";
 import GroupSettings from "../components/GroupSettings";
+import Graph from "../components/Graph";
 import { Icon } from "../components/Icon";
 import ProjectSettings from "../components/ProjectSettings";
 import { Copyable, Empty, ErrorBox, Field, Menu, Modal, Spinner } from "../components/ui";
@@ -61,8 +62,7 @@ export default function GroupPage() {
 
       {data?.group.readOnly ? (
         <div className="warning">
-          <Icon name="lock" size={15} /> This group is read-only. Nothing in it can be changed — not through the
-          UI, not through the API, and not with <code className="mono">git push</code>.
+          <Icon name="lock" size={15} /> Read-only — not through the UI, not through the API, not with git push.
         </div>
       ) : null}
 
@@ -120,6 +120,8 @@ export default function GroupPage() {
           </Link>
         ))}
       </div>
+
+      {data ? <Graph group={data.group.slug} /> : null}
 
       {creating && data ? (
         <CreateProject

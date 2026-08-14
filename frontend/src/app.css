@@ -440,6 +440,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .syntax td { padding: 2px 12px 2px 0; color: var(--ctp-subtext0); vertical-align: top; }
 .syntax td:first-child { white-space: nowrap; }
 
+/* What depends on what, in one group. */
+.graph { margin-top: 22px; border: 1px solid var(--ctp-surface0); border-radius: var(--radius);
+  background: var(--ctp-mantle); padding: 6px; }
+.graph-key { display: flex; gap: 12px; padding: 0 10px 8px; }
+
 /* -------------------------------------------------------------------- tree */
 
 /* The arrangement the way `tree` prints it: one root per group, monospace, no

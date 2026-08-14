@@ -36,6 +36,7 @@ export default function ProjectSettings({
   });
   const [password, setPassword] = useState("");
   const [error, setError] = useState<Error | null>(null);
+  const [pendingMove, setPendingMove] = useState<{ groupId: string; notes: MoveNote[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [preview, setPreview] = useState<any>(null);
@@ -94,6 +95,23 @@ export default function ProjectSettings({
     }
   };
 
+  // Moving is a branch move and an address change. What that costs is asked
+  // for first — an existing checkout, a group that publishes this project, a
+  // name already taken over there.
+  const askAboutMove = async (groupId: string) => {
+    setError(null);
+    setPendingMove(null);
+    try {
+      const target = groupId === "ungrouped" ? "ungrouped" : (groups.find((g) => g.id === groupId)?.slug ?? "");
+      const impact = await api<{ notes: MoveNote[] }>(
+        `/api/projects/${project.id}/move-impact?group=${encodeURIComponent(target)}`,
+      );
+      setPendingMove({ groupId, notes: impact.notes });
+    } catch (err) {
+      setError(err as Error);
+    }
+  };
+
   const move = async (groupId: string) => {
     setError(null);
     try {
@@ -101,6 +119,7 @@ export default function ProjectSettings({
         method: "POST",
         body: { groupId },
       });
+      setPendingMove(null);
       onChanged(result.project);
     } catch (err) {
       setError(err as Error);
@@ -202,7 +221,10 @@ export default function ProjectSettings({
       </Field>
 
       <Field label="Group" hint="Carries the history over.">
-        <select value={project.groupId ?? ""} onChange={(e) => move(e.target.value || "ungrouped")}>
+        <select
+          value={pendingMove?.groupId ?? project.groupId ?? ""}
+          onChange={(e) => askAboutMove(e.target.value || "ungrouped")}
+        >
           <option value="">Ungrouped</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
@@ -211,6 +233,34 @@ export default function ProjectSettings({
           ))}
         </select>
       </Field>
+
+      {pendingMove ? (
+        <div className="tile" style={{ marginBottom: 14 }}>
+          <div className="list" style={{ background: "transparent", border: "none" }}>
+            {pendingMove.notes.map((n, i) => (
+              <div key={i} className="list-row" style={{ padding: "4px 0" }}>
+                <span className={`badge ${n.level === "breaks" ? "bad" : n.level === "changes" ? "warn" : "good"}`}>
+                  {n.level}
+                </span>
+                <span className="grow">{n.what}</span>
+              </div>
+            ))}
+          </div>
+          <div className="tile-foot">
+            <div style={{ flex: 1 }} />
+            <button className="btn small" onClick={() => setPendingMove(null)}>
+              Cancel
+            </button>
+            <button
+              className="btn small primary"
+              disabled={pendingMove.notes.some((n) => n.level === "breaks")}
+              onClick={() => move(pendingMove.groupId)}
+            >
+              Move it
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="row">
         <Field label="Visibility">
@@ -385,4 +435,9 @@ export default function ProjectSettings({
       </div>
     </Modal>
   );
+}
+
+interface MoveNote {
+  level: "breaks" | "changes" | "fine";
+  what: string;
 }

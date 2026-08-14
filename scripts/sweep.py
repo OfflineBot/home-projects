@@ -444,6 +444,14 @@ def main() -> int:
                       {"filter": fid, "path": "loose", "apply": False})
         check(bool(plan) and plan["applied"] is False, "applying a filter to a project asks first")
 
+    # ------------------------------------------------------- moving, and what breaks
+    impact = c.call("GET", f"/api/projects/{data}/move-impact?group=ungrouped")
+    levels = {n["level"] for n in (impact or {}).get("notes", [])}
+    check("changes" in levels, "a move says what changes before it is made")
+    graph = c.call("GET", f"/api/groups/{gslug}/graph")
+    check(bool(graph) and "nodes" in graph and "edges" in graph,
+          "a group can say what depends on what inside it")
+
     # ------------------------------------------------------------ schedulers
     sched = c.call("POST", "/api/schedulers", {
         "projectId": cal,
