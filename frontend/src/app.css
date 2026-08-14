@@ -705,18 +705,9 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   padding: 10px 12px; margin-bottom: 10px;
 }
 .tmux { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 10px; }
-.tmux-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 /* The pane as tmux itself shows it: fixed width, scrolling on its own, dark
    whatever the rest of the page does — a terminal that changes colour is a
    terminal you stop trusting. */
-.tmux-screen {
-  background: var(--ctp-crust); color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface0); border-radius: 8px;
-  padding: 10px 12px; margin: 0; max-height: 420px; overflow: auto;
-  font-family: var(--mono); font-size: 12.5px; line-height: 1.45; white-space: pre;
-}
-.tmux-type { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.tmux-type input { flex: 1; }
 
 /* The dashboard's own headings: a person's words, not the app's. */
 .board-section { margin-bottom: 6px; }
@@ -794,16 +785,6 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .card-agenda li { display: flex; gap: 8px; padding: 2px 0; }
 .card-agenda .when { color: var(--ctp-overlay1); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .card-agenda .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-terminal { display: flex; flex-direction: column; height: 100%; gap: 8px; }
-.card-terminal-bar { display: flex; align-items: center; gap: 8px; }
-.card-terminal .tmux-screen { flex: 1; max-height: none; }
-.card-terminal-list { display: flex; flex-direction: column; gap: 4px; }
-.card-terminal-session {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  background: none; border: 1px solid var(--ctp-surface0); border-radius: 8px;
-  padding: 6px 9px; color: inherit; cursor: pointer;
-}
-.card-terminal-session:hover { border-color: var(--ctp-blue); }
 
 /* Which kinds of card there are, when adding one. */
 .card-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-bottom: 14px; }
@@ -864,3 +845,104 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .folder-head:hover { color: var(--ctp-text); }
 /* A board handed to somebody: no chrome around it. */
 .main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
+
+/* ---------------------------------------------------------------- terminal
+   A terminal is the one place where the app should get out of the way: dark,
+   monospace, as large as it is given, and full-screen on demand. It never
+   changes colour with the theme — a terminal that does is one you stop
+   trusting. */
+.terminal {
+  display: flex; flex-direction: column; height: 100%; min-height: 220px; gap: 8px;
+}
+.terminal-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.terminal-screen {
+  flex: 1; min-height: 180px; margin: 0; overflow: auto;
+  background: #11111b; color: #cdd6f4;
+  border: 1px solid var(--ctp-surface1); border-radius: 10px;
+  padding: 12px 14px; white-space: pre; tab-size: 8;
+  font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  scrollbar-width: thin;
+}
+.terminal-type { display: flex; align-items: center; gap: 8px; }
+.terminal-type .prompt { color: var(--ctp-green); }
+.terminal-type input {
+  flex: 1; background: var(--ctp-crust); border: 1px solid var(--ctp-surface1);
+  color: var(--ctp-text); font-size: 13px;
+}
+.terminal-note { color: var(--ctp-peach); }
+.terminal-sessions { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.terminal-session {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0); border-radius: 9px;
+  padding: 9px 12px; color: inherit; cursor: pointer;
+}
+.terminal-session:hover { border-color: var(--ctp-blue); }
+.terminal-new { display: flex; gap: 8px; margin-top: 4px; }
+.terminal-new input { flex: 1; }
+
+/* Full screen: the terminal and nothing else. Escape leaves. */
+.terminal-backdrop {
+  position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 0.75);
+  display: grid; place-items: stretch; padding: 18px;
+}
+.terminal.full {
+  height: 100%; background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
+  border-radius: 14px; padding: 14px 16px;
+}
+.terminal.full .terminal-screen { font-size: 13.5px; }
+.machine-terminal { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 12px; height: 420px; }
+
+/* Flow: no grid, no coordinates — the cards follow one another and each says
+   how wide it is. This is the layout for something that reads like a page. */
+.flow { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.flow-item { position: relative; flex-grow: 1; min-width: 220px; }
+.flow-item .card { height: auto; min-height: 90px; }
+.terminal-quick { width: 100%; height: 100%; justify-content: center; }
+
+/* A card's chosen look. Five knobs, no free CSS: enough to make a board look
+   built, not enough to make it unreadable. */
+.card.tinted {
+  background: color-mix(in srgb, var(--card-color, var(--ctp-blue)) 14%, var(--ctp-mantle));
+  border-color: color-mix(in srgb, var(--card-color, var(--ctp-blue)) 30%, transparent);
+}
+.card.bare { background: none; border-color: transparent; }
+.card.borderless { border-color: transparent; }
+.card.large { font-size: 15.5px; }
+.card.large .stat { font-size: 38px; }
+.card.centred { text-align: center; align-items: center; }
+.card.centred .card-links, .card.centred .card-number, .card.centred .card-rule { align-items: center; }
+.card[style*="--card-color"] .stat { color: var(--card-color); }
+
+/* On a phone the board is one column: a twelve-column grid on a 390-pixel
+   screen is twelve slivers. Flow already wraps; the grid is told to. */
+@media (max-width: 760px) {
+  .grid-area {
+    display: flex !important;
+    flex-direction: column;
+    min-height: 0 !important;
+  }
+  .grid-cell { grid-column: auto !important; grid-row: auto !important; min-height: 120px; }
+  .flow-item { flex-basis: 100% !important; }
+  .board-bar { gap: 6px; }
+  .terminal-screen { font-size: 12px; }
+  .terminal-backdrop { padding: 6px; }
+}
+
+/* Keeping a link: one line to add one, and the list under it. */
+.link-add { border: 1px solid var(--ctp-surface0); border-radius: 12px; padding: 12px 14px; }
+.list-row.done { opacity: .55; }
+.list-row.done strong { text-decoration: line-through; }
+.list-row a { color: inherit; text-decoration: none; min-width: 0; }
+.list-row a:hover strong { text-decoration: underline; }
+
+/* The terminal proper: xterm fills whatever it is given. */
+.screen { flex: 1; min-height: 220px; background: #11111b; border: 1px solid var(--ctp-surface1); border-radius: 10px; padding: 8px; overflow: hidden; }
+.screen .xterm { height: 100%; }
+.terminal.full .screen { min-height: 0; }
+
+/* The editor: the file, and one line saying whether it is saved. */
+.editor { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; }
+.editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.editor-host { flex: 1; min-height: 340px; border: 1px solid var(--ctp-surface1); border-radius: 10px; overflow: hidden; }
+.editor-host .cm-editor { height: 100%; }
+.editor-host .cm-scroller { font-family: var(--mono); font-size: 13px; }

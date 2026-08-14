@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner, useAsk } from "../components/ui";
+import { Empty, ErrorBox, Field, Menu, Modal, Spinner, useAsk } from "../components/ui";
+import { Terminal } from "../components/Terminal";
 import { api, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 
@@ -26,12 +27,6 @@ interface Machine {
   up: boolean;
 }
 
-interface Session {
-  name: string;
-  windows: string;
-  attached: boolean;
-  created: string;
-}
 
 interface AccountRow {
   id: string;
@@ -41,6 +36,7 @@ interface AccountRow {
 }
 
 export default function MachinesView({ project }: { project: Project; reload: () => void }) {
+  const ask = useAsk();
   const { data, error, loading, reload } = useQuery<{ machines: Machine[] }>(
     `/api/projects/${project.id}/machines`,
   );
@@ -175,40 +171,59 @@ export default function MachinesView({ project }: { project: Project; reload: ()
                   <button className="btn small" onClick={() => setOpen(open === m.name ? null : m.name)}>
                     <Icon name="code" size={14} /> Sessions
                   </button>
-                  <button
-                    className="btn small ghost"
-                    onClick={() =>
-                      withPassword(
-                        `shutting ${m.name} down`,
-                        (secret) => act(m, "shutdown", secret),
-                        Boolean(m.account),
-                      )
-                    }
-                  >
-                    Shut down
-                  </button>
-                  <button
-                    className="btn small ghost"
-                    onClick={() =>
-                      withPassword(
-                        `restarting ${m.name}`,
-                        (secret) => act(m, "reboot", secret),
-                        Boolean(m.account),
-                      )
-                    }
-                  >
-                    Restart
-                  </button>
+                  {/* Power is behind a menu and asks first: "shut down" next to
+                      "sessions" is a thing you hit by accident once, and then
+                      you are standing in front of the machine. */}
+                  <Menu
+                    label={`Power for ${m.name}`}
+                    items={[
+                      {
+                        label: "Shut down",
+                        icon: "lock",
+                        danger: true,
+                        onClick: async () => {
+                          const sure = await ask.confirm({
+                            title: `Shut down ${m.name}?`,
+                            confirmLabel: "Shut it down",
+                            danger: true,
+                          });
+                          if (sure) {
+                            withPassword(`shutting ${m.name} down`, (secret) => act(m, "shutdown", secret),
+                              Boolean(m.account));
+                          }
+                        },
+                      },
+                      {
+                        label: "Restart",
+                        icon: "refresh",
+                        danger: true,
+                        onClick: async () => {
+                          const sure = await ask.confirm({
+                            title: `Restart ${m.name}?`,
+                            confirmLabel: "Restart it",
+                            danger: true,
+                          });
+                          if (sure) {
+                            withPassword(`restarting ${m.name}`, (secret) => act(m, "reboot", secret),
+                              Boolean(m.account));
+                          }
+                        },
+                      },
+                    ]}
+                  />
                 </>
               ) : null}
             </div>
 
             {open === m.name ? (
-              <Tmux
-                project={project}
-                machine={m}
-                withPassword={(why, run) => withPassword(why, run, Boolean(m.account))}
-              />
+              <div className="machine-terminal">
+                <Terminal
+                  base={`/api/projects/${project.id}/machines/${encodeURIComponent(m.name)}`}
+                  machine={m.name}
+                  byAccount={Boolean(m.account)}
+                  onLeave={() => setOpen(null)}
+                />
+              </div>
             ) : null}
           </div>
         ))}
@@ -237,241 +252,6 @@ export default function MachinesView({ project }: { project: Project; reload: ()
             reload();
           }}
         />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The sessions on one machine, and what is on their screens.
- *
- * This is not a terminal emulator and does not pretend to be one: it is what
- * tmux itself shows — the pane as text — plus a line to type into. That covers
- * what these sessions are for: something long-running is in there, and you want
- * to look at it and occasionally tell it something.
- */
-function Tmux({
-  project,
-  machine,
-  withPassword,
-}: {
-  project: Project;
-  machine: Machine;
-  withPassword: (why: string, run: (password: string) => Promise<void>) => void;
-}) {
-  const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [note, setNote] = useState("");
-  const [inside, setInside] = useState<string | null>(null);
-  const [screen, setScreen] = useState("");
-  const [line, setLine] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<Error | null>(null);
-  const [live, setLive] = useState(true);
-  const ask = useAsk();
-  const secret = useRef("");
-  const base = `/api/projects/${project.id}/machines/${encodeURIComponent(machine.name)}`;
-
-  const list = useCallback(
-    (password: string) =>
-      api<{ sessions: Session[]; note?: string }>(`${base}/tmux`, { body: { password } })
-        .then((answer) => {
-          secret.current = password;
-          setSessions(answer.sessions);
-          setNote(answer.note ?? "");
-          setFailed(null);
-        })
-        .catch((err) => setFailed(err as Error)),
-    [base],
-  );
-
-  const look = useCallback(
-    (session: string, password: string) =>
-      api<{ screen: string }>(`${base}/tmux/${encodeURIComponent(session)}`, {
-        body: { password, lines: 200 },
-      })
-        .then((answer) => {
-          secret.current = password;
-          setScreen(answer.screen);
-          setFailed(null);
-        })
-        .catch((err) => setFailed(err as Error)),
-    [base],
-  );
-
-  useEffect(() => {
-    withPassword(`the sessions on ${machine.name}`, list);
-    // Asking once when it opens; the refresh below keeps it current.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // While a session is open, its screen is fetched again every few seconds —
-  // that is what makes it feel like looking at the thing rather than at a
-  // photograph of it.
-  useEffect(() => {
-    if (!inside || !live || !secret.current) return;
-    const timer = setInterval(() => void look(inside, secret.current), 4000);
-    return () => clearInterval(timer);
-  }, [inside, live, look]);
-
-  return (
-    <div className="tmux">
-      <ErrorBox error={failed} />
-      {sessions === null ? <Spinner /> : null}
-
-      {sessions !== null && !inside ? (
-        <>
-          {sessions.length === 0 ? (
-            <p className="meta">{note || "No tmux sessions on this machine."}</p>
-          ) : (
-            <div className="list">
-              {sessions.map((s) => (
-                <button
-                  key={s.name}
-                  className="list-row"
-                  style={{ width: "100%", background: "none", border: "none", cursor: "pointer" }}
-                  onClick={() => {
-                    setInside(s.name);
-                    withPassword(`the session ${s.name}`, (password) => look(s.name, password));
-                  }}
-                >
-                  <Icon name="code" size={15} />
-                  <span className="grow">{s.name}</span>
-                  <span className="meta">
-                    {s.windows} window{s.windows === "1" ? "" : "s"}
-                    {s.attached ? " · attached" : ""}
-                  </span>
-                  <Icon name="chevronRight" size={14} />
-                </button>
-              ))}
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button
-              className="btn small"
-              onClick={() => withPassword(`the sessions on ${machine.name}`, list)}
-            >
-              <Icon name="refresh" size={13} /> Refresh
-            </button>
-            <button
-              className="btn small"
-              onClick={async () => {
-                const name = await ask.text({
-                  title: "A new session",
-                  label: "Name",
-                  placeholder: "work",
-                });
-                if (!name) return;
-                withPassword(`a new session on ${machine.name}`, async (password) => {
-                  setBusy(true);
-                  try {
-                    await api(`${base}/tmux-new`, { body: { password, session: name } });
-                    await list(password);
-                  } catch (err) {
-                    setFailed(err as Error);
-                  } finally {
-                    setBusy(false);
-                  }
-                });
-              }}
-            >
-              <Icon name="plus" size={13} /> New session
-            </button>
-          </div>
-        </>
-      ) : null}
-
-      {inside ? (
-        <>
-          <div className="tmux-bar">
-            <button className="btn ghost icon" aria-label="Back" onClick={() => setInside(null)}>
-              <Icon name="chevronLeft" size={15} />
-            </button>
-            <strong className="mono">{inside}</strong>
-            <label className="check" style={{ margin: 0 }}>
-              <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
-              <span className="meta">keep looking</span>
-            </label>
-            <span className="grow" />
-            <button
-              className="btn small ghost"
-              onClick={() => withPassword(`the session ${inside}`, (p) => look(inside, p))}
-            >
-              <Icon name="refresh" size={13} /> Now
-            </button>
-            <button
-              className="btn small ghost"
-              onClick={async () => {
-                const sure = await ask.confirm({
-                  title: `Close “${inside}”?`,
-                  confirmLabel: "Close it",
-                  danger: true,
-                  body: <>Whatever runs in that session stops.</>,
-                });
-                if (!sure) return;
-                withPassword(`closing ${inside}`, async (password) => {
-                  await api(`${base}/tmux/${encodeURIComponent(inside)}/kill`, { body: { password } });
-                  setInside(null);
-                  await list(password);
-                });
-              }}
-            >
-              Close it
-            </button>
-          </div>
-
-          <pre className="tmux-screen">{screen || " "}</pre>
-
-          <form
-            className="tmux-type"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const keys = line;
-              setLine("");
-              withPassword(`typing into ${inside}`, async (password) => {
-                setBusy(true);
-                try {
-                  const answer = await api<{ screen: string }>(
-                    `${base}/tmux/${encodeURIComponent(inside)}/keys`,
-                    { body: { password, keys, enter: true } },
-                  );
-                  secret.current = password;
-                  setScreen(answer.screen);
-                } catch (err) {
-                  setFailed(err as Error);
-                } finally {
-                  setBusy(false);
-                }
-              });
-            }}
-          >
-            <span className="mono meta">$</span>
-            <input
-              value={line}
-              onChange={(e) => setLine(e.target.value)}
-              placeholder="a line for this session"
-              className="mono"
-            />
-            <button className="btn small" disabled={busy || !line.trim()}>
-              Send
-            </button>
-            <button
-              type="button"
-              className="btn small ghost"
-              title="Ctrl-C"
-              onClick={() =>
-                withPassword(`interrupting ${inside}`, async (password) => {
-                  const answer = await api<{ screen: string }>(
-                    `${base}/tmux/${encodeURIComponent(inside)}/keys`,
-                    { body: { password, keys: "C-c", enter: false } },
-                  );
-                  setScreen(answer.screen);
-                })
-              }
-            >
-              ^C
-            </button>
-          </form>
-        </>
       ) : null}
     </div>
   );

@@ -481,7 +481,11 @@ func (s *Server) mountGroups(r fiber.Router) {
 		if err != nil {
 			return httpx.Internal("the repository could not be read").WithCause(err)
 		}
-		commits, _ := s.Git.Log(c.UserContext(), grp.Slug, "main", 20)
+		branch := strings.TrimSpace(c.Query("branch"))
+		if branch == "" {
+			branch = "main"
+		}
+		commits, _ := s.Git.Log(c.UserContext(), grp.Slug, branch, c.QueryInt("limit", 30))
 		payload := fiber.Map{
 			"cloneUrl": s.Git.CloneURL(grp.Slug),
 			"exists":   s.Git.RepoExists(grp.Slug),
@@ -494,7 +498,48 @@ func (s *Server) mountGroups(r fiber.Router) {
 			payload["sshCloneUrl"] = ssh
 			payload["sshHint"] = "git clone -b <project-slug> --single-branch " + ssh
 		}
+		payload["branch"] = branch
 		return c.JSON(payload)
+	})
+
+	// One commit, as the patch it is.
+	one.Get("/git/commit/:hash", func(c *fiber.Ctx) error {
+		grp := groupOf(c)
+		patch, err := s.Git.Show(c.UserContext(), grp.Slug, c.Params("hash"))
+		if err != nil {
+			return httpx.NotFound("There is no such commit.")
+		}
+		return c.JSON(fiber.Map{"hash": c.Params("hash"), "patch": patch})
+	})
+
+	// The group's own front page: README.md on the main branch, which is what
+	// makes a group a project in its own right rather than a folder of them.
+	one.Get("/readme", func(c *fiber.Ctx) error {
+		grp := groupOf(c)
+		text, err := s.Git.ReadMain(c.UserContext(), grp.Slug, "README.md")
+		if err != nil {
+			return c.JSON(fiber.Map{"text": ""})
+		}
+		return c.JSON(fiber.Map{"text": text})
+	})
+
+	one.Put("/readme", requireOwner, func(c *fiber.Ctx) error {
+		grp := groupOf(c)
+		if grp.ReadOnly {
+			return httpx.ReadOnly("The group " + grp.Title)
+		}
+		var in struct {
+			Text string `json:"text"`
+		}
+		if err := c.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The text could not be read.")
+		}
+		author, email := authorOf(c)
+		if err := s.Git.WriteMain(c.UserContext(), grp.Slug, "README.md", in.Text,
+			author, email, "Write the group's README"); err != nil {
+			return httpx.Internal("the README could not be written").WithCause(err)
+		}
+		return c.JSON(fiber.Map{"text": in.Text})
 	})
 }
 

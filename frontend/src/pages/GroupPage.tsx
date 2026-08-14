@@ -5,10 +5,11 @@ import GroupSettings from "../components/GroupSettings";
 import Graph from "../components/Graph";
 import { Icon } from "../components/Icon";
 import ProjectSettings from "../components/ProjectSettings";
-import { Copyable, Empty, ErrorBox, Field, Menu, Modal, Spinner } from "../components/ui";
+import { Copyable, Empty, ErrorBox, Field, Fold, formatDate, Menu, Modal, Spinner } from "../components/ui";
 import { ApiError, api, type Group, type Project } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 import Board from "../components/board/Board";
+import { markdownToHtml } from "../lib/markdown";
 import { colorVar } from "../lib/theme";
 
 export default function GroupPage() {
@@ -22,6 +23,7 @@ export default function GroupPage() {
   // Board or projects. The board comes first once there is anything on it —
   // that is the page somebody arranged, and the list is always one click away.
   const [page, setPage] = useState<"board" | "projects">("board");
+  const readme = useQuery<{ text: string }>(slug ? `/api/groups/${slug}/readme` : null);
   const [shut, setShut] = useState<Record<string, boolean>>({});
   const fold = (folder: string) => setShut((s) => ({ ...s, [folder]: !s[folder] }));
   const [groupSettings, setGroupSettings] = useState(false);
@@ -83,6 +85,10 @@ export default function GroupPage() {
 
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? <Spinner /> : null}
+
+      {page === "projects" && readme.data?.text ? (
+        <div className="prose group-readme" dangerouslySetInnerHTML={{ __html: markdownToHtml(readme.data.text) }} />
+      ) : null}
 
       {page === "board" && slug ? (
         <Board
@@ -198,6 +204,10 @@ export default function GroupPage() {
 }
 
 function GitPanel({ group, onClose }: { group: Group; onClose: () => void }) {
+  // Which branch's history is on screen — main is the group's own, every other
+  // one is a project.
+  const [branch, setBranch] = useState("main");
+  const [patch, setPatch] = useState<{ hash: string; patch: string } | null>(null);
   const { data, error } = useQuery<{
     cloneUrl: string;
     sshCloneUrl?: string;
@@ -205,7 +215,7 @@ function GitPanel({ group, onClose }: { group: Group; onClose: () => void }) {
     commits: { short: string; message: string; author: string; at: string }[];
     hint: string;
     sshHint?: string;
-  }>(`/api/groups/${group.slug}/git`);
+  }>(`/api/groups/${group.slug}/git?branch=${encodeURIComponent(branch)}`, [branch]);
 
   return (
     <Modal title={`Repository · ${group.title}`} onClose={onClose}>
@@ -225,26 +235,46 @@ function GitPanel({ group, onClose }: { group: Group; onClose: () => void }) {
         </Field>
       ) : null}
       <Field label={`Branches (${data?.branches?.length ?? 0})`}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="mail-chips">
           {(data?.branches ?? []).map((b) => (
-            <span key={b} className="badge">
+            <button key={b} className={branch === b ? "chip on" : "chip"} onClick={() => setBranch(b)}>
               {b}
-            </span>
+            </button>
           ))}
         </div>
       </Field>
-      {data?.commits?.length ? (
-        <Field label="main">
+
+      <Field label={`History of ${branch}`}>
+        {data?.commits?.length ? (
           <div className="list">
             {data.commits.map((c) => (
-              <div key={c.short} className="list-row">
+              <button
+                key={c.short}
+                className="list-row"
+                style={{ width: "100%", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+                onClick={async () => {
+                  const answer = await api<{ hash: string; patch: string }>(
+                    `/api/groups/${group.slug}/git/commit/${c.short}`,
+                  );
+                  setPatch(answer);
+                }}
+              >
                 <code className="mono">{c.short}</code>
                 <span className="grow">{c.message}</span>
                 <span className="meta">{c.author}</span>
-              </div>
+                <span className="meta">{formatDate(c.at)}</span>
+              </button>
             ))}
           </div>
-        </Field>
+        ) : (
+          <p className="meta">Nothing on this branch yet.</p>
+        )}
+      </Field>
+
+      {patch ? (
+        <Fold title={`What ${patch.hash} changed`} open>
+          <pre className="block" style={{ maxHeight: 380, overflow: "auto" }}>{patch.patch}</pre>
+        </Fold>
       ) : null}
     </Modal>
   );

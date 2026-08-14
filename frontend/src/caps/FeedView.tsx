@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { Icon } from "../components/Icon";
 import { ErrorBox, Empty, Spinner, formatDate } from "../components/ui";
 import { type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
@@ -21,7 +23,15 @@ export default function FeedView({ project }: { project: Project; reload: () => 
         </p>
       ) : null}
       {data && data.entries.length === 0 ? (
-        <Empty icon="rss">Nothing fetched yet.</Empty>
+        <Empty icon="rss">
+          Nothing fetched yet. A feed scheduler pulls an RSS or Atom address into this project: the
+          list here, and every article as a file.
+          <div style={{ marginTop: 10 }}>
+            <Link className="btn small" to="/schedulers">
+              <Icon name="clock" size={14} /> Set one up
+            </Link>
+          </div>
+        </Empty>
       ) : null}
       <div className="list">
         {data?.entries.map((e) => (

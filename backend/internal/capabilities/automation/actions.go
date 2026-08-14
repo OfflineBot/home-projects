@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ func (Capability) Actions() []capability.Action {
 		{
 			Name:        "http",
 			Title:       "HTTP request",
-			Description: "Calls a URL — this is what switches a lamp, whatever brand it is.",
+			Description: "Calls a URL. Several addresses at once, one per line.",
 			Params:      []string{"method", "url", "headers", "body", "timeout", "expect"},
 			Run:         runHTTP,
 		},
@@ -45,6 +46,13 @@ func (Capability) Actions() []capability.Action {
 			Description: "Runs a command on another machine — shutting the PC down, for instance.",
 			Params:      []string{"host", "port", "user", "account", "command"},
 			Run:         runSSH,
+		},
+		{
+			Name:        "wled",
+			Title:       "WLED",
+			Description: "The lights: on, off, brightness, colour, an effect. Several at once.",
+			Params:      []string{"host", "power", "brightness", "color", "effect", "preset"},
+			Run:         runWLED,
 		},
 		{
 			Name:        "ping",
@@ -126,10 +134,24 @@ func expand(s string, in capability.ActionInput) string {
 }
 
 func runHTTP(ctx context.Context, env *capability.Env, in capability.ActionInput) (capability.ActionResult, error) {
-	url := param(in, "url")
-	if url == "" {
+	// One address, or several: three lamps in a room are three addresses and
+	// one intention, and writing the same rule three times is how one of them
+	// ends up out of step.
+	addresses := []string{}
+	for _, raw := range strings.FieldsFunc(param(in, "url"), func(r rune) bool {
+		return r == '\n' || r == ',' || r == ' '
+	}) {
+		if address := strings.TrimSpace(raw); address != "" {
+			addresses = append(addresses, address)
+		}
+	}
+	if len(addresses) == 0 {
 		return capability.ActionResult{}, fmt.Errorf("this action needs a url")
 	}
+	if len(addresses) > 1 {
+		return runHTTPMany(ctx, in, addresses)
+	}
+	url := addresses[0]
 	method := strings.ToUpper(param(in, "method"))
 	if method == "" {
 		method = http.MethodGet
@@ -417,4 +439,171 @@ func accountConfig(a *model.Account) map[string]string {
 		out[k] = fmt.Sprint(v)
 	}
 	return out
+}
+
+// runHTTPMany sends the same request to every address and reports as one. All
+// at once rather than one after another: the point of naming three lamps is
+// that they change together.
+func runHTTPMany(ctx context.Context, in capability.ActionInput, addresses []string) (capability.ActionResult, error) {
+	type answer struct {
+		address string
+		status  int
+		err     error
+	}
+	results := make(chan answer, len(addresses))
+	for _, address := range addresses {
+		go func(address string) {
+			one := in
+			one.Params = map[string]any{}
+			for k, v := range in.Params {
+				one.Params[k] = v
+			}
+			one.Params["url"] = address
+			out, err := runHTTP(ctx, nil, one)
+			status, _ := out.Value.(int)
+			results <- answer{address: address, status: status, err: err}
+		}(address)
+	}
+	var failed []string
+	lines := []string{}
+	for range addresses {
+		r := <-results
+		if r.err != nil {
+			failed = append(failed, r.address+": "+r.err.Error())
+			lines = append(lines, r.address+" → "+r.err.Error())
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s → %d", r.address, r.status))
+	}
+	sort.Strings(lines)
+	in.Log("%d addresses: %s", len(addresses), strings.Join(lines, ", "))
+	if len(failed) > 0 {
+		return capability.ActionResult{Output: strings.Join(lines, "\n")},
+			fmt.Errorf("%d of %d failed: %s", len(failed), len(addresses), strings.Join(failed, "; "))
+	}
+	return capability.ActionResult{Output: strings.Join(lines, "\n"), Value: len(addresses)}, nil
+}
+
+// runWLED speaks to the lights directly.
+//
+// WLED has an HTTP interface, so this could be an http action with a hand-built
+// JSON body — and that is exactly what it was, which meant looking up the field
+// names every time. On/off, brightness, a colour, one of the effects: that is
+// what a person wants from a lamp, and the rest is still reachable the long way.
+func runWLED(ctx context.Context, env *capability.Env, in capability.ActionInput) (capability.ActionResult, error) {
+	hosts := []string{}
+	for _, raw := range strings.FieldsFunc(param(in, "host"), func(r rune) bool {
+		return r == '\n' || r == ',' || r == ' '
+	}) {
+		if host := strings.TrimSpace(raw); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	if len(hosts) == 0 {
+		return capability.ActionResult{}, fmt.Errorf("this action needs the address of a WLED")
+	}
+
+	state := map[string]any{}
+	switch strings.ToLower(param(in, "power")) {
+	case "on", "true", "1":
+		state["on"] = true
+	case "off", "false", "0":
+		state["on"] = false
+	case "toggle", "":
+		if param(in, "power") == "toggle" {
+			state["on"] = "t" // WLED's own word for "the other one"
+		}
+	}
+	if b := param(in, "brightness"); b != "" {
+		n, err := strconv.Atoi(b)
+		if err != nil || n < 0 || n > 255 {
+			return capability.ActionResult{}, fmt.Errorf("brightness is 0 to 255, not %q", b)
+		}
+		state["bri"] = n
+	}
+	segment := map[string]any{}
+	if colour := strings.TrimSpace(param(in, "color")); colour != "" {
+		rgb, err := parseColour(colour)
+		if err != nil {
+			return capability.ActionResult{}, err
+		}
+		segment["col"] = []any{rgb}
+	}
+	if effect := param(in, "effect"); effect != "" {
+		if n, err := strconv.Atoi(effect); err == nil {
+			segment["fx"] = n
+		} else {
+			segment["fx"] = effect
+		}
+	}
+	if preset := param(in, "preset"); preset != "" {
+		if n, err := strconv.Atoi(preset); err == nil {
+			state["ps"] = n
+		}
+	}
+	if len(segment) > 0 {
+		state["seg"] = []any{segment}
+	}
+	if len(state) == 0 {
+		return capability.ActionResult{}, fmt.Errorf("nothing to change — say on, off, a brightness or a colour")
+	}
+	body, err := json.Marshal(state)
+	if err != nil {
+		return capability.ActionResult{}, err
+	}
+
+	done := []string{}
+	for _, host := range hosts {
+		address := host
+		if !strings.HasPrefix(address, "http") {
+			address = "http://" + address
+		}
+		address = strings.TrimSuffix(address, "/") + "/json/state"
+		req, rerr := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(body))
+		if rerr != nil {
+			return capability.ActionResult{}, rerr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, derr := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+		if derr != nil {
+			return capability.ActionResult{Output: strings.Join(done, "\n")},
+				fmt.Errorf("%s is not answering: %w", host, derr)
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			return capability.ActionResult{Output: strings.Join(done, "\n")},
+				fmt.Errorf("%s answered %s", host, resp.Status)
+		}
+		done = append(done, host+" → "+resp.Status)
+	}
+	in.Log("wled %s: %s", strings.Join(hosts, ", "), string(body))
+	return capability.ActionResult{Output: strings.Join(done, "\n"), Value: len(hosts)}, nil
+}
+
+// parseColour reads "#ff8800", "ff8800" or "255,136,0".
+func parseColour(in string) ([]int, error) {
+	in = strings.TrimSpace(strings.TrimPrefix(in, "#"))
+	if strings.Contains(in, ",") {
+		parts := strings.Split(in, ",")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("%q is not a colour — three numbers or a hex code", in)
+		}
+		out := make([]int, 3)
+		for i, p := range parts {
+			n, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil || n < 0 || n > 255 {
+				return nil, fmt.Errorf("%q is not a colour — each part is 0 to 255", in)
+			}
+			out[i] = n
+		}
+		return out, nil
+	}
+	if len(in) != 6 {
+		return nil, fmt.Errorf("%q is not a colour — six hex digits, or three numbers", in)
+	}
+	value, err := strconv.ParseUint(in, 16, 32)
+	if err != nil {
+		return nil, fmt.Errorf("%q is not a colour", in)
+	}
+	return []int{int(value >> 16 & 0xff), int(value >> 8 & 0xff), int(value & 0xff)}, nil
 }

@@ -1,8 +1,9 @@
 import { Suspense, useCallback, useState } from "react";
 import { Icon } from "../Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner, useAsk } from "../ui";
+import { Empty, ErrorBox, Field, Modal, Section, Spinner, useAsk } from "../ui";
+import { colorVar } from "../../lib/theme";
 import { api, type Project, type Variable } from "../../lib/api";
-import { useQuery, useSession } from "../../lib/store";
+import { useMeta, useQuery, useSession } from "../../lib/store";
 import { Grid, type Placed } from "./Grid";
 import { cardViews } from "./cards";
 
@@ -14,11 +15,21 @@ import { cardViews } from "./cards";
  * is a switch you flip, and then the cards grow handles.
  */
 
+/** The small set of looks a card may choose. Not free CSS — a palette. */
+export interface CardStyle {
+  color?: string;
+  background?: "plain" | "tinted" | "bare";
+  border?: boolean;
+  size?: "normal" | "large";
+  align?: "left" | "center";
+}
+
 export interface Card {
   id: string;
   tabId: string;
   kind: string;
   options: Record<string, any>;
+  style?: CardStyle;
   visibility: "private" | "public" | "password";
   x: number;
   y: number;
@@ -30,6 +41,8 @@ export interface Tab {
   id: string;
   title: string;
   icon: string;
+  /** "grid" — placed by hand — or "flow", where cards follow one another. */
+  layout?: "grid" | "flow";
   position: number;
   cards: Card[];
 }
@@ -134,6 +147,26 @@ export default function Board({
     [board],
   );
 
+  /** In flow, order is what y says: swapping two is the whole move. */
+  const shift = async (index: number, by: number) => {
+    if (!current || !board.data) return;
+    const list = [...current.cards];
+    const other = index + by;
+    if (other < 0 || other >= list.length) return;
+    [list[index], list[other]] = [list[other], list[index]];
+    await api(`/api/boards/${board.data.id}/layout`, {
+      method: "PUT",
+      body: { cards: list.map((c, i) => ({ id: c.id, x: 0, y: i, w: c.w, h: c.h })) },
+    });
+    board.reload();
+  };
+
+  const widen = async (card: Card, by: number) => {
+    const w = Math.max(2, Math.min(12, card.w + by));
+    await api(`/api/boards/cards/${card.id}`, { method: "PATCH", body: { w } });
+    board.reload();
+  };
+
   if (board.loading && !board.data) return <Spinner />;
 
   return (
@@ -188,6 +221,21 @@ export default function Board({
               <button className="btn small" onClick={() => setAdding(true)}>
                 <Icon name="plus" size={14} /> Add a card
               </button>
+              {current ? (
+                <button
+                  className="btn small ghost"
+                  title={current.layout === "flow" ? "Place the cards yourself" : "Let them follow one another"}
+                  onClick={async () => {
+                    await api(`/api/boards/tabs/${current.id}`, {
+                      method: "PATCH",
+                      body: { layout: current.layout === "flow" ? "grid" : "flow" },
+                    });
+                    board.reload();
+                  }}
+                >
+                  <Icon name="grid" size={14} /> {current.layout === "flow" ? "Flow" : "Grid"}
+                </button>
+              ) : null}
               {tabs.length > 1 && current ? (
                 <button
                   className="btn small ghost"
@@ -234,7 +282,56 @@ export default function Board({
         </Empty>
       ) : null}
 
-      {current ? (
+      {current && current.layout === "flow" ? (
+        <div className="flow">
+          {current.cards.map((card, i) => (
+            <div
+              key={card.id}
+              className="flow-item"
+              style={{ flexBasis: `calc(${Math.min(100, Math.round((card.w / 12) * 100))}% - 12px)` }}
+            >
+              {editing ? (
+                <div className="card-tools">
+                  <button
+                    className="btn ghost icon"
+                    aria-label="Narrower"
+                    onClick={() => void widen(card, -2)}
+                  >
+                    <Icon name="chevronLeft" size={13} />
+                  </button>
+                  <button className="btn ghost icon" aria-label="Wider" onClick={() => void widen(card, 2)}>
+                    <Icon name="chevronRight" size={13} />
+                  </button>
+                  <button className="btn ghost icon" aria-label="Up" onClick={() => void shift(i, -1)}>
+                    <Icon name="chevronUp" size={13} />
+                  </button>
+                  <button className="btn ghost icon" aria-label="Down" onClick={() => void shift(i, 1)}>
+                    <Icon name="chevronDown" size={13} />
+                  </button>
+                  <button
+                    className="btn ghost icon"
+                    aria-label="Settings for this card"
+                    onClick={() => setSettling(card)}
+                  >
+                    <Icon name="settings" size={13} />
+                  </button>
+                  <button
+                    className="btn ghost icon"
+                    aria-label="Remove this card"
+                    onClick={async () => {
+                      await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+                      board.reload();
+                    }}
+                  >
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+              ) : null}
+              <CardBody card={card} value={value} projects={projects.data?.projects ?? []} editing={editing} />
+            </div>
+          ))}
+        </div>
+      ) : current ? (
         <Grid
           cards={current.cards.map((c) => ({ id: c.id, x: c.x, y: c.y, w: c.w, h: c.h }))}
           editing={editing}
@@ -243,9 +340,9 @@ export default function Board({
           {(placed) => {
             const card = current.cards.find((c) => c.id === placed.id);
             if (!card) return null;
-            const View = cardViews[card.kind];
+            const look = dress(card.style);
             return (
-              <div className={`card card-${card.kind}`}>
+              <div className={`${look.className} card-${card.kind}`} style={look.style}>
                 {editing ? (
                   <div className="card-tools">
                     <button
@@ -267,18 +364,7 @@ export default function Board({
                     </button>
                   </div>
                 ) : null}
-                <Suspense fallback={<Spinner />}>
-                  {View ? (
-                    <View
-                      options={card.options ?? {}}
-                      value={value}
-                      projects={projects.data?.projects ?? []}
-                      editing={editing}
-                    />
-                  ) : (
-                    <div className="meta">No card of kind “{card.kind}” is installed.</div>
-                  )}
-                </Suspense>
+                <CardInner card={card} value={value} projects={projects.data?.projects ?? []} editing={editing} />
               </div>
             );
           }}
@@ -289,6 +375,7 @@ export default function Board({
         <AddCard
           kinds={kinds.data?.cards ?? []}
           projects={projects.data?.projects ?? []}
+          group={group}
           blocks={reported.data?.groups ?? []}
           onClose={() => setAdding(false)}
           onAdd={async (kind, options, size) => {
@@ -340,16 +427,24 @@ export default function Board({
 function AddCard({
   kinds,
   projects,
+  group,
   onClose,
   onAdd,
 }: {
   kinds: CardKind[];
   projects: Project[];
+  /** The group this board belongs to, when it belongs to one. */
+  group?: string;
   blocks: Block[];
   onClose: () => void;
   onAdd: (kind: string, options: Record<string, any>, size?: { w: number; h: number }) => Promise<void>;
 }) {
   const [projectId, setProjectId] = useState("");
+  // A group's board is about that group. Everything else is possible and not
+  // what this board is for, so it is one tick-box away rather than in the list.
+  const [outside, setOutside] = useState(false);
+  const mine = group ? projects.filter((p) => p.groupSlug === group) : projects;
+  const offered = outside ? projects : mine;
   const [free, setFree] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -395,16 +490,27 @@ function AddCard({
 
       {!free ? (
         <>
-          <Field label="From which project">
+          <Field label="From which project" required>
             <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               <option value="">— pick one —</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {(p.groupSlug ?? "ungrouped") + "/" + p.slug}
-                </option>
+              {byGroup(offered).map(([where, list]) => (
+                <optgroup key={where} label={where}>
+                  {list.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </Field>
+
+          {group && projects.length > mine.length ? (
+            <label className="check">
+              <input type="checkbox" checked={outside} onChange={(e) => setOutside(e.target.checked)} />
+              <span>Also projects from other groups</span>
+            </label>
+          ) : null}
 
           {projectId ? (
             offers.loading && !offers.data ? (
@@ -474,6 +580,72 @@ function AddCard({
   );
 }
 
+/** What a card's chosen look means in the page. */
+export function dress(style?: CardStyle) {
+  const s = style ?? {};
+  return {
+    className: [
+      "card",
+      s.background === "tinted" ? "tinted" : "",
+      s.background === "bare" ? "bare" : "",
+      s.border === false ? "borderless" : "",
+      s.size === "large" ? "large" : "",
+      s.align === "center" ? "centred" : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    style: s.color ? ({ ["--card-color" as string]: `var(--ctp-${s.color})` } as const) : undefined,
+  };
+}
+
+/** A card's own view, wherever the card sits. */
+function CardBody(props: {
+  card: Card;
+  value: (variable: string, groupId?: string) => Variable | undefined;
+  projects: Project[];
+  editing: boolean;
+}) {
+  const look = dress(props.card.style);
+  return (
+    <div className={`${look.className} card-${props.card.kind}`} style={look.style}>
+      <CardInner {...props} />
+    </div>
+  );
+}
+
+function CardInner({
+  card,
+  value,
+  projects,
+  editing,
+}: {
+  card: Card;
+  value: (variable: string, groupId?: string) => Variable | undefined;
+  projects: Project[];
+  editing: boolean;
+}) {
+  const View = cardViews[card.kind];
+  return (
+    <Suspense fallback={<Spinner />}>
+      {View ? (
+        <View options={card.options ?? {}} value={value} projects={projects} editing={editing} />
+      ) : (
+        <div className="meta">No card of kind “{card.kind}” is installed.</div>
+      )}
+    </Suspense>
+  );
+}
+
+/** The projects, under the groups they are in. */
+function byGroup(projects: Project[]): [string, Project[]][] {
+  const out = new Map<string, Project[]>();
+  for (const p of projects) {
+    const key = p.groupTitle ?? p.groupSlug ?? "Ungrouped";
+    out.set(key, [...(out.get(key) ?? []), p]);
+  }
+  return [...out.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
 /** What a card shows, and who may see it. */
 function CardSettings({
   card,
@@ -486,7 +658,9 @@ function CardSettings({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const meta = useMeta();
   const [options, setOptions] = useState<Record<string, any>>(card.options ?? {});
+  const [style, setStyle] = useState<CardStyle>(card.style ?? {});
   const [visibility, setVisibility] = useState(card.visibility);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -508,7 +682,7 @@ function CardSettings({
               try {
                 await api(`/api/boards/cards/${card.id}`, {
                   method: "PATCH",
-                  body: { options, visibility },
+                  body: { options, style, visibility },
                 });
                 onSaved();
               } catch (err) {
@@ -546,6 +720,68 @@ function CardSettings({
           onChange={(e) => setOptions({ ...options, title: e.target.value })}
         />
       </Field>
+      <Section title="Look" />
+      <div className="row">
+        <Field label="Colour" optional>
+          <div className="swatches">
+            <button
+              className={!style.color ? "swatch selected" : "swatch"}
+              title="none"
+              style={{ background: "var(--ctp-surface1)" }}
+              onClick={() => setStyle({ ...style, color: undefined })}
+            />
+            {(meta?.colors ?? []).map((name) => (
+              <button
+                key={name}
+                className={style.color === name ? "swatch selected" : "swatch"}
+                style={{ background: colorVar(name) }}
+                title={name}
+                onClick={() => setStyle({ ...style, color: name })}
+              />
+            ))}
+          </div>
+        </Field>
+      </div>
+      <div className="row">
+        <Field label="Background">
+          <select
+            value={style.background ?? "plain"}
+            onChange={(e) => setStyle({ ...style, background: e.target.value as CardStyle["background"] })}
+          >
+            <option value="plain">plain</option>
+            <option value="tinted">tinted</option>
+            <option value="bare">none</option>
+          </select>
+        </Field>
+        <Field label="Text">
+          <select
+            value={style.size ?? "normal"}
+            onChange={(e) => setStyle({ ...style, size: e.target.value as CardStyle["size"] })}
+          >
+            <option value="normal">normal</option>
+            <option value="large">large</option>
+          </select>
+        </Field>
+        <Field label="Aligned">
+          <select
+            value={style.align ?? "left"}
+            onChange={(e) => setStyle({ ...style, align: e.target.value as CardStyle["align"] })}
+          >
+            <option value="left">left</option>
+            <option value="center">centred</option>
+          </select>
+        </Field>
+      </div>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={style.border !== false}
+          onChange={(e) => setStyle({ ...style, border: e.target.checked })}
+        />
+        <span>A line around it</span>
+      </label>
+
+      <Section title="Who may see it" />
       <Field
         label="Who may see it"
         hint="Never wider than what it shows."

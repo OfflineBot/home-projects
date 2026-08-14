@@ -74,7 +74,7 @@ func (s *Store) BoardByID(ctx context.Context, id uuid.UUID) (*model.Board, erro
 
 func (s *Store) fillBoard(ctx context.Context, board *model.Board) error {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, title, icon, position FROM board_tabs WHERE board_id=$1 ORDER BY position, title`,
+		`SELECT id, title, icon, layout, style, position FROM board_tabs WHERE board_id=$1 ORDER BY position, title`,
 		board.ID)
 	if err != nil {
 		return norm(err)
@@ -83,7 +83,7 @@ func (s *Store) fillBoard(ctx context.Context, board *model.Board) error {
 	board.Tabs = []model.BoardTab{}
 	for rows.Next() {
 		var t model.BoardTab
-		if err := rows.Scan(&t.ID, &t.Title, &t.Icon, &t.Position); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.Icon, &t.Layout, &t.Style, &t.Position); err != nil {
 			return norm(err)
 		}
 		t.Cards = []model.BoardCard{}
@@ -94,7 +94,7 @@ func (s *Store) fillBoard(ctx context.Context, board *model.Board) error {
 	}
 
 	cards, err := s.pool.Query(ctx, `
-		SELECT c.id, c.tab_id, c.kind, c.options, c.visibility, c.x, c.y, c.w, c.h
+		SELECT c.id, c.tab_id, c.kind, c.options, c.style, c.visibility, c.x, c.y, c.w, c.h
 		FROM board_cards c JOIN board_tabs t ON t.id = c.tab_id
 		WHERE t.board_id=$1 ORDER BY c.y, c.x`, board.ID)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *Store) fillBoard(ctx context.Context, board *model.Board) error {
 	byTab := map[uuid.UUID][]model.BoardCard{}
 	for cards.Next() {
 		var c model.BoardCard
-		if err := cards.Scan(&c.ID, &c.TabID, &c.Kind, &c.Options, &c.Visibility,
+		if err := cards.Scan(&c.ID, &c.TabID, &c.Kind, &c.Options, &c.Style, &c.Visibility,
 			&c.X, &c.Y, &c.W, &c.H); err != nil {
 			return norm(err)
 		}
@@ -128,8 +128,8 @@ func (s *Store) CreateTab(ctx context.Context, boardID uuid.UUID, title, icon st
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO board_tabs (board_id, title, icon, position)
 		VALUES ($1,$2,$3, COALESCE((SELECT max(position)+1 FROM board_tabs WHERE board_id=$1),0))
-		RETURNING id, title, icon, position`, boardID, title, icon).
-		Scan(&t.ID, &t.Title, &t.Icon, &t.Position)
+		RETURNING id, title, icon, layout, style, position`, boardID, title, icon).
+		Scan(&t.ID, &t.Title, &t.Icon, &t.Layout, &t.Style, &t.Position)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -140,6 +140,8 @@ func (s *Store) CreateTab(ctx context.Context, boardID uuid.UUID, title, icon st
 type TabPatch struct {
 	Title    *string
 	Icon     *string
+	Layout   *string
+	Style    *json.RawMessage
 	Position *int
 }
 
@@ -148,8 +150,10 @@ func (s *Store) UpdateTab(ctx context.Context, id uuid.UUID, p TabPatch) error {
 		UPDATE board_tabs SET
 			title    = COALESCE($2, title),
 			icon     = COALESCE($3, icon),
-			position = COALESCE($4, position)
-		WHERE id=$1`, id, p.Title, p.Icon, p.Position)
+			layout   = COALESCE($4, layout),
+			style    = COALESCE($5, style),
+			position = COALESCE($6, position)
+		WHERE id=$1`, id, p.Title, p.Icon, p.Layout, p.Style, p.Position)
 	return norm(err)
 }
 
@@ -194,6 +198,9 @@ func (s *Store) CreateCard(ctx context.Context, c model.BoardCard) (*model.Board
 	if c.Visibility == "" {
 		c.Visibility = "private"
 	}
+	if len(c.Style) == 0 {
+		c.Style = json.RawMessage(`{}`)
+	}
 	if c.W <= 0 {
 		c.W = 3
 	}
@@ -202,11 +209,11 @@ func (s *Store) CreateCard(ctx context.Context, c model.BoardCard) (*model.Board
 	}
 	var out model.BoardCard
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO board_cards (tab_id, kind, options, visibility, x, y, w, h)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		RETURNING id, tab_id, kind, options, visibility, x, y, w, h`,
-		c.TabID, c.Kind, c.Options, c.Visibility, c.X, c.Y, c.W, c.H).
-		Scan(&out.ID, &out.TabID, &out.Kind, &out.Options, &out.Visibility,
+		INSERT INTO board_cards (tab_id, kind, options, style, visibility, x, y, w, h)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		RETURNING id, tab_id, kind, options, style, visibility, x, y, w, h`,
+		c.TabID, c.Kind, c.Options, c.Style, c.Visibility, c.X, c.Y, c.W, c.H).
+		Scan(&out.ID, &out.TabID, &out.Kind, &out.Options, &out.Style, &out.Visibility,
 			&out.X, &out.Y, &out.W, &out.H)
 	if err != nil {
 		return nil, norm(err)
@@ -217,6 +224,7 @@ func (s *Store) CreateCard(ctx context.Context, c model.BoardCard) (*model.Board
 type CardPatch struct {
 	Kind       *string
 	Options    *json.RawMessage
+	Style      *json.RawMessage
 	Visibility *string
 	TabID      *uuid.UUID
 	X, Y, W, H *int
@@ -227,11 +235,12 @@ func (s *Store) UpdateCard(ctx context.Context, id uuid.UUID, p CardPatch) error
 		UPDATE board_cards SET
 			kind       = COALESCE($2, kind),
 			options    = COALESCE($3, options),
-			visibility = COALESCE($4, visibility),
-			tab_id     = COALESCE($5, tab_id),
-			x = COALESCE($6, x), y = COALESCE($7, y),
-			w = COALESCE($8, w), h = COALESCE($9, h)
-		WHERE id=$1`, id, p.Kind, p.Options, p.Visibility, p.TabID, p.X, p.Y, p.W, p.H)
+			style      = COALESCE($4, style),
+			visibility = COALESCE($5, visibility),
+			tab_id     = COALESCE($6, tab_id),
+			x = COALESCE($7, x), y = COALESCE($8, y),
+			w = COALESCE($9, w), h = COALESCE($10, h)
+		WHERE id=$1`, id, p.Kind, p.Options, p.Style, p.Visibility, p.TabID, p.X, p.Y, p.W, p.H)
 	return norm(err)
 }
 

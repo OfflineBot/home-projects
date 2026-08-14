@@ -768,10 +768,10 @@ def main() -> int:
     # is. "There is no rule called \"Start%20PC\"" was a real answer once.
     c.call("PUT", f"/api/projects/{system}/automation/rules", {"rules": [{
         "name": "check-self", "trigger": {"type": "button"},
-        "steps": [{"action": "ping", "with": {"host": "127.0.0.1", "port": "5000", "variable": "online"}}],
+        "actions": [{"run": "ping", "host": "127.0.0.1", "port": 5000, "variable": "online"}],
     }, {
         "name": "Start PC", "trigger": {"type": "button"},
-        "steps": [{"action": "ping", "with": {"host": "127.0.0.1", "port": "5000", "variable": "online"}}],
+        "actions": [{"run": "ping", "host": "127.0.0.1", "port": 5000, "variable": "online"}],
     }]})
     c.call("POST", f"/api/projects/{system}/automation/rules/Start%20PC/run", expect=(200, 502))
     check(bool(run) and run.get("run", {}).get("status") == "ok", "the automation rule ran")
@@ -987,6 +987,97 @@ def main() -> int:
     check(any(p["id"] == data and p.get("folder") == "Semester 1" for p in filed.get("projects", [])),
           "a project can be put in a folder")
     c.call("PATCH", f"/api/projects/{data}", {"folder": ""})
+
+    # A tab is a grid or a page, and a card can be dressed.
+    if tab:
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "flow"})
+        flowing = c.call("GET", f"/api/boards?group={gslug}") or {}
+        check(flowing["tabs"][0].get("layout") == "flow", "a tab can be a page instead of a grid")
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "diagonal"}, expect=400)
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "grid"})
+        dressed = c.call("POST", "/api/boards/cards", {
+            "tabId": tab, "kind": "text", "options": {"text": "look"},
+            "style": {"color": "mauve", "background": "tinted", "align": "center"},
+        }, expect=201)
+        if dressed:
+            back = c.call("GET", f"/api/boards?group={gslug}") or {}
+            mine_card = next((x for t in back["tabs"] for x in t["cards"] if x["id"] == dressed["id"]), None)
+            check(bool(mine_card) and mine_card["style"].get("color") == "mauve",
+                  "a card keeps the look it was given")
+            c.call("DELETE", f"/api/boards/cards/{dressed['id']}")
+
+    # Several addresses at once, and the lights.
+    c.call("PUT", f"/api/projects/{system}/automation/rules", {"rules": [{
+        "name": "many", "trigger": {"type": "button"},
+        "actions": [{"run": "http", "url": "http://127.0.0.1:5000/health\nhttp://127.0.0.1:5000/api/meta"}],
+    }, {
+        "name": "lights", "trigger": {"type": "button"},
+        "actions": [{"run": "wled", "host": "127.0.0.1:9", "power": "on", "color": "#ff8800"}],
+    }]})
+    many = c.call("POST", f"/api/projects/{system}/automation/rules/many/run", expect=(200, 502))
+    check(bool(many) and (many.get("run", {}).get("status") == "ok"),
+          "one rule can call several addresses at once")
+    lights = c.call("POST", f"/api/projects/{system}/automation/rules/lights/run", expect=(200, 502))
+    # Nothing is listening on port 9, so this has to fail — and say which lamp.
+    check(bool(lights) and "127.0.0.1:9" in json.dumps(lights), "a WLED that is not there says which one")
+
+    # A group is a project in its own right: a README on the main branch, and a
+    # history you can read.
+    readme = c.call("GET", f"/api/groups/{gslug}/readme")
+    check(readme is not None and "text" in readme, "a group has a README")
+    c.call("PUT", f"/api/groups/{gslug}/readme", {"text": "# Sweep\n\nWritten by the sweep."})
+    written = c.call("GET", f"/api/groups/{gslug}/readme") or {}
+    check("Written by the sweep" in written.get("text", ""), "and it can be written")
+    git = c.call("GET", f"/api/groups/{gslug}/git") or {}
+    check(any("README" in x.get("message", "") or x.get("message") for x in git.get("commits", [])),
+          "the write is a commit on main")
+    if git.get("commits"):
+        one = git["commits"][0]
+        patch = c.call("GET", f"/api/groups/{gslug}/git/commit/{one['short']}") or {}
+        check("diff --git" in patch.get("patch", "") or "README" in patch.get("patch", ""),
+              "and one commit can be read as its patch")
+    c.call("GET", f"/api/groups/{gslug}/git/commit/nonsense", expect=404)
+    # Every project is a branch, and its history is the same question.
+    branchy = c.call("GET", f"/api/groups/{gslug}/git?branch={made['data']['slug']}") or {}
+    check(branchy.get("branch") == made["data"]["slug"], "a project's own history is asked for by branch")
+
+    # ------------------------------------------------------------------ links
+    # A place to put an address so it can be found again — and a public one is a
+    # list two people keep together.
+    keep = c.call("POST", "/api/projects", {
+        "title": f"Sweep links {stamp}", "groupId": gslug, "preset": "links",
+    }, expect=201)
+    if keep:
+        empty = c.call("GET", f"/api/projects/{keep['id']}/links")
+        check(bool(empty) and empty.get("links") == [], "a links project starts empty")
+        one = c.call("POST", f"/api/projects/{keep['id']}/links",
+                     {"url": "example.com/kettle", "note": "the one with the timer", "tags": ["buy"]},
+                     expect=201)
+        check(bool(one) and one["url"].startswith("https://"), "an address without a scheme gets one")
+        check(bool(one) and one["title"] == "example.com", "and a name when none was given")
+        c.call("POST", f"/api/projects/{keep['id']}/links", {"url": ""}, expect=400)
+        c.call("POST", f"/api/projects/{keep['id']}/links", {"url": "not an address"}, expect=400)
+        if one:
+            c.call("PATCH", f"/api/projects/{keep['id']}/links/{one['id']}", {"done": True, "title": "Kettle"})
+            after = c.call("GET", f"/api/projects/{keep['id']}/links") or {}
+            saved = after.get("links", [{}])[0]
+            check(saved.get("done") is True and saved.get("title") == "Kettle", "a link can be changed")
+            # It is a file like everything else, so it is in the project.
+            listing = c.call("GET", f"/api/projects/{keep['id']}/files") or {}
+            check(any(e["name"] == "links.json" for e in listing.get("entries", [])),
+                  "and it lies in the project as links.json")
+            c.call("DELETE", f"/api/projects/{keep['id']}/links/{one['id']}")
+            gone = c.call("GET", f"/api/projects/{keep['id']}/links") or {}
+            check(gone.get("links") == [], "and dropped again")
+            c.call("DELETE", f"/api/projects/{keep['id']}/links/{one['id']}", expect=404)
+
+        # A public project with anonWrite is the shared list.
+        c.call("PATCH", f"/api/projects/{keep['id']}", {"visibility": "public", "anonWrite": True})
+        anon.call("POST", f"/api/projects/{keep['id']}/links", {"url": "https://example.com/from-a-visitor"},
+                  expect=201)
+        c.call("PATCH", f"/api/projects/{keep['id']}", {"anonWrite": False})
+        anon.call("POST", f"/api/projects/{keep['id']}/links", {"url": "https://example.com/no"}, expect=403)
+        c.call("DELETE", f"/api/projects/{keep['id']}?confirm={keep['slug']}")
 
     # ------------------------------------------------- one project gathering others
     # A main calendar is not a kind of calendar: it is a project that gathers

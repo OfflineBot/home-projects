@@ -305,20 +305,28 @@ type Board struct {
 }
 
 type BoardTab struct {
-	ID       uuid.UUID   `json:"id"`
-	Title    string      `json:"title"`
-	Icon     string      `json:"icon"`
-	Position int         `json:"position"`
-	Cards    []BoardCard `json:"cards"`
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+	Icon  string    `json:"icon"`
+	// Layout is "grid" — placed by hand — or "flow", where the cards simply
+	// follow one another and each says how wide it is.
+	Layout string `json:"layout"`
+	// Style is the small set of looks a tab may choose: how wide the page is,
+	// what sits behind it.
+	Style    json.RawMessage `json:"style"`
+	Position int             `json:"position"`
+	Cards    []BoardCard     `json:"cards"`
 }
 
 // BoardCard sits on a twelve-column grid. What it shows is its kind plus its
 // options, and neither is interpreted here.
 type BoardCard struct {
-	ID         uuid.UUID       `json:"id"`
-	TabID      uuid.UUID       `json:"tabId"`
-	Kind       string          `json:"kind"`
-	Options    json.RawMessage `json:"options"`
+	ID      uuid.UUID       `json:"id"`
+	TabID   uuid.UUID       `json:"tabId"`
+	Kind    string          `json:"kind"`
+	Options json.RawMessage `json:"options"`
+	// Style is this card's own look — a colour, a background, a size.
+	Style      json.RawMessage `json:"style"`
 	Visibility string          `json:"visibility"`
 	X          int             `json:"x"`
 	Y          int             `json:"y"`

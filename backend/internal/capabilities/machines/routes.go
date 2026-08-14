@@ -31,6 +31,8 @@ type withPassword struct {
 
 // Routes are mounted under /api/projects/:project/machines
 func (c Capability) Routes(env *capability.Env, r fiber.Router) {
+	c.mountPTY(env, r)
+
 	// The list, and whether each one is on. The status is asked for here
 	// rather than by the page one machine at a time, because "is it on" is the
 	// first thing the page is opened for.

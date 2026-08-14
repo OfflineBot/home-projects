@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, authedUrl, type Group, type Project } from "../lib/api";
-import { useMeta } from "../lib/store";
+import { useMeta, useQuery } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon, iconNames } from "./Icon";
 import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, Section, useGuarded } from "./ui";
@@ -39,6 +39,11 @@ export default function GroupSettings({
     siteProjectId: group.siteProjectId ?? "",
     boardHost: group.boardHost ?? "",
   });
+  const loaded = useQuery<{ text: string }>(`/api/groups/${group.slug}/readme`);
+  const [readme, setReadme] = useState("");
+  useEffect(() => {
+    if (loaded.data) setReadme(loaded.data.text);
+  }, [loaded.data]);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
@@ -235,6 +240,21 @@ export default function GroupSettings({
           value={form.boardHost}
           placeholder="dhbw.example.com"
           onChange={(e) => setForm({ ...form, boardHost: e.target.value })}
+        />
+      </Field>
+
+      <Section title="Front page" />
+
+      <Field
+        label="README"
+        hint="Markdown, on the repository's main branch. It shows on the group's page and in every clone."
+        optional
+      >
+        <textarea
+          value={readme}
+          style={{ minHeight: 140, fontFamily: "var(--mono)", fontSize: 13 }}
+          placeholder={"# " + group.title + "\n\nWhat this is."}
+          onChange={(e) => setReadme(e.target.value)}
         />
       </Field>
 

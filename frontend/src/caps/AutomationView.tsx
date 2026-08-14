@@ -12,6 +12,42 @@ interface Rule {
   actions: ({ run: string } & Record<string, any>)[];
 }
 
+/** The parameters that are a choice rather than a line to type into. */
+const CHOICES: Record<string, { value: string; label: string }[]> = {
+  method: [
+    { value: "", label: "GET" },
+    { value: "POST", label: "POST" },
+    { value: "PUT", label: "PUT" },
+    { value: "PATCH", label: "PATCH" },
+    { value: "DELETE", label: "DELETE" },
+    { value: "HEAD", label: "HEAD" },
+  ],
+  power: [
+    { value: "", label: "leave as it is" },
+    { value: "on", label: "on" },
+    { value: "off", label: "off" },
+    { value: "toggle", label: "the other one" },
+  ],
+};
+
+const LABELS: Record<string, string> = {
+  url: "Address",
+  host: "Address",
+  method: "Method",
+  body: "Body",
+  headers: "Headers",
+  timeout: "Timeout",
+  expect: "Expect this status",
+  power: "Power",
+  brightness: "Brightness (0–255)",
+  color: "Colour",
+  effect: "Effect",
+  preset: "Preset",
+  mac: "MAC",
+  command: "Command",
+  variable: "Write into",
+};
+
 /**
  * Rules made of trigger plus actions, stored as automation.yaml in the
  * project — so they are versioned and exportable. This is what replaced the
@@ -309,19 +345,53 @@ function RuleDialog({
               </button>
             </div>
             <div className="sub">{spec?.description}</div>
-            {(spec?.params ?? []).map((param) => (
-              <Field key={param} label={param}>
-                <input
-                  value={typeof action[param] === "object" ? JSON.stringify(action[param]) : (action[param] ?? "")}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      actions: draft.actions.map((a, j) => (i === j ? { ...a, [param]: e.target.value } : a)),
-                    })
-                  }
-                />
-              </Field>
-            ))}
+            {(spec?.params ?? []).map((param) => {
+              const set = (value: string) =>
+                setDraft({
+                  ...draft,
+                  actions: draft.actions.map((a, j) => (i === j ? { ...a, [param]: value } : a)),
+                });
+              const value =
+                typeof action[param] === "object" ? JSON.stringify(action[param]) : (action[param] ?? "");
+              // A handful of parameters are a choice, not a line to type into.
+              const choices = CHOICES[param];
+              if (choices) {
+                return (
+                  <Field key={param} label={LABELS[param] ?? param} optional={param !== "url"}>
+                    <select value={value} onChange={(e) => set(e.target.value)}>
+                      {choices.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                );
+              }
+              // Addresses can be several, one per line.
+              if (param === "url" || param === "host") {
+                return (
+                  <Field
+                    key={param}
+                    label={LABELS[param] ?? param}
+                    hint="One per line for several at once."
+                    required={param === "url"}
+                  >
+                    <textarea
+                      value={value}
+                      style={{ minHeight: 58, fontFamily: "var(--mono)", fontSize: 13 }}
+                      placeholder={param === "host" ? "192.168.178.60" : "https://…"}
+                      onChange={(e) => set(e.target.value)}
+                    />
+                  </Field>
+                );
+              }
+              return (
+                <Field key={param} label={LABELS[param] ?? param}>
+                  <input value={value} onChange={(e) => set(e.target.value)} />
+                </Field>
+              );
+            })}
           </div>
         );
       })}

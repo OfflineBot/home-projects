@@ -105,15 +105,22 @@ func (s *Server) mountBoards(r fiber.Router) {
 		if _, owner, err := s.Store.TabBoard(c.UserContext(), id); err != nil || owner != auth.From(c).User.ID {
 			return httpx.NotFound("There is no such tab.")
 		}
-		var in store.TabPatch
-		if err := c.BodyParser(&struct {
-			Title    **string `json:"title"`
-			Icon     **string `json:"icon"`
-			Position **int    `json:"position"`
-		}{&in.Title, &in.Icon, &in.Position}); err != nil {
+		var in struct {
+			Title    *string          `json:"title"`
+			Icon     *string          `json:"icon"`
+			Layout   *string          `json:"layout"`
+			Style    *json.RawMessage `json:"style"`
+			Position *int             `json:"position"`
+		}
+		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
 		}
-		if err := s.Store.UpdateTab(c.UserContext(), id, in); err != nil {
+		if in.Layout != nil && *in.Layout != "grid" && *in.Layout != "flow" {
+			return httpx.BadRequest("A tab is a grid or a flow.")
+		}
+		patch := store.TabPatch{Title: in.Title, Icon: in.Icon, Layout: in.Layout,
+			Style: in.Style, Position: in.Position}
+		if err := s.Store.UpdateTab(c.UserContext(), id, patch); err != nil {
 			return httpx.Internal("the tab could not be changed").WithCause(err)
 		}
 		return httpx.OK(c)
@@ -170,6 +177,7 @@ func (s *Server) mountBoards(r fiber.Router) {
 		var in struct {
 			Kind       *string          `json:"kind"`
 			Options    *json.RawMessage `json:"options"`
+			Style      *json.RawMessage `json:"style"`
 			Visibility *string          `json:"visibility"`
 			TabID      *uuid.UUID       `json:"tabId"`
 			X, Y, W, H *int
@@ -186,7 +194,7 @@ func (s *Server) mountBoards(r fiber.Router) {
 			return httpx.BadRequest("There is no card of kind %q.", *in.Kind)
 		}
 		if err := s.Store.UpdateCard(c.UserContext(), id, store.CardPatch{
-			Kind: in.Kind, Options: in.Options, Visibility: in.Visibility, TabID: in.TabID,
+			Kind: in.Kind, Options: in.Options, Style: in.Style, Visibility: in.Visibility, TabID: in.TabID,
 			X: in.X, Y: in.Y, W: in.W, H: in.H,
 		}); err != nil {
 			return httpx.Internal("the card could not be changed").WithCause(err)

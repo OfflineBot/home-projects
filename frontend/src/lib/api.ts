@@ -54,6 +54,11 @@ export function hasToken() {
  * in the query, exactly as the calendar subscriptions do. It is worthless
  * without the httpOnly binding cookie that goes with it.
  */
+/** The same token, for a socket — which cannot carry a header either. */
+export function tokenForUrl(): string | null {
+  return accessToken;
+}
+
 export function authedUrl(path: string) {
   if (!accessToken) return path;
   return path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(accessToken);

@@ -134,13 +134,18 @@ func (Capability) Cards() []capability.Card {
 				Hint: "The name it has in that project."},
 		},
 	}, {
-		Name: "terminal", Title: "A terminal", Icon: "code", W: 6, H: 4,
+		Name: "terminal", Title: "A terminal", Icon: "code", W: 8, H: 6,
 		Description: "A tmux session, live — or all of them, to pick from.",
 		Options: []capability.AccountField{
 			{Name: "projectId", Label: "Project", Type: "project", Required: true},
 			{Name: "machine", Label: "Which machine", Type: "text", Required: true},
 			{Name: "session", Label: "Which session", Type: "text",
 				Hint: "Empty lists them all and lets you start one."},
+			{Name: "as", Label: "As", Type: "select",
+				Options: []capability.Option{
+					{Value: "", Label: "open on the board"},
+					{Value: "button", Label: "a button that opens it full screen"},
+				}},
 		},
 	}}
 }
@@ -156,8 +161,13 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 			},
 			capability.Offer{
 				Card: "terminal", Title: m.Name + " · terminal", Icon: "code",
-				Detail: "tmux sessions", W: 6, H: 4,
+				Detail: "the sessions, open", W: 8, H: 6,
 				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name},
+			},
+			capability.Offer{
+				Card: "terminal", Title: m.Name + " · terminal button", Icon: "code",
+				Detail: "one button, opens full screen", W: 2, H: 1,
+				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name, "as": "button"},
 			})
 	}
 	return out

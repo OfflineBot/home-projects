@@ -414,3 +414,93 @@ func (s *Service) RepoExists(groupSlug string) bool {
 	_, err := os.Stat(filepath.Join(s.repoFor(groupSlug), "HEAD"))
 	return err == nil
 }
+
+// The group's own front page, and its history.
+//
+// A group is a repository, and a repository has a main branch that belongs to
+// nobody's project: it is where the group says what it is. That is what makes a
+// group a project in its own right rather than a folder of them — clone it and
+// the README is there.
+
+// ReadMain reads one file from the group's main branch.
+func (s *Service) ReadMain(ctx context.Context, groupSlug, name string) (string, error) {
+	repo := s.repoFor(groupSlug)
+	out, err := s.run(ctx, repo, "", "", nil, "show", "main:"+name)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// WriteMain puts a file on the group's main branch, keeping everything else
+// that is there. One commit, by whoever asked for it.
+func (s *Service) WriteMain(ctx context.Context, groupSlug, name, content, author, email, message string) error {
+	repo := s.repoFor(groupSlug)
+	blob, err := s.run(ctx, repo, "", "", []byte(content), "hash-object", "-w", "--stdin")
+	if err != nil {
+		return err
+	}
+	hash := strings.TrimSpace(string(blob))
+
+	// The tree as it is, with this one entry replaced or added.
+	entries := []string{}
+	if listing, lerr := s.run(ctx, repo, "", "", nil, "ls-tree", "main"); lerr == nil {
+		for _, line := range strings.Split(strings.TrimRight(string(listing), "\n"), "\n") {
+			if line == "" {
+				continue
+			}
+			if fields := strings.Split(line, "\t"); len(fields) == 2 && fields[1] == name {
+				continue
+			}
+			entries = append(entries, line)
+		}
+	}
+	entries = append(entries, fmt.Sprintf("100644 blob %s\t%s", hash, name))
+	tree, err := s.run(ctx, repo, "", "", []byte(strings.Join(entries, "\n")+"\n"), "mktree")
+	if err != nil {
+		return err
+	}
+
+	parent := ""
+	if head, herr := s.run(ctx, repo, "", "", nil, "rev-parse", "main"); herr == nil {
+		parent = strings.TrimSpace(string(head))
+	}
+	if author == "" {
+		author, email = "the server", "server@home-projects"
+	}
+	commit, err := s.commitTree(ctx, repo, strings.TrimSpace(string(tree)), parent, author, email, message)
+	if err != nil {
+		return err
+	}
+	_, err = s.run(ctx, repo, "", "", nil, "update-ref", "refs/heads/main", commit)
+	return err
+}
+
+// Show is what one commit changed, as the patch itself.
+func (s *Service) Show(ctx context.Context, groupSlug, hash string) (string, error) {
+	if !isHash(hash) {
+		return "", fmt.Errorf("%q is not a commit", hash)
+	}
+	repo := s.repoFor(groupSlug)
+	patch, perr := s.run(ctx, repo, "", "", nil, "show", "--stat", "--patch", "--no-color", hash)
+	if perr != nil {
+		return "", perr
+	}
+	if len(patch) > 400_000 {
+		patch = append(patch[:400_000], []byte("\n… the rest is longer than this window\n")...)
+	}
+	return string(patch), nil
+}
+
+// isHash keeps anything that is not a commit id out of the command line.
+func isHash(s string) bool {
+	if len(s) < 4 || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
+}
