@@ -503,6 +503,34 @@ def main() -> int:
     if formula:
         c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
 
+    # ------------------------------------------------------------------ grades
+    # Three exams that are one subject, and semesters in the order they were
+    # sat. Counted as three the average would be wrong.
+    marks = c.call("POST", "/api/projects",
+                   {"title": f"sweep-grades-{stamp}", "groupId": gslug, "preset": "grades"}, expect=201)
+    if marks:
+        sheet = {"modules": [
+            {"id": "M1", "name": "Grundlagen Informatik", "credits": 8, "semester": "WiSe 2025/2026"},
+            {"name": "Betriebssysteme", "grade": 2.0, "credits": 3, "partOf": "M1", "semester": "WiSe 2025/2026"},
+            {"name": "Kommunikation", "grade": 3.0, "credits": 3, "partOf": "M1", "semester": "WiSe 2025/2026"},
+            {"name": "Rechnerarchitektur", "grade": 1.0, "credits": 2, "partOf": "M1", "semester": "WiSe 2025/2026"},
+            {"name": "Analysis", "grade": 1.7, "credits": 5, "semester": "SoSe 2025", "status": "passed"},
+            {"name": "Fortgeschrittene", "grade": 2.5, "credits": 5, "semester": "SoSe 2026", "status": "passed"},
+        ]}
+        c.call("PUT", f"/api/projects/{marks['id']}/files/content",
+               {"path": "grades.json", "content": json.dumps(sheet)})
+        view = c.call("GET", f"/api/projects/{marks['id']}/grades")
+        terms = [t["name"] for t in (view or {}).get("terms", [])]
+        check(terms == ["SoSe 2025", "WiSe 2025/2026", "SoSe 2026"],
+              "semesters come back in the order they were sat")
+        folded = next((m for t in view["terms"] for m in t["modules"] if m["name"] == "Grundlagen Informatik"), None)
+        check(bool(folded) and len(folded.get("parts", [])) == 3 and folded.get("computed"),
+              "three exams that are one subject are one row with its parts under it")
+        check(bool(folded) and abs(folded["grade"] - 2.13) < 0.01,
+              "and the subject's grade is what the parts weigh out to")
+        check(view["counted"] == 3, "the average counts the subject once, not the exams")
+        c.call("DELETE", f"/api/projects/{marks['id']}?confirm={marks['slug']}")
+
     # ------------------------------------------------ what the files already are
     # A project full of .ics files with no calendar switched on is a thing
     # nobody said out loud. Now something does.

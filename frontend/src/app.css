@@ -474,6 +474,31 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .tree-row .tail { color: var(--ctp-overlay1); font-size: 12.5px; }
 .tree-row.empty { color: var(--ctp-overlay0); }
 
+/* ------------------------------------------------------------------ grades */
+
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--gap); margin-bottom: 26px; }
+.stat-tile { display: flex; align-items: center; gap: 14px; padding: 18px;
+  background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius); }
+
+.term { margin-bottom: 26px; border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius); background: var(--ctp-mantle); overflow: hidden; }
+.term header { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ctp-surface0); }
+.term header h3 { margin: 0; font-size: 15px; }
+
+.grade-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.grade-table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--ctp-overlay1);
+  padding: 10px 18px; }
+.grade-table td { padding: 11px 18px; border-top: 1px solid var(--ctp-surface0); }
+.grade-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.grade-table tr.expandable { cursor: pointer; }
+.grade-table tr.expandable:hover { background: var(--ctp-surface0); }
+.grade-table tr.part td { color: var(--ctp-subtext0); padding-left: 40px;
+  background: color-mix(in srgb, var(--ctp-crust) 40%, transparent); }
+.grade-table tr.status-failed td:first-child { color: var(--ctp-red); }
+
 /* ------------------------------------------------------------------- files */
 
 /* Rendered markdown. Enough to read notes as notes. */

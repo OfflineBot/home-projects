@@ -33,6 +33,24 @@ type Module struct {
 	Credits  float64 `json:"credits"`
 	Semester string  `json:"semester,omitempty"`
 	Status   string  `json:"status,omitempty"` // passed | failed | pending
+	// PartOf names the module this one is a piece of, by id or by name. Three
+	// exams that together are one subject are three modules here and one on the
+	// certificate; without this they would each count as a subject of their own
+	// and the average would be wrong.
+	PartOf string `json:"partOf,omitempty"`
+	// Weight decides how much a part counts inside its module. Empty means its
+	// credits, and failing that, equally.
+	Weight float64 `json:"weight,omitempty"`
+}
+
+// Rolled is a module with whatever belongs under it, and the grade that comes
+// out of them.
+type Rolled struct {
+	Module
+	Parts []Module `json:"parts,omitempty"`
+	// Computed is true when the grade was worked out from the parts rather than
+	// given — worth saying, because it is not what the certificate shows yet.
+	Computed bool `json:"computed,omitempty"`
 }
 
 type Sheet struct {
@@ -94,6 +112,161 @@ func write(ctx context.Context, env *capability.Env, p *model.Project, sheet She
 	return err
 }
 
+// Roll folds the parts into the modules they belong to.
+//
+// A part is found by the id or the name it names, and a module with parts takes
+// its grade from them — weighted by the parts' own weight, or their credits, or
+// equally — unless it was given a grade of its own, which then wins: what the
+// certificate says beats what the pieces add up to.
+func Roll(modules []Module) []Rolled {
+	byKey := map[string]int{}
+	for i, m := range modules {
+		if m.PartOf != "" {
+			continue
+		}
+		if m.ID != "" {
+			byKey[strings.ToLower(m.ID)] = i
+		}
+		byKey[strings.ToLower(strings.TrimSpace(m.Name))] = i
+	}
+
+	out := make([]Rolled, 0, len(modules))
+	at := map[int]int{} // index in modules → index in out
+	for i, m := range modules {
+		if m.PartOf != "" {
+			continue
+		}
+		at[i] = len(out)
+		out = append(out, Rolled{Module: m})
+	}
+	for _, m := range modules {
+		if m.PartOf == "" {
+			continue
+		}
+		parent, ok := byKey[strings.ToLower(strings.TrimSpace(m.PartOf))]
+		if !ok {
+			// It names something that is not here. Better a module of its own
+			// than a grade that quietly disappears.
+			out = append(out, Rolled{Module: m})
+			continue
+		}
+		i := at[parent]
+		out[i].Parts = append(out[i].Parts, m)
+	}
+
+	for i := range out {
+		if len(out[i].Parts) == 0 || out[i].Grade > 0 {
+			continue
+		}
+		var sum, weight float64
+		for _, part := range out[i].Parts {
+			if part.Grade <= 0 {
+				continue
+			}
+			w := part.Weight
+			if w <= 0 {
+				w = part.Credits
+			}
+			if w <= 0 {
+				w = 1
+			}
+			sum += part.Grade * w
+			weight += w
+		}
+		if weight == 0 {
+			continue
+		}
+		out[i].Grade = math.Round(sum/weight*100) / 100
+		out[i].Computed = true
+		if out[i].Credits == 0 {
+			for _, part := range out[i].Parts {
+				out[i].Credits += part.Credits
+			}
+		}
+		if out[i].Status == "" {
+			out[i].Status = "passed"
+			for _, part := range out[i].Parts {
+				if part.Status == "failed" {
+					out[i].Status = "failed"
+				}
+			}
+		}
+	}
+	return out
+}
+
+// Flat is the rolled modules as a plain list — what the average is taken over,
+// each subject counted once.
+func Flat(rolled []Rolled) []Module {
+	out := make([]Module, 0, len(rolled))
+	for _, r := range rolled {
+		out = append(out, r.Module)
+	}
+	return out
+}
+
+// Term is one semester with what was taken in it.
+type Term struct {
+	Name    string   `json:"name"`
+	Modules []Rolled `json:"modules"`
+	Average float64  `json:"average"`
+	Credits float64  `json:"credits"`
+}
+
+// ByTerm groups the modules by semester, oldest first. A semester is written
+// "SoSe 2026" or "WiSe 2025/2026"; anything else keeps its place at the end
+// rather than being dropped.
+func ByTerm(rolled []Rolled) []Term {
+	order := map[string]float64{}
+	groups := map[string][]Rolled{}
+	var names []string
+	for _, r := range rolled {
+		name := strings.TrimSpace(r.Semester)
+		if name == "" {
+			name = "Without a semester"
+		}
+		if _, seen := groups[name]; !seen {
+			names = append(names, name)
+			order[name] = termOrder(name)
+		}
+		groups[name] = append(groups[name], r)
+	}
+	sort.SliceStable(names, func(a, b int) bool { return order[names[a]] < order[names[b]] })
+
+	out := make([]Term, 0, len(names))
+	for _, name := range names {
+		avg, credits, _ := Average(Flat(groups[name]))
+		out = append(out, Term{Name: name, Modules: groups[name], Average: avg, Credits: credits})
+	}
+	return out
+}
+
+// termOrder turns "WiSe 2025/2026" and "SoSe 2026" into something sortable, by
+// when the semester starts: a winter term begins in the October of its first
+// year, a summer term in the April of its only one. So WiSe 2025/2026 comes
+// after SoSe 2025 and before SoSe 2026, which is the order they were sat in.
+func termOrder(name string) float64 {
+	lower := strings.ToLower(name)
+	year := 0
+	for _, field := range strings.FieldsFunc(lower, func(r rune) bool { return r < '0' || r > '9' }) {
+		if n, err := strconv.Atoi(field); err == nil && n > 1900 && n < 2200 {
+			if year == 0 || n < year {
+				year = n
+			}
+		}
+	}
+	if year == 0 {
+		return 1e9 // no year: after everything that has one
+	}
+	switch {
+	case strings.Contains(lower, "wise") || strings.Contains(lower, "winter"):
+		return float64(year) + 0.8 // October
+	case strings.Contains(lower, "sose") || strings.Contains(lower, "sommer") || strings.Contains(lower, "summer"):
+		return float64(year) + 0.3 // April
+	}
+	return float64(year)
+}
+
 // Average is the credit-weighted mean over the modules that carry a grade.
 // Modules that are passed without a numeric grade still count for the credits.
 func Average(modules []Module) (avg float64, credits float64, counted int) {
@@ -131,9 +304,11 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 		if err != nil {
 			return err
 		}
-		avg, credits, counted := Average(sheet.Modules)
+		rolled := Roll(sheet.Modules)
+		avg, credits, counted := Average(Flat(rolled))
 		return c.JSON(fiber.Map{
-			"modules": sheet.Modules, "average": avg, "credits": credits,
+			"modules": rolled, "terms": ByTerm(rolled), "raw": sheet.Modules,
+			"average": avg, "credits": credits,
 			"counted": counted, "source": sheet.Source, "fetchedAt": sheet.FetchAt,
 		})
 	})
