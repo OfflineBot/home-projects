@@ -521,8 +521,8 @@ def main() -> int:
                {"path": "grades.json", "content": json.dumps(sheet)})
         view = c.call("GET", f"/api/projects/{marks['id']}/grades")
         terms = [t["name"] for t in (view or {}).get("terms", [])]
-        check(terms == ["SoSe 2025", "WiSe 2025/2026", "SoSe 2026"],
-              "semesters come back in the order they were sat")
+        check(terms == ["SoSe 2026", "WiSe 2025/2026", "SoSe 2025"],
+              "semesters come back newest first")
         folded = next((m for t in view["terms"] for m in t["modules"] if m["name"] == "Grundlagen Informatik"), None)
         check(bool(folded) and len(folded.get("parts", [])) == 3 and folded.get("computed"),
               "three exams that are one subject are one row with its parts under it")

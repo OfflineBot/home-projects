@@ -213,9 +213,10 @@ type Term struct {
 	Credits float64  `json:"credits"`
 }
 
-// ByTerm groups the modules by semester, oldest first. A semester is written
-// "SoSe 2026" or "WiSe 2025/2026"; anything else keeps its place at the end
-// rather than being dropped.
+// ByTerm groups the modules by semester, the most recent first — the one you
+// are in is the one you look at. A semester is written "SoSe 2026" or "WiSe
+// 2025/2026"; anything else keeps its place at the end rather than being
+// dropped.
 func ByTerm(rolled []Rolled) []Term {
 	order := map[string]float64{}
 	groups := map[string][]Rolled{}
@@ -231,7 +232,15 @@ func ByTerm(rolled []Rolled) []Term {
 		}
 		groups[name] = append(groups[name], r)
 	}
-	sort.SliceStable(names, func(a, b int) bool { return order[names[a]] < order[names[b]] })
+	sort.SliceStable(names, func(a, b int) bool {
+		// Newest first, but a term with no year stays at the bottom: it is the
+		// leftovers drawer, not the newest news.
+		x, y := order[names[a]], order[names[b]]
+		if x >= 1e9 || y >= 1e9 {
+			return x < y
+		}
+		return x > y
+	})
 
 	out := make([]Term, 0, len(names))
 	for _, name := range names {

@@ -484,9 +484,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 
 .term { margin-bottom: 26px; border: 1px solid var(--ctp-surface0);
   border-radius: var(--radius); background: var(--ctp-mantle); overflow: hidden; }
-.term header { display: flex; align-items: baseline; justify-content: space-between;
-  gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ctp-surface0); }
-.term header h3 { margin: 0; font-size: 15px; }
+.term header { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--ctp-surface0); cursor: pointer; }
+.term header:hover { background: var(--ctp-surface0); }
+.term.shut header { border-bottom: none; }
+.term header h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
 
 .grade-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .grade-table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--ctp-overlay1);

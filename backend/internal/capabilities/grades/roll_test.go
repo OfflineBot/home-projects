@@ -61,8 +61,8 @@ func TestOrphanPartIsKept(t *testing.T) {
 	}
 }
 
-// Semesters come out in the order they happened, winter before the summer that
-// follows it, and anything without a year at the end.
+// Semesters come out newest first — the one you are in is the one you look at —
+// and anything without a year stays at the bottom.
 func TestByTerm(t *testing.T) {
 	terms := ByTerm(Roll([]Module{
 		{Name: "d", Semester: "SoSe 2026", Grade: 2, Credits: 5},
@@ -75,13 +75,13 @@ func TestByTerm(t *testing.T) {
 	for _, t := range terms {
 		got = append(got, t.Name)
 	}
-	want := []string{"WiSe 2024/2025", "SoSe 2025", "WiSe 2025/2026", "SoSe 2026", "Without a semester"}
+	want := []string{"SoSe 2026", "WiSe 2025/2026", "SoSe 2025", "WiSe 2024/2025", "Without a semester"}
 	for i := range want {
 		if i >= len(got) || got[i] != want[i] {
 			t.Fatalf("order = %v, want %v", got, want)
 		}
 	}
-	if terms[0].Average != 1 || terms[0].Credits != 5 {
+	if terms[0].Average != 2 || terms[0].Credits != 5 {
 		t.Errorf("a term carries its own average: %+v", terms[0])
 	}
 }
