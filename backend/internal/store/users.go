@@ -10,12 +10,14 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/model"
 )
 
-const userCols = `id, username, password_hash, display_name, totp_secret, totp_enabled, is_owner, created_at`
+const userCols = `id, username, password_hash, display_name, totp_secret, totp_enabled, is_owner,
+	approved, approved_at, note, created_at`
 
 func scanUser(r scanner) (*model.User, error) {
 	var u model.User
 	var totp *string
-	err := r.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.DisplayName, &totp, &u.TOTPEnabled, &u.IsOwner, &u.CreatedAt)
+	err := r.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.DisplayName, &totp, &u.TOTPEnabled, &u.IsOwner,
+		&u.Approved, &u.ApprovedAt, &u.Note, &u.CreatedAt)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -30,11 +32,54 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 }
 
 func (s *Store) CreateUser(ctx context.Context, username, hash, displayName string, owner bool) (*model.User, error) {
+	// The first account — the owner — is approved by being the first. Everyone
+	// after that waits.
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO users (username, password_hash, display_name, is_owner)
-		VALUES ($1, $2, $3, $4) RETURNING `+userCols,
+		INSERT INTO users (username, password_hash, display_name, is_owner, approved, approved_at)
+		VALUES ($1, $2, $3, $4, $4, CASE WHEN $4 THEN now() END) RETURNING `+userCols,
 		username, hash, displayName, owner)
 	return scanUser(row)
+}
+
+// ListUsers is the owner's view of everyone, waiting or not.
+func (s *Store) ListUsers(ctx context.Context) ([]model.User, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+userCols+` FROM users ORDER BY approved, created_at`)
+	if err != nil {
+		return nil, norm(err)
+	}
+	defer rows.Close()
+	out := []model.User{}
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		u.PasswordHash, u.TOTPSecret = "", ""
+		out = append(out, *u)
+	}
+	return out, norm(rows.Err())
+}
+
+// ApproveUser lets someone in, or takes it back.
+func (s *Store) ApproveUser(ctx context.Context, id uuid.UUID, approved bool) (*model.User, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE users SET approved = $2, approved_at = CASE WHEN $2 THEN now() END
+		WHERE id = $1 RETURNING `+userCols, id, approved)
+	return scanUser(row)
+}
+
+// DeleteUser removes an account. What it made stays: a project belongs to the
+// server, not to the session that created it.
+func (s *Store) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id=$1 AND is_owner = false`, id)
+	if err != nil {
+		return norm(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) UserByName(ctx context.Context, username string) (*model.User, error) {
@@ -361,4 +406,12 @@ func (s *Store) ClearAttempts(ctx context.Context, scope, subject string) (int, 
 		return 0, norm(err)
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+// SetUserNote keeps whatever someone said when they asked for an account —
+// "I am the other half of this course" — so the admin has something to decide
+// on besides a name.
+func (s *Store) SetUserNote(ctx context.Context, id uuid.UUID, note string) (*model.User, error) {
+	row := s.pool.QueryRow(ctx, `UPDATE users SET note=$2 WHERE id=$1 RETURNING `+userCols, id, note)
+	return scanUser(row)
 }

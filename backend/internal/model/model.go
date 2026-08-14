@@ -36,7 +36,12 @@ type User struct {
 	DisplayName string    `json:"displayName"`
 	TOTPEnabled bool      `json:"totpEnabled"`
 	IsOwner     bool      `json:"isOwner"`
-	CreatedAt   time.Time `json:"createdAt"`
+	// Approved is the owner having said yes. Until then the account exists and
+	// opens nothing.
+	Approved   bool       `json:"approved"`
+	ApprovedAt *time.Time `json:"approvedAt,omitempty"`
+	Note       string     `json:"note,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
 
 	PasswordHash string `json:"-"`
 	TOTPSecret   string `json:"-"`

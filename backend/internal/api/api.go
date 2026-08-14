@@ -49,6 +49,7 @@ func (s *Server) Mount(app *fiber.App) {
 
 	s.mountMeta(api)
 	s.mountAuth(api)
+	s.mountUsers(api)
 	s.mountGroups(api)
 	s.mountProjects(api)
 	s.mountLinks(api)

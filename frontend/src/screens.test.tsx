@@ -27,12 +27,15 @@ import FiltersPage from "./pages/Filters";
 import Groups from "./pages/Groups";
 import Schedulers from "./pages/Schedulers";
 import Structure from "./pages/Structure";
+import Users from "./pages/Users";
+import Login from "./pages/Login";
 
 declare const process: { env: Record<string, string | undefined> };
 
 const url = process.env.HP_URL ?? "http://127.0.0.1:8099";
 const password = process.env.HP_PASSWORD ?? "";
 
+let owner: Awaited<ReturnType<typeof login>>;
 let group: Group;
 let project: Project;
 
@@ -62,7 +65,8 @@ beforeAll(async () => {
   // Signed in *in the store*, not only in the client: half the pages have a
   // "sign in first" branch, and a test that renders that branch tests nothing.
   // "Sign in to see the filters." matched /filters/i for four runs.
-  setUser(await login("offlinebot", password));
+  owner = await login("offlinebot", password);
+  setUser(owner);
   // The app loads this once at startup, and half the dialogs are drawn from
   // it. Without it the test renders the empty half of every branch — which is
   // how a capability list that crashes on real data passed nine times.
@@ -98,6 +102,32 @@ describe("every screen draws something", () => {
 
   it("accounts", async () => {
     await draw(<Accounts />, /New account/i);
+  });
+
+  // The people page is drawn from the server's own list, so it fails if the
+  // owner is not really the owner or the list comes back as null.
+  it("people, with the owner in it", async () => {
+    const c = await draw(<Users />, /offlinebot/i);
+    expect(c.textContent).toContain("owner");
+    expect(c.textContent).not.toMatch(/could not be drawn/i);
+  });
+
+  // Asking for an account is the one form a stranger sees, so it has to be
+  // reachable without a session.
+  it("the sign-in page can ask for an account", async () => {
+    // A stranger, which is who that form is for: the session is put back
+    // afterwards so the rest of the run keeps its owner.
+    setUser(null);
+    try {
+      const c = await draw(<Login />, /Sign in/i);
+      const ask = [...c.querySelectorAll("button")].find((b) => /need an account/i.test(b.textContent ?? ""));
+      expect(ask).toBeTruthy();
+      fireEvent.click(ask!);
+      expect(c.textContent).toMatch(/Ask for an account/i);
+      expect(c.textContent).toMatch(/Who are you/i);
+    } finally {
+      setUser(owner);
+    }
   });
 
   it("schedulers", async () => {

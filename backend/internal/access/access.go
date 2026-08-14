@@ -16,7 +16,9 @@ import (
 
 // CanReadGroup reports whether the group may be listed and opened.
 func CanReadGroup(a *auth.Actor, g *model.Group) bool {
-	if a.IsUser() {
+	// An admin sees the whole server; everyone else sees what they made, and
+	// what was made public.
+	if a.IsAdmin() || a.Owns(g.OwnerID) {
 		return true
 	}
 	if a.Token != nil && a.Token.GroupID != nil && *a.Token.GroupID == g.ID {
@@ -34,11 +36,11 @@ func CanReadGroup(a *auth.Actor, g *model.Group) bool {
 // NeedsGroupPassword separates "locked" from "does not exist", so the UI can
 // ask for the password instead of showing a 404.
 func NeedsGroupPassword(a *auth.Actor, g *model.Group) bool {
-	return !a.IsUser() && g.Visibility == model.VisibilityPassword && !a.HasUnlocked(g.ID)
+	return !CanReadGroup(a, g) && g.Visibility == model.VisibilityPassword && !a.HasUnlocked(g.ID)
 }
 
 func CanReadProject(a *auth.Actor, p *model.Project) bool {
-	if a.IsUser() {
+	if a.IsAdmin() || a.Owns(p.OwnerID) {
 		return true
 	}
 	if a.Token != nil && a.Token.ProjectID != nil && *a.Token.ProjectID == p.ID {
@@ -90,7 +92,7 @@ func unlockedFor(a *auth.Actor, p *model.Project) bool {
 }
 
 func NeedsProjectPassword(a *auth.Actor, p *model.Project) bool {
-	return !a.IsUser() && effective(p) == model.VisibilityPassword && !unlockedFor(a, p)
+	return !CanReadProject(a, p) && effective(p) == model.VisibilityPassword && !unlockedFor(a, p)
 }
 
 // RequireReadProject returns the error the API answers with, so "locked",
@@ -133,7 +135,7 @@ func RequireWriteProject(a *auth.Actor, p *model.Project, g *model.Group) error 
 	if g != nil && g.Archived {
 		return httpx.ReadOnly("The group " + g.Title + " is archived and therefore")
 	}
-	if a.IsUser() {
+	if a.IsAdmin() || a.Owns(p.OwnerID) {
 		return nil
 	}
 	if a.Token != nil && a.Token.ProjectID != nil && *a.Token.ProjectID == p.ID &&
@@ -155,10 +157,10 @@ func RequireWriteProject(a *auth.Actor, p *model.Project, g *model.Group) error 
 
 // RequireWriteGroup guards the group's own settings.
 func RequireWriteGroup(a *auth.Actor, g *model.Group) error {
-	if !a.IsUser() {
-		return httpx.Forbidden("Only the owner can change a group.")
+	if a.IsAdmin() || a.Owns(g.OwnerID) {
+		return nil
 	}
-	return nil
+	return httpx.Forbidden("Only the person whose group this is can change it.")
 }
 
 // FilterGroups drops what the actor may not see. Unavailable entries are

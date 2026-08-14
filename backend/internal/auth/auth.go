@@ -44,6 +44,15 @@ type Actor struct {
 
 func (a *Actor) IsUser() bool { return a != nil && a.User != nil }
 
+// IsAdmin is the owner: the account that was here first, and whoever it lets
+// in afterwards. An admin sees everything; everyone else sees their own.
+func (a *Actor) IsAdmin() bool { return a.IsUser() && a.User.IsOwner }
+
+// Owns reports whether this actor is the one who made a thing.
+func (a *Actor) Owns(ownerID uuid.UUID) bool {
+	return a.IsUser() && a.User.ID == ownerID
+}
+
 func (a *Actor) UserID() *uuid.UUID {
 	if a == nil || a.User == nil {
 		return nil
@@ -174,6 +183,13 @@ func (s *Service) Login(ctx context.Context, c *fiber.Ctx, username, password, t
 	}
 
 	user, err := s.store.UserByName(ctx, username)
+	if err == nil && !user.Approved {
+		// Said plainly rather than as "wrong password": the account exists and
+		// the answer is "not yet", which is a different thing to be told.
+		s.store.RecordAttempt(ctx, "login", strings.ToLower(username), ip, false)
+		return nil, httpx.New(fiber.StatusForbidden, "not_approved",
+			"This account is waiting to be let in.")
+	}
 	if err != nil || !secret.Verify(password, user.PasswordHash) {
 		s.store.RecordAttempt(ctx, "login", strings.ToLower(username), ip, false)
 		s.store.Audit(ctx, nil, "login.failed", username, ip, nil)

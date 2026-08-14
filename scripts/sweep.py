@@ -742,6 +742,50 @@ def main() -> int:
            {"path": "docs/blocked.txt", "content": "no"}, expect=403)
     c.call("PATCH", f"/api/projects/{data}", {"readOnly": False})
 
+    # ------------------------------------------------------- more than one person
+    # Someone asks for an account; until it is let in it opens nothing. Once in,
+    # what they make is theirs and nobody else's — and the owner can shut the
+    # door again.
+    guest_name, guest_pw = f"guest{stamp[-6:]}", "a-long-enough-password"
+    guest = Client(args.url)
+    guest.call("POST", "/api/auth/register",
+               {"username": guest_name, "password": guest_pw, "note": "the sweep"}, expect=201)
+    guest.call("POST", "/api/auth/register", {"username": guest_name, "password": guest_pw}, expect=409)
+    guest.call("POST", "/api/auth/register", {"username": guest_name + "x", "password": "short"}, expect=400)
+    guest.call("POST", "/api/auth/register", {"username": "ab", "password": guest_pw}, expect=400)
+    guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw}, expect=403)
+
+    people = c.call("GET", "/api/users")
+    waiting = {u["username"]: u for u in (people or {}).get("users", [])}
+    check(guest_name in waiting, "a new account is listed for the owner")
+    check(waiting.get(guest_name, {}).get("note") == "the sweep", "with what they wrote about themselves")
+    check(waiting.get(guest_name, {}).get("approved") is False, "and marked as waiting")
+    guest_id = waiting.get(guest_name, {}).get("id")
+
+    if guest_id:
+        c.call("POST", f"/api/users/{guest_id}/approve", {})
+        signed_in = guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw})
+        check(bool(signed_in), "after being let in the account opens")
+        if signed_in:
+            guest.token = signed_in["accessToken"]
+            check(signed_in.get("isOwner") is not True, "and it is not the owner")
+            own = guest.call("POST", "/api/groups",
+                             {"title": f"Guest {stamp}", "visibility": "private"}, expect=201)
+            mine = guest.call("GET", "/api/groups") or {}
+            titles = [g["title"] for g in mine.get("groups", [])]
+            check(f"Guest {stamp}" in titles, "they see what they made")
+            check(f"Sweep {stamp}" not in titles, "and not what the owner made")
+            everything = c.call("GET", "/api/groups") or {}
+            check(any(g["title"] == f"Guest {stamp}" for g in everything.get("groups", [])),
+                  "the owner sees everything")
+            guest.call("GET", "/api/users", expect=403)
+            if own:
+                c.call("DELETE", f"/api/groups/{own['slug']}?confirm={own['slug']}")
+        c.call("POST", f"/api/users/{guest_id}/approve?undo=true", {})
+        guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw}, expect=403)
+        c.call("DELETE", f"/api/users/{guest_id}")
+        guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw}, expect=401)
+
     # ---------------------------------------------------------------- delete
     for key, p in made.items():
         c.call("DELETE", f"/api/projects/{p['id']}?confirm={p['slug']}")
