@@ -175,9 +175,15 @@ export default function FilesView({ project, reload }: { project: Project; reloa
         <Empty icon="folder">This folder is empty.</Empty>
       ) : (
         <div className="list">
+          {path ? (
+            <div className="list-row" style={{ cursor: "pointer" }} onClick={() => go(data?.parent ?? "")}>
+              <Icon name="chevronLeft" size={16} />
+              <span className="grow meta">up one level</span>
+            </div>
+          ) : null}
           {data?.entries.map((entry) => (
             <div key={entry.path} className="list-row" style={{ cursor: "pointer" }} onClick={() => open(entry)}>
-              <Icon name={entry.isDir ? "folder" : "file"} size={16} />
+              <Icon name={iconFor(entry)} size={16} />
               <span className="grow">
                 {entry.name}
                 {entry.linkId ? (
@@ -568,6 +574,29 @@ function shapeOf(path: string): Shape {
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : name.toLowerCase();
   for (const s of SHAPES) if (s.extensions.includes(ext)) return s.shape;
   return "opaque";
+}
+
+/** What a thing looks like in the list. A folder full of PDFs should not read
+ * as a wall of identical grey sheets. */
+function iconFor(entry: FileEntry): string {
+  if (entry.isDir) return "folder";
+  const name = entry.name.toLowerCase();
+  if (name.endsWith(".zip") || name.endsWith(".tar") || name.endsWith(".gz")) return "box";
+  if (name.endsWith(".ics")) return "calendar";
+  if (name.endsWith(".eml")) return "mail";
+  if (name.endsWith(".md") || name.endsWith(".txt")) return "notebook";
+  switch (shapeOf(entry.name)) {
+    case "image":
+      return "camera";
+    case "audio":
+      return "music";
+    case "video":
+      return "play";
+    case "text":
+      return "code";
+    default:
+      return "file";
+  }
 }
 
 function FileEditor({
