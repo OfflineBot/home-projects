@@ -8,6 +8,7 @@ package mail
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/mail"
@@ -39,7 +40,7 @@ func New() Capability { return Capability{} }
 func (Capability) Name() string   { return "mail" }
 func (Capability) Title() string  { return "Mail" }
 func (Capability) Icon() string   { return "mail" }
-func (Capability) Owns() []string { return []string{"*.eml"} }
+func (Capability) Owns() []string { return []string{"*.eml", "labels.json", "classifier.json"} }
 
 func (Capability) Presets() []capability.Preset {
 	return []capability.Preset{{
@@ -280,6 +281,10 @@ type Summary struct {
 	Date      time.Time `json:"date"`
 	Size      int64     `json:"size"`
 	HasAttach bool      `json:"hasAttachments"`
+	// Category is what the sorting made of it, filled in when the list is read.
+	Category string  `json:"category,omitempty"`
+	Score    float64 `json:"score,omitempty"`
+	Fixed    bool    `json:"fixed,omitempty"`
 }
 
 func listMessages(env *capability.Env, p *model.Project) []Summary {
@@ -314,7 +319,81 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 		if err := capability.RequireRead(c); err != nil {
 			return err
 		}
-		return c.JSON(fiber.Map{"messages": listMessages(env, capability.Project(c))})
+		p := capability.Project(c)
+		list := listMessages(env, p)
+		labels := readLabels(c.UserContext(), env, p)
+		for i := range list {
+			if l, ok := labels.Labels[list[i].Path]; ok {
+				list[i].Category, list[i].Score, list[i].Fixed = l.Label, l.Score, l.Fixed
+			}
+		}
+		return c.JSON(fiber.Map{
+			"messages":   list,
+			"classifier": readClassifier(c.UserContext(), env, p),
+			"sortedBy":   labels.By,
+			"sortedAt":   labels.At,
+		})
+	})
+
+	// Sort the mail into categories: the classifier if one is configured, and
+	// otherwise the rules that need nothing at all.
+	r.Post("/classify", func(c *fiber.Ctx) error {
+		if err := capability.RequireWrite(c); err != nil {
+			return err
+		}
+		p := capability.Project(c)
+		author, email := capability.AuthorOf(c)
+		labels, done, err := Classify(c.UserContext(), env, p, c.QueryBool("all", false), author, email)
+		if err != nil {
+			return httpx.New(502, "classifier_failed", "%v", err)
+		}
+		return c.JSON(fiber.Map{"sorted": done, "by": labels.By})
+	})
+
+	// A correction stays a correction: a run never writes over it.
+	r.Post("/label", func(c *fiber.Ctx) error {
+		if err := capability.RequireWrite(c); err != nil {
+			return err
+		}
+		p := capability.Project(c)
+		var in struct {
+			Path  string `json:"path"`
+			Label string `json:"label"`
+		}
+		if err := c.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The change could not be read.")
+		}
+		labels := readLabels(c.UserContext(), env, p)
+		if strings.TrimSpace(in.Label) == "" {
+			delete(labels.Labels, in.Path)
+		} else {
+			labels.Labels[in.Path] = Label{Label: in.Label, Score: 1, Fixed: true}
+		}
+		author, email := capability.AuthorOf(c)
+		if err := writeLabels(c.UserContext(), env, p, labels, author, email); err != nil {
+			return httpx.Internal("the label could not be stored").WithCause(err)
+		}
+		return httpx.OK(c)
+	})
+
+	// Where the answers come from.
+	r.Put("/classifier", func(c *fiber.Ctx) error {
+		if err := capability.RequireWrite(c); err != nil {
+			return err
+		}
+		p := capability.Project(c)
+		var cfg Classifier
+		if err := c.BodyParser(&cfg); err != nil {
+			return httpx.BadRequest("The classifier could not be read.")
+		}
+		body, _ := json.MarshalIndent(cfg, "", "  ")
+		author, email := capability.AuthorOf(c)
+		if _, err := env.Files.Write(c.UserContext(), p, "classifier.json", append(body, 10), files.Op{
+			Author: author, Email: email, Message: "Point the mail sorting somewhere", Commit: true,
+		}); err != nil {
+			return httpx.Internal("the classifier could not be stored").WithCause(err)
+		}
+		return c.JSON(cfg)
 	})
 
 	r.Get("/message", func(c *fiber.Ctx) error {

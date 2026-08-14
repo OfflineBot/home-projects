@@ -10,9 +10,39 @@ export default function MailView({ project }: { project: Project; reload: () => 
   const [params, setParams] = useSearchParams();
   const selected = params.get("mail");
   const { data, error, loading, reload: reloadList } = useQuery<{
-    messages: { path: string; folder: string; from: string; subject: string; date: string }[];
+    messages: {
+      path: string;
+      folder: string;
+      from: string;
+      subject: string;
+      date: string;
+      category?: string;
+      score?: number;
+      fixed?: boolean;
+    }[];
+    classifier?: { endpoint?: string };
+    sortedBy?: string;
   }>(`/api/projects/${project.id}/mail/messages`);
   const [composing, setComposing] = useState(false);
+  const [sorting, setSorting] = useState(false);
+  const [sortError, setSortError] = useState<Error | null>(null);
+  const [only, setOnly] = useState("");
+
+  const categories = [...new Set((data?.messages ?? []).map((m) => m.category).filter(Boolean))] as string[];
+  const shown = (data?.messages ?? []).filter((m) => !only || m.category === only);
+
+  const classify = async () => {
+    setSorting(true);
+    setSortError(null);
+    try {
+      await api(`/api/projects/${project.id}/mail/classify`, { method: "POST" });
+      reloadList();
+    } catch (err) {
+      setSortError(err as Error);
+    } finally {
+      setSorting(false);
+    }
+  };
 
   const open = (path: string | null) => {
     const p = new URLSearchParams(params);
@@ -25,20 +55,46 @@ export default function MailView({ project }: { project: Project; reload: () => 
     <div className="grid-2" style={{ gridTemplateColumns: "minmax(260px, 380px) 1fr", alignItems: "start" }}>
       <div>
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <strong style={{ flex: 1 }}>{data?.messages.length ?? 0} messages</strong>
+          <strong style={{ flex: 1 }}>{shown.length} messages</strong>
+          {!project.readOnly ? (
+            <button
+              className="btn small"
+              disabled={sorting}
+              title={data?.classifier?.endpoint ? `Asks ${data.classifier.endpoint}` : "Sorts by a few plain rules"}
+              onClick={classify}
+            >
+              <Icon name="zap" size={14} /> {sorting ? "sorting…" : "Sort"}
+            </button>
+          ) : null}
           {!project.readOnly ? (
             <button className="btn small" onClick={() => setComposing(true)}>
               <Icon name="plus" size={14} /> Write
             </button>
           ) : null}
         </div>
-        <ErrorBox error={error} onRetry={reloadList} />
+        <ErrorBox error={sortError ?? error} onRetry={reloadList} />
+        {categories.length ? (
+          <div className="chips" style={{ marginBottom: 10 }}>
+            <button className={only ? "badge" : "badge good"} onClick={() => setOnly("")}>
+              all
+            </button>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                className={only === cat ? "badge good" : "badge"}
+                onClick={() => setOnly(cat === only ? "" : cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {loading && !data ? <Spinner /> : null}
         {data && data.messages.length === 0 ? (
           <Empty icon="mail">Nothing here.</Empty>
         ) : null}
         <div className="list">
-          {data?.messages.map((m) => (
+          {shown.map((m) => (
             <button
               key={m.path}
               className="list-row"
@@ -53,7 +109,14 @@ export default function MailView({ project }: { project: Project; reload: () => 
             >
               <div className="grow">
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{m.subject || "(no subject)"}</div>
-                <div className="meta">{m.from}</div>
+                <div className="meta">
+                  {m.from}
+                  {m.category ? (
+                    <span className="badge" style={{ marginLeft: 6 }} title={m.fixed ? "set by hand" : undefined}>
+                      {m.category}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <span className="meta">{formatDate(m.date, false)}</span>
             </button>

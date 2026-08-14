@@ -503,6 +503,43 @@ def main() -> int:
     if formula:
         c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
 
+    # ------------------------------------------------------- sorting the mail
+    # Categories without a model at all, and the same shape when a classifier
+    # is pointed at.
+    box = c.call("POST", "/api/projects",
+                 {"title": f"sweep-mail-{stamp}", "groupId": gslug, "preset": "mail"}, expect=201)
+    if box:
+        def eml(subject, sender, body):
+            return f"From: {sender}\r\nTo: me@example.org\r\nSubject: {subject}\r\n\r\n{body}\r\n"
+        c.call("PUT", f"/api/projects/{box['id']}/files/content",
+               {"path": "inbox/1.eml", "content": eml("Ihre Rechnung 2026", "billing@shop.example", "Betrag 12 EUR")})
+        c.call("PUT", f"/api/projects/{box['id']}/files/content",
+               {"path": "inbox/2.eml", "content": eml("Vorlesung faellt aus", "prof@dhbw-ravensburg.de", "Klausur")})
+        c.call("PUT", f"/api/projects/{box['id']}/files/content",
+               {"path": "inbox/3.eml", "content": eml("Hallo", "freund@example.org", "wie gehts")})
+        sorted_out = c.call("POST", f"/api/projects/{box['id']}/mail/classify")
+        check(bool(sorted_out) and sorted_out["sorted"] == 3 and sorted_out["by"] == "rules",
+              "mail is sorted into categories without anything configured")
+        listed = c.call("GET", f"/api/projects/{box['id']}/mail/messages")
+        by_path = {m["path"]: m.get("category") for m in (listed or {}).get("messages", [])}
+        check(by_path.get("inbox/1.eml") == "invoice" and by_path.get("inbox/2.eml") == "university",
+              "and the plain rules get the obvious ones right")
+
+        # A correction is a correction: sorting again leaves it alone.
+        c.call("POST", f"/api/projects/{box['id']}/mail/label",
+               {"path": "inbox/3.eml", "label": "personal"})
+        c.call("POST", f"/api/projects/{box['id']}/mail/classify?all=true")
+        again = c.call("GET", f"/api/projects/{box['id']}/mail/messages")
+        fixed = next((m for m in (again or {}).get("messages", []) if m["path"] == "inbox/3.eml"), None)
+        check(bool(fixed) and fixed.get("category") == "personal" and fixed.get("fixed"),
+              "a label set by hand survives the next run")
+
+        # And a classifier that cannot be reached says so rather than pretending.
+        c.call("PUT", f"/api/projects/{box['id']}/mail/classifier",
+               {"endpoint": "http://127.0.0.1:9/none"})
+        c.call("POST", f"/api/projects/{box['id']}/mail/classify?all=true", expect=502)
+        c.call("DELETE", f"/api/projects/{box['id']}?confirm={box['slug']}")
+
     # ------------------------------------------------------------------ grades
     # Three exams that are one subject, and semesters in the order they were
     # sat. Counted as three the average would be wrong.
