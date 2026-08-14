@@ -436,7 +436,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .menu-backdrop { position: fixed; inset: 0; z-index: 30; }
 
 /* A small two-column table for a syntax the dialog has to teach once. */
-.syntax { border-collapse: collapse; margin: 4px 0 14px; font-size: 12.5px; }
+.syntax-help { margin: 4px 0 14px; }
+.syntax-help summary { cursor: pointer; color: var(--ctp-subtext0); font-size: 13px; }
+.syntax { border-collapse: collapse; margin: 8px 0 6px; font-size: 12.5px; }
+.syntax td.head { padding-top: 10px; color: var(--ctp-overlay1); text-transform: lowercase; }
 .syntax td { padding: 2px 12px 2px 0; color: var(--ctp-subtext0); vertical-align: top; }
 .syntax td:first-child { white-space: nowrap; }
 

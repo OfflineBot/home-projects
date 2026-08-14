@@ -245,19 +245,24 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	// Where each course goes. A filter picked in the scheduler answers it; the
 	// lines typed into the one-off pull answer it the same way.
 	route := job.Route
-	if route == nil {
-		routeText, _ := job.Options["routes"].(string)
-		rules, badLines := parseRoutes(routeText)
-		for _, line := range badLines {
-			job.Log("this line is not a rule and was ignored: %q — write it as \"2 -> semester-2\"", line)
-		}
-		if len(rules) > 0 {
-			route = func(item capability.RouteItem) (capability.RouteTo, bool) {
-				name, ok := pick(rules, lib.Course{
-					Shortname: item.Name, SemesterNumber: item.Semester,
-				})
-				return capability.RouteTo{Project: name}, ok
+
+	// Where each course goes is answered for all of them at once, because
+	// "the first course called Grundlagen-something" cannot be answered one
+	// course at a time.
+	decided := map[int]capability.RouteTo{}
+	if route != nil {
+		items := make([]capability.RouteItem, len(courses))
+		for i, course := range courses {
+			name := html.UnescapeString(course.Shortname)
+			if name == "" {
+				name = html.UnescapeString(course.Fullname)
 			}
+			items[i] = capability.RouteItem{
+				Name: name, Path: courseFolder(course), Semester: course.SemesterNumber,
+			}
+		}
+		for i, to := range route(items) {
+			decided[i] = to
 		}
 	}
 
@@ -300,7 +305,7 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		owned[p.ID][folder] = p
 	}
 
-	for _, course := range courses {
+	for index, course := range courses {
 		name := html.UnescapeString(course.Shortname)
 		if name == "" {
 			name = html.UnescapeString(course.Fullname)
@@ -319,10 +324,8 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		target := job.Project
 		into := ""
 		if route != nil {
-			to, matched := route(capability.RouteItem{
-				Name: name, Path: courseFolder(course), Semester: course.SemesterNumber,
-			})
-			if !matched || to.Skip {
+			to := decided[index]
+			if !to.Matched || to.Skip {
 				unrouted = append(unrouted, fmt.Sprintf("%s (semester %d)", name, course.SemesterNumber))
 				continue
 			}

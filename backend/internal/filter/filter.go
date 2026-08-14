@@ -2,26 +2,46 @@
 // accounts and schedulers: a named set of rules that answers one question —
 // *where does this belong?*
 //
-// A scheduler asks it about a course. A project asks it about a file. The rules
-// do not know which, and that is the point: the same three lines that split a
-// Moodle pull across semester projects will sort a folder of downloads, because
-// both are "here is a name, tell me where it goes".
+// A scheduler asks it about a course. A project asks it about a folder or a
+// file. The rules do not know which, and that is the point.
 //
-// The syntax is what a person types, not what a parser prefers:
+// One rule per line, first match wins. What is matched is on the left, where it
+// goes is on the right, and a project is written in braces so it can never be
+// confused with a folder:
 //
-//	2 -> semester2                 a bare number is the semester
-//	Grundlagen In -> semester1     a piece of the name is enough
-//	Übung -> /uebungen             a folder in the same place
-//	Alt -> archiv/2024             another project, and a folder in it
-//	Werbung -> skip                leave it where it is
-//	* -> rest                      the catch-all
+//	Grundlagen*        -> {Studies/semester1}
+//	*.pdf              -> ./skripte
+//	first Grundlagen*  -> {Studies/semester1}
+//	last 2 *.pdf       -> ./neu
+//	Werbung            -> skip
+//	*                  -> {Studies/rest}
+//
+// On the left: a bare word matches anywhere in the name, `Grundlagen*` matches
+// the start, `*.pdf` the end, `*Kap*` the middle, a number on its own matches
+// the semester, and `*` matches everything.
+//
+// A rule may take only some of what it matches: `first`, `last`, `newest` or
+// `oldest`, optionally with a count. `first Grundlagen*` is the first folder
+// called Grundlagen-something, by name; `newest 3 *.pdf` the three most
+// recently changed. Without one, a rule takes everything it matches.
+//
+// For the case none of that covers, a pattern between slashes is a regular
+// expression: `/^WDS\d+ - Grundlagen/ -> {Studies/semester1}`. It is the way
+// out, not the way in — Go's regular expressions cannot backtrack, so a bad one
+// costs nothing, and one that does not compile is reported rather than ignored.
+//
+// On the right: `{group/project}` is another project, `./folder` a folder where
+// it already is, `{group/project}/folder` both, and `skip` means leave it be.
 package filter
 
 import (
 	"context"
 	"encoding/json"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/model"
@@ -34,6 +54,11 @@ type Rule struct {
 	// Match is what the line said on the left: a piece of a name, a number, or
 	// "*". It is kept as typed so the dialog shows it back unchanged.
 	Match string `json:"match"`
+	// Pick narrows a rule to some of what it matches: first, last, newest,
+	// oldest. Empty means all of them.
+	Pick string `json:"pick,omitempty"`
+	// Count goes with Pick; 0 means one.
+	Count int `json:"count,omitempty"`
 	// Field narrows what is compared: "name" (the default), "path", or
 	// "semester". A bare number implies "semester".
 	Field string `json:"field,omitempty"`
@@ -48,6 +73,10 @@ type Item struct {
 	Name     string
 	Path     string
 	Semester int
+	IsDir    bool
+	// Changed is used by "newest" and "oldest"; the zero time is fine when
+	// nobody asks for those.
+	Changed time.Time
 }
 
 // Destination is the answer. Project empty means "where it already is".
@@ -55,6 +84,8 @@ type Destination struct {
 	Project string
 	Folder  string
 	Skip    bool
+	// Matched says whether any rule claimed the item at all.
+	Matched bool
 	// Rule is the line that decided, for the log and the preview.
 	Rule string
 }
@@ -68,41 +99,75 @@ func Apply(rules []Rule, item Item) (Destination, bool) {
 			continue
 		}
 		d := Destination{Rule: r.Match + " -> " + r.To}
-		to := strings.TrimSpace(r.To)
-		if strings.EqualFold(to, "skip") {
-			d.Skip = true
-			return d, true
-		}
-		if strings.HasPrefix(to, "/") {
-			d.Folder = strings.Trim(to, "/")
-			return d, true
-		}
-		project, folder, _ := strings.Cut(to, "/")
-		d.Project = strings.TrimSpace(project)
-		d.Folder = strings.Trim(folder, "/")
+		project, folder, skip := Destinations(r.To)
+		d.Project, d.Folder, d.Skip = project, folder, skip
 		return d, true
 	}
 	return Destination{}, false
 }
 
-func (r Rule) matches(item Item) bool {
-	if strings.TrimSpace(r.Match) == "*" {
-		return true
+// Destinations reads the right-hand side of a rule.
+//
+//	{Studies/semester1}          another project
+//	{Studies/semester1}/skripte  another project, and a folder in it
+//	./skripte  or  /skripte      a folder where it already is
+//	skip                         leave it alone
+func Destinations(to string) (project, folder string, skip bool) {
+	to = strings.TrimSpace(to)
+	if strings.EqualFold(to, "skip") {
+		return "", "", true
 	}
-	field := strings.ToLower(strings.TrimSpace(r.Field))
-	needle := strings.ToLower(strings.TrimSpace(r.Match))
+	if strings.HasPrefix(to, "{") {
+		end := strings.Index(to, "}")
+		if end > 0 {
+			project = strings.Trim(to[1:end], "/ ")
+			folder = strings.Trim(to[end+1:], "/ ")
+			return project, folder, false
+		}
+	}
+	if strings.HasPrefix(to, "./") || strings.HasPrefix(to, "/") {
+		return "", strings.Trim(strings.TrimPrefix(to, "."), "/ "), false
+	}
+	// Written without braces it is still a project — the braces are for
+	// clarity, not for the parser to insist on.
+	project, folder, _ = strings.Cut(to, "/")
+	return strings.TrimSpace(project), strings.Trim(folder, "/ "), false
+}
 
-	if n, err := strconv.Atoi(strings.TrimPrefix(needle, "semester")); err == nil && field != "name" && field != "path" {
+func (r Rule) matches(item Item) bool {
+	needle := strings.TrimSpace(r.Match)
+	// A pattern between slashes is a regular expression.
+	if len(needle) > 1 && strings.HasPrefix(needle, "/") && strings.HasSuffix(needle, "/") {
+		re, err := regexp.Compile("(?i)" + needle[1:len(needle)-1])
+		if err != nil {
+			return false
+		}
+		return re.MatchString(item.Name) || re.MatchString(item.Path)
+	}
+	needle = strings.ToLower(needle)
+	if needle == "*" || needle == "" {
+		return needle == "*"
+	}
+	// A number on its own is the semester — the one thing that is not a name.
+	if n, err := strconv.Atoi(strings.TrimPrefix(needle, "semester")); err == nil {
 		return item.Semester == n
 	}
-	switch field {
-	case "path":
-		return contains(item.Path, needle)
-	case "semester":
-		n, err := strconv.Atoi(needle)
-		return err == nil && item.Semester == n
-	default:
-		return contains(item.Name, needle) || contains(item.Path, needle)
+
+	name := strings.ToLower(item.Name)
+	path := strings.ToLower(item.Path)
+	starts := strings.HasSuffix(needle, "*")
+	ends := strings.HasPrefix(needle, "*")
+	core := strings.Trim(needle, "*")
+
+	switch {
+	case starts && ends: // *Kap*
+		return contains(name, core) || contains(path, core)
+	case starts: // Grundlagen*
+		return strings.HasPrefix(name, core) || strings.HasPrefix(slug.Make(name), slug.Make(core))
+	case ends: // *.pdf
+		return strings.HasSuffix(name, core)
+	default: // anywhere, forgivingly
+		return contains(name, needle) || contains(path, needle)
 	}
 }
 
@@ -144,7 +209,29 @@ func ParseText(text string) ([]Rule, []string) {
 			bad = append(bad, line)
 			continue
 		}
-		rules = append(rules, Rule{Match: left, To: right})
+		rule := Rule{Match: left, To: right}
+		// "first Grundlagen*", "last 2 *.pdf" — the quantifier is the first
+		// word, and the count the second if it is a number.
+		if word, rest, ok := strings.Cut(left, " "); ok {
+			switch strings.ToLower(word) {
+			case "first", "last", "newest", "oldest":
+				rule.Pick = strings.ToLower(word)
+				if n, tail, ok := strings.Cut(strings.TrimSpace(rest), " "); ok {
+					if count, err := strconv.Atoi(n); err == nil {
+						rule.Count = count
+						rest = tail
+					}
+				}
+				rule.Match = strings.TrimSpace(rest)
+			}
+		}
+		if p := strings.TrimSpace(rule.Match); len(p) > 1 && strings.HasPrefix(p, "/") && strings.HasSuffix(p, "/") {
+			if _, err := regexp.Compile(p[1 : len(p)-1]); err != nil {
+				bad = append(bad, line+"  ("+err.Error()+")")
+				continue
+			}
+		}
+		rules = append(rules, rule)
 	}
 	return rules, bad
 }
@@ -153,9 +240,7 @@ func ParseText(text string) ([]Rule, []string) {
 func Text(rules []Rule) string {
 	var b strings.Builder
 	for _, r := range rules {
-		b.WriteString(r.Match)
-		b.WriteString(" -> ")
-		b.WriteString(r.To)
+		b.WriteString(r.line())
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -183,4 +268,88 @@ func RulesFor(ctx context.Context, st *store.Store, ref string) ([]Rule, error) 
 		return nil, err
 	}
 	return rules, nil
+}
+
+// Plan answers for a whole list at once.
+//
+// It exists because "the first folder called Grundlagen-something" is not a
+// question about one folder — it can only be answered by looking at all of
+// them. Rules are taken in order; each one claims what it matches out of what
+// is left, so the first match still wins.
+func Plan(rules []Rule, items []Item) []Destination {
+	out := make([]Destination, len(items))
+	claimed := make([]bool, len(items))
+
+	for _, r := range rules {
+		// Everything this rule matches that no earlier rule took.
+		var candidates []int
+		for i, item := range items {
+			if !claimed[i] && r.matches(item) {
+				candidates = append(candidates, i)
+			}
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+		for _, i := range r.narrow(candidates, items) {
+			project, folder, skip := Destinations(r.To)
+			out[i] = Destination{
+				Project: project, Folder: folder, Skip: skip,
+				Rule: strings.TrimSpace(r.line()), Matched: true,
+			}
+			claimed[i] = true
+		}
+	}
+	return out
+}
+
+// narrow applies first/last/newest/oldest. Without one, a rule takes the lot.
+func (r Rule) narrow(candidates []int, items []Item) []int {
+	pick := strings.ToLower(strings.TrimSpace(r.Pick))
+	if pick == "" {
+		return candidates
+	}
+	sorted := append([]int(nil), candidates...)
+	switch pick {
+	case "newest", "oldest":
+		sort.SliceStable(sorted, func(a, b int) bool {
+			return items[sorted[a]].Changed.After(items[sorted[b]].Changed)
+		})
+		if pick == "oldest" {
+			reverse(sorted)
+		}
+	default: // first, last — by name, which is the order things are listed in
+		sort.SliceStable(sorted, func(a, b int) bool {
+			return strings.ToLower(items[sorted[a]].Name) < strings.ToLower(items[sorted[b]].Name)
+		})
+		if pick == "last" {
+			reverse(sorted)
+		}
+	}
+	count := r.Count
+	if count <= 0 {
+		count = 1
+	}
+	if count > len(sorted) {
+		count = len(sorted)
+	}
+	return sorted[:count]
+}
+
+func reverse(list []int) {
+	for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
+		list[i], list[j] = list[j], list[i]
+	}
+}
+
+func (r Rule) line() string {
+	left := r.Match
+	if r.Pick != "" {
+		if r.Count > 1 {
+			left = r.Pick + " " + strconv.Itoa(r.Count) + " " + left
+		} else {
+			left = r.Pick + " " + left
+		}
+	}
+	return left + " -> " + r.To
 }

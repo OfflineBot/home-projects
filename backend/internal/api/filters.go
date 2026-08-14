@@ -13,7 +13,6 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/slug"
 	"github.com/offlinebot/home-projects/backend/internal/store"
-	"github.com/offlinebot/home-projects/backend/internal/workspace"
 )
 
 // Filters are a menu of their own, next to accounts and schedulers: named rules
@@ -167,48 +166,60 @@ func (s *Server) mountProjectFilter(r fiber.Router) {
 			return err
 		}
 
+		// One level: the folders and files where you are standing. That is what
+		// "all folders in ./ starting with Grundlagen" means, and it is what can
+		// be looked at before it happens.
 		fs := s.WS.Open(p.ID)
+		here := strings.Trim(in.Path, "/")
+		entries, err := fs.List(here)
+		if err != nil {
+			return httpx.NotFound("There is no folder at this path.")
+		}
+		items := make([]filter.Item, len(entries))
+		for i, e := range entries {
+			items[i] = filter.Item{Name: e.Name, Path: e.Path, IsDir: e.IsDir, Changed: e.ModifiedAt}
+		}
+
 		type step struct {
 			From    string `json:"from"`
 			To      string `json:"to"`
 			Project string `json:"project,omitempty"`
 			Rule    string `json:"rule,omitempty"`
 			Note    string `json:"note,omitempty"`
+			IsDir   bool   `json:"isDir,omitempty"`
 		}
 		steps := []step{}
 		moved := map[uuid.UUID]*model.Project{}
 		var walkErr error
-		_ = fs.Walk(strings.Trim(in.Path, "/"), func(e workspace.Entry) error {
-			if e.IsDir {
-				return nil
-			}
-			name := e.Name
-			d, matched := filter.Apply(rules, filter.Item{Name: name, Path: e.Path})
-			if !matched || d.Skip {
-				return nil
+
+		for i, d := range filter.Plan(rules, items) {
+			e := entries[i]
+			if !d.Matched || d.Skip {
+				continue
 			}
 			target := p
 			if d.Project != "" {
 				found, err := s.resolveProjectRef(c, d.Project)
 				if err != nil {
-					steps = append(steps, step{From: e.Path, Rule: d.Rule,
+					steps = append(steps, step{From: e.Path, Rule: d.Rule, IsDir: e.IsDir,
 						Note: "no project called " + d.Project})
-					return nil
+					continue
 				}
 				target = found
 			}
-			dest := name
+			dest := e.Name
 			if d.Folder != "" {
-				dest = d.Folder + "/" + name
+				dest = d.Folder + "/" + e.Name
 			}
 			if target.ID == p.ID && dest == e.Path {
-				return nil // already where the rule wants it
+				continue // already where the rule wants it
 			}
-			steps = append(steps, step{From: e.Path, To: dest, Rule: d.Rule,
-				Project: map[bool]string{true: "", false: target.Slug}[target.ID == p.ID]})
-
+			steps = append(steps, step{
+				From: e.Path, To: dest, Rule: d.Rule, IsDir: e.IsDir,
+				Project: map[bool]string{true: "", false: target.Slug}[target.ID == p.ID],
+			})
 			if !in.Apply {
-				return nil
+				continue
 			}
 			author, email := authorOf(c)
 			op := files.Op{Author: author, Email: email, Commit: true,
@@ -217,20 +228,20 @@ func (s *Server) mountProjectFilter(r fiber.Router) {
 				if err := s.Files.Move(c.UserContext(), p, e.Path, dest, op); err != nil {
 					walkErr = err
 				}
-				return nil
+				continue
 			}
 			// Into another project: copy first, and only remove the original
 			// once the copy is on disk.
 			if err := s.Files.Copy(c.UserContext(), p, e.Path, target, dest, op); err != nil {
 				walkErr = err
-				return nil
+				continue
 			}
-			if err := s.Files.Remove(c.UserContext(), p, e.Path, false, op); err != nil {
+			if err := s.Files.Remove(c.UserContext(), p, e.Path, e.IsDir, op); err != nil {
 				walkErr = err
 			}
 			moved[target.ID] = target
-			return nil
-		})
+		}
+
 		if walkErr != nil {
 			return httpx.Internal("the filter could not be applied").WithCause(walkErr)
 		}

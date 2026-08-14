@@ -243,11 +243,19 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 			return finish("error", "the filter's rules could not be read", 0)
 		}
 		logf("filter %q: %d rule(s)", f.Title, len(rules))
-		job.Route = func(item capability.RouteItem) (capability.RouteTo, bool) {
-			d, ok := filter.Apply(rules, filter.Item{
-				Name: item.Name, Path: item.Path, Semester: item.Semester,
-			})
-			return capability.RouteTo{Project: d.Project, Folder: d.Folder, Skip: d.Skip, Rule: d.Rule}, ok
+		job.Route = func(items []capability.RouteItem) []capability.RouteTo {
+			in := make([]filter.Item, len(items))
+			for i, item := range items {
+				in[i] = filter.Item{Name: item.Name, Path: item.Path, Semester: item.Semester}
+			}
+			out := make([]capability.RouteTo, len(items))
+			for i, d := range filter.Plan(rules, in) {
+				out[i] = capability.RouteTo{
+					Project: d.Project, Folder: d.Folder, Skip: d.Skip,
+					Matched: d.Matched, Rule: d.Rule,
+				}
+			}
+			return out
 		}
 	}
 

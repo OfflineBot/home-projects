@@ -43,7 +43,7 @@ type Env struct {
 	// Router turns a filter's name or id into the function that answers "where
 	// does this belong?". It returns nil when the name is empty or unknown —
 	// the caller then puts things where it was going to anyway.
-	Router func(ctx context.Context, nameOrID string) func(RouteItem) (RouteTo, bool)
+	Router func(ctx context.Context, nameOrID string) func([]RouteItem) []RouteTo
 }
 
 // Preset is the typed way into creating a project. A preset only ever sets
@@ -104,7 +104,7 @@ type Job struct {
 	// filter. It is nil when it points at none, and the run then puts
 	// everything where the scheduler itself points. A capability never learns
 	// what a filter is — only that something can answer this question.
-	Route func(RouteItem) (RouteTo, bool)
+	Route func([]RouteItem) []RouteTo
 	Log   func(format string, args ...any)
 }
 
@@ -398,10 +398,12 @@ type RouteItem struct {
 	Semester int
 }
 
-// RouteTo is the answer. Project empty means "where you were going anyway".
+// RouteTo is the answer, one per item in the same order. Matched false means
+// no rule claimed it.
 type RouteTo struct {
 	Project string
 	Folder  string
 	Skip    bool
+	Matched bool
 	Rule    string
 }

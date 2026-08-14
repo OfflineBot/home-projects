@@ -127,16 +127,24 @@ func run() error {
 	env.UseAccount = func(ctx context.Context, id uuid.UUID, fn func(secret []byte) error) error {
 		return accounts.Attempt(ctx, env, id, 2*time.Minute, fn)
 	}
-	env.Router = func(ctx context.Context, ref string) func(capability.RouteItem) (capability.RouteTo, bool) {
+	env.Router = func(ctx context.Context, ref string) func([]capability.RouteItem) []capability.RouteTo {
 		rules, err := filter.RulesFor(ctx, st, ref)
 		if err != nil || len(rules) == 0 {
 			return nil
 		}
-		return func(item capability.RouteItem) (capability.RouteTo, bool) {
-			d, ok := filter.Apply(rules, filter.Item{
-				Name: item.Name, Path: item.Path, Semester: item.Semester,
-			})
-			return capability.RouteTo{Project: d.Project, Folder: d.Folder, Skip: d.Skip, Rule: d.Rule}, ok
+		return func(items []capability.RouteItem) []capability.RouteTo {
+			in := make([]filter.Item, len(items))
+			for i, item := range items {
+				in[i] = filter.Item{Name: item.Name, Path: item.Path, Semester: item.Semester}
+			}
+			out := make([]capability.RouteTo, len(items))
+			for i, d := range filter.Plan(rules, in) {
+				out[i] = capability.RouteTo{
+					Project: d.Project, Folder: d.Folder, Skip: d.Skip,
+					Matched: d.Matched, Rule: d.Rule,
+				}
+			}
+			return out
 		}
 	}
 

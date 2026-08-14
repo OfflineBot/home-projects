@@ -355,7 +355,9 @@ export interface Scheduler {
 
 export interface FilterRule {
   match: string;
-  field?: string;
+  /** first | last | newest | oldest — takes only some of what it matches. */
+  pick?: string;
+  count?: number;
   to: string;
 }
 
