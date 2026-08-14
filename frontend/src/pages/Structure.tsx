@@ -6,7 +6,7 @@ import { api, type Group, type Link as LinkRow, type Project } from "../lib/api"
 import { useQuery, useSession } from "../lib/store";
 import { colorVar } from "../lib/theme";
 
-/** A visual map: which projects hang in which groups, and which links run between them. */
+/** The arrangement as `tree` would print it: one root per group. */
 export default function Structure() {
   const session = useSession();
   const [importing, setImporting] = useState(false);
@@ -23,7 +23,6 @@ export default function Structure() {
       <div className="page-head">
         <div>
           <h1>Structure</h1>
-          <p>Everything at a glance: groups, their projects, and the links between them.</p>
         </div>
         {session.user ? (
           <div className="head-actions">
@@ -39,58 +38,46 @@ export default function Structure() {
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? <Spinner /> : null}
 
-      <div className="tiles" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+      <div className="tree">
         {data?.groups.map((g) => {
           const projects = data.projects.filter((p) => p.groupId === g.id);
           return (
-            <div key={g.id} className="tile" style={{ ["--tile-color" as string]: colorVar(g.color) }}>
-              <div className="tile-top">
-                <span className="tile-icon">
-                  <Icon name={g.icon} />
-                </span>
-                <div>
-                  <h3>
-                    <Link to={`/groups/${g.slug}`}>{g.title}</Link>
-                  </h3>
-                  <div className="sub">{projects.length} projects</div>
-                </div>
-              </div>
-              <div className="list" style={{ background: "transparent", border: "none" }}>
-                {projects.map((p) => (
-                  <Link
-                    key={p.id}
-                    to={`/groups/${g.slug}/${p.slug}`}
-                    className="list-row"
-                    style={{ padding: "6px 4px" }}
-                  >
-                    <Icon name={p.icon || "box"} size={14} />
-                    <span className="grow">{p.title}</span>
-                    {p.archived ? <span className="badge">archived</span> : null}
-                    {p.capabilities.length ? <span className="meta">{p.capabilities.join(" · ")}</span> : null}
-                  </Link>
-                ))}
-                {projects.length === 0 ? <span className="meta">empty</span> : null}
-              </div>
+            <div key={g.id} className="tree-group">
+              <Link to={`/groups/${g.slug}`} className="tree-root" style={{ color: colorVar(g.color) }}>
+                <Icon name={g.icon} size={14} />
+                {g.slug}/
+              </Link>
+              {projects.map((p, i) => (
+                <Link
+                  key={p.id}
+                  to={`/groups/${g.slug}/${p.slug}`}
+                  className="tree-row"
+                >
+                  <span className="branch">{i === projects.length - 1 ? "└──" : "├──"}</span>
+                  <span className="name">{p.slug}</span>
+                  <span className="tail">
+                    {p.capabilities.join(" ")}
+                    {p.archived ? " archived" : ""}
+                    {p.readOnly ? " read-only" : ""}
+                    {p.visibility !== "private" ? " " + p.visibility : ""}
+                  </span>
+                </Link>
+              ))}
+              {projects.length === 0 ? <div className="tree-row empty">└── (empty)</div> : null}
             </div>
           );
         })}
 
         {ungrouped.length ? (
-          <div className="tile">
-            <div className="tile-top">
-              <span className="tile-icon">
-                <Icon name="box" />
-              </span>
-              <h3>Ungrouped</h3>
-            </div>
-            <div className="list" style={{ background: "transparent", border: "none" }}>
-              {ungrouped.map((p) => (
-                <Link key={p.id} to={`/p/${p.id}`} className="list-row" style={{ padding: "6px 4px" }}>
-                  <Icon name={p.icon || "box"} size={14} />
-                  <span className="grow">{p.title}</span>
-                </Link>
-              ))}
-            </div>
+          <div className="tree-group">
+            <div className="tree-root">ungrouped/</div>
+            {ungrouped.map((p, i) => (
+              <Link key={p.id} to={`/p/${p.id}`} className="tree-row">
+                <span className="branch">{i === ungrouped.length - 1 ? "└──" : "├──"}</span>
+                <span className="name">{p.slug}</span>
+                <span className="tail">{p.capabilities.join(" ")}</span>
+              </Link>
+            ))}
           </div>
         ) : null}
       </div>
@@ -119,9 +106,7 @@ export default function Structure() {
           ))}
         </div>
       ) : (
-        <p style={{ color: "var(--ctp-subtext0)" }}>
-          No links yet. A link shows the same content in a second place — without copying it.
-        </p>
+        <p className="meta">none</p>
       )}
     </>
   );
@@ -199,10 +184,8 @@ function ImportBlueprint({ onClose, onDone }: { onClose: () => void; onDone: () 
       }
     >
       <ErrorBox error={error} />
-      <p style={{ marginTop: 0, color: "var(--ctp-subtext0)" }}>
-        The shape of a server: groups, projects, links and schedulers. Not the files — those travel by git
-        and by the zip download — and no passwords, which is why a password-protected group arrives private.
-        Nothing is ever deleted by an import.
+      <p className="meta" style={{ marginTop: 0 }}>
+        Groups, projects, links, schedulers. No files, no passwords. Nothing is deleted.
       </p>
 
       <Field label="The document">

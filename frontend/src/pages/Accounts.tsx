@@ -54,7 +54,6 @@ export default function Accounts() {
       <div className="page-head">
         <div>
           <h1>Accounts</h1>
-          <p>Every credential the server uses. Projects only ever point at one.</p>
         </div>
         <div className="head-actions">
           <button className="btn primary" onClick={() => setCreating(true)}>
@@ -64,9 +63,8 @@ export default function Accounts() {
       </div>
 
       <div className="warning">
-        <strong>A password here is single-use.</strong> Only a confirmed sign-in keeps it; anything else deletes
-        it and pauses the schedulers that used it. The password wanted for an account is always the one of that
-        service — your home-projects password is only ever asked for by the grey confirmation dialog.
+        <strong>Single-use.</strong> Only a confirmed sign-in keeps a password; anything else deletes it and
+        pauses the schedulers that used it.
       </div>
 
       <ErrorBox error={actionError ?? error} onRetry={reload} />
@@ -301,9 +299,8 @@ function EnterSecret({
       }
     >
       <ErrorBox error={error} />
-      <p style={{ marginTop: 0 }}>
-        Wanted here is the password of <strong>{kind?.title ?? account.kind}</strong> itself. Saving it asks for
-        your home-projects password afterwards — that is a different one.
+      <p className="meta" style={{ marginTop: 0 }}>
+        The password of {kind?.title ?? account.kind} — not this server's.
       </p>
       <Field label={kind?.secretLabel ?? "Password"}>
         {kind?.secretIsKey ? (

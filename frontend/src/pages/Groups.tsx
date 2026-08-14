@@ -20,7 +20,6 @@ export default function Groups() {
       <div className="page-head">
         <div>
           <h1>Groups</h1>
-          <p>A group is the virtual environment, a project the container inside it.</p>
         </div>
         {session.user ? (
           <div className="head-actions">
@@ -35,9 +34,7 @@ export default function Groups() {
       {loading && !data ? <Spinner /> : null}
 
       {data && data.groups.length === 0 && data.ungrouped.length === 0 ? (
-        <Empty icon="folder">
-          Nothing here yet. {session.user ? "Make a group — a repository comes with it." : "Nothing is public yet."}
-        </Empty>
+        <Empty icon="folder">{session.user ? "No groups yet." : "Nothing public."}</Empty>
       ) : null}
 
       <div className="tiles">

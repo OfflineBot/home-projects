@@ -15,7 +15,6 @@ export default function Settings() {
       <div className="page-head">
         <div>
           <h1>Appearance</h1>
-          <p>Catppuccin, in all four flavours. Dark stays the default.</p>
         </div>
       </div>
 

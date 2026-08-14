@@ -78,9 +78,7 @@ export default function AutomationView({ project }: { project: Project; reload: 
       </div>
 
       {data && data.rules.length === 0 ? (
-        <Empty icon="zap">
-          No rules yet. A lamp is an HTTP request, the PC is wake-on-LAN and SSH — nothing here is hard-coded.
-        </Empty>
+        <Empty icon="zap">No rules yet.</Empty>
       ) : null}
 
       <div className="tiles">

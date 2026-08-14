@@ -179,7 +179,7 @@ export default function GroupSettings({
       </Field>
 
       <div className="row">
-        <Field label="Visibility" hint="Applies to the group and its repository.">
+        <Field label="Visibility" hint="Group and repository.">
           <select
             value={form.visibility}
             onChange={(e) => setForm({ ...form, visibility: e.target.value as Group["visibility"] })}
@@ -196,7 +196,7 @@ export default function GroupSettings({
         ) : null}
       </div>
 
-      <Field label="Colour" hint="From the Catppuccin palette, so the tiles match in every flavour.">
+      <Field label="Colour" >
         <div className="swatches">
           {(meta?.colors ?? []).map((name) => (
             <button

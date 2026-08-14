@@ -59,7 +59,6 @@ export default function Dashboard() {
       <div className="page-head">
         <div>
           <h1>Dashboard</h1>
-          <p>Pinned groups and what their projects report.</p>
         </div>
         {session.user ? (
           <div className="head-actions">
@@ -120,9 +119,7 @@ export default function Dashboard() {
       ) : null}
 
       {data?.groups.length === 0 ? (
-        <Empty icon="grid">
-          Nothing to show yet. Groups appear here as soon as they exist, and a project's variables with them.
-        </Empty>
+        <Empty icon="grid">Nothing pinned.</Empty>
       ) : null}
 
       {data?.groups.map((block) => (

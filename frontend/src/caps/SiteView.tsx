@@ -80,12 +80,7 @@ export default function SiteView({ project, reload: reloadProject }: { project: 
                 <Icon name="globe" size={16} /> Address
               </h3>
               <Copyable value={data.url} />
-              <div className="sub">
-                {data.protected
-                  ? "A password stands in front of it — visitors get one field and nothing else."
-                  : "Open to anyone who has the address."}{" "}
-                Change that under the project's visibility.
-              </div>
+              <div className="sub">{data.protected ? "password protected" : "open to anyone"}</div>
               {data.published && data.hasIndex ? (
                 <a className="btn primary" href={data.url} target="_blank" rel="noreferrer">
                   Open
@@ -99,7 +94,7 @@ export default function SiteView({ project, reload: reloadProject }: { project: 
 
               <Field
                 label="The project that holds the files"
-                hint="This one, or any other. The material stays where it is written."
+                hint="This one, or any other."
               >
                 <select value={sourceValue} onChange={(e) => setSource(e.target.value)}>
                   <option value="">{project.title} (this project)</option>
@@ -145,8 +140,8 @@ export default function SiteView({ project, reload: reloadProject }: { project: 
 
               {data.sourceTitle ? (
                 <div className="sub">
-                  Serving <strong>{data.sourceTitle}</strong>
-                  {data.siteRoot ? ` / ${data.siteRoot}` : ""} — this project holds no files of its own.
+                  serving {data.sourceTitle}
+                  {data.siteRoot ? ` / ${data.siteRoot}` : ""}
                 </div>
               ) : null}
             </div>

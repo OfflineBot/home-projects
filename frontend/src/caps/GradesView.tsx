@@ -158,7 +158,7 @@ export default function GradesView({ project }: { project: Project; reload: () =
         </button>
       ) : null}
 
-      <Field label="" hint="Everything here is grades.json — edit it by hand, push it, or let Dualis fill it.">
+      <Field label="" hint="Stored as grades.json.">
         <span />
       </Field>
     </div>

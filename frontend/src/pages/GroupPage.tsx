@@ -67,10 +67,7 @@ export default function GroupPage() {
       ) : null}
 
       {data && data.projects.length === 0 ? (
-        <Empty icon="box">
-          No projects yet.{" "}
-          {session.user ? "A project is a folder that can also be a calendar, notes, a site — or all three." : ""}
-        </Empty>
+        <Empty icon="box">No projects yet.</Empty>
       ) : null}
 
       <div className="tiles">

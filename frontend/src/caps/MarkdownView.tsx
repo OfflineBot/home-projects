@@ -60,9 +60,7 @@ export default function MarkdownView({ project }: { project: Project; reload: ()
         {path ? (
           <NoteEditor project={project} path={path} onClose={() => open(null)} onSaved={reload} />
         ) : (
-          <Empty icon="notebook">
-            Pick a note. The vault on your machine stays in sync through this project's git branch.
-          </Empty>
+          <Empty icon="notebook">Pick a note.</Empty>
         )}
       </div>
 

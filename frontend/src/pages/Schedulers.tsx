@@ -69,7 +69,6 @@ export default function Schedulers() {
       <div className="page-head">
         <div>
           <h1>Schedulers</h1>
-          <p>Each one belongs to a project and writes into its files. Running one by hand is always possible.</p>
         </div>
         <div className="head-actions">
           <button className="btn primary" onClick={() => setCreating(true)}>
@@ -160,9 +159,7 @@ export default function Schedulers() {
       </div>
 
       <h2 style={{ fontSize: 17, marginTop: 28 }}>Runs</h2>
-      <p style={{ color: "var(--ctp-subtext0)", marginTop: 0 }}>
-        Every run is logged. A failed one is visible here, not silent.
-      </p>
+
       {runs.data?.runs.length ? (
         <div className="list">
           {runs.data.runs.map((r) => (
@@ -492,9 +489,7 @@ function SchedulerDialog({
         </>
       ) : null}
 
-      <p className="hint">
-        What a run pulls lands as files. Delete one and it comes back on the next run — that is intended.
-      </p>
+
     </Modal>
   );
 }

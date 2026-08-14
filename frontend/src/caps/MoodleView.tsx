@@ -51,10 +51,8 @@ export default function MoodleView({ project }: { project: Project; reload: () =
   return (
     <div style={{ maxWidth: 720 }}>
       <div className="notice">
-        <strong>This pull stores nothing.</strong> The password is used for one sign-in and then forgotten —
-        no account is created, no scheduler is left behind. If it goes wrong, simply type it again. For a
-        nightly pull, make an account under <em>Accounts</em> and a scheduler on this project; that password
-        is single-use, this one is not stored at all.
+        <strong>Nothing is stored</strong> — no account, no scheduler, no password. For a recurring pull, make
+        an account and a scheduler instead.
       </div>
 
       <ErrorBox error={error} />
@@ -72,7 +70,7 @@ export default function MoodleView({ project }: { project: Project; reload: () =
         </Field>
       </div>
 
-      <Field label="Your Moodle password" hint="Sent once, kept nowhere.">
+      <Field label="Your Moodle password" hint="Sent once, stored nowhere.">
         <input
           type="password"
           value={form.password}
@@ -134,9 +132,7 @@ export default function MoodleView({ project }: { project: Project; reload: () =
         />
         <span>Rebuild — fetch everything again, not only what is new</span>
       </label>
-      <p className="hint" style={{ marginTop: -6 }}>
-        Both only ever touch the folders this pull writes into. What you keep beside them stays.
-      </p>
+      <p className="hint" style={{ marginTop: -6 }}>Only inside the folders this pull writes into.</p>
 
       <div style={{ marginTop: 14 }}>
         <button

@@ -435,6 +435,23 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 
 .menu-backdrop { position: fixed; inset: 0; z-index: 30; }
 
+/* -------------------------------------------------------------------- tree */
+
+/* The arrangement the way `tree` prints it: one root per group, monospace, no
+   decoration that is not a character. */
+.tree { font-family: var(--mono); font-size: 13.5px; line-height: 1.75; }
+.tree-group { margin-bottom: 18px; }
+.tree-root { display: flex; align-items: center; gap: 7px; font-weight: 600;
+  text-decoration: none; padding: 2px 4px; }
+.tree-root:hover { text-decoration: underline; }
+.tree-row { display: flex; gap: 8px; align-items: baseline; padding: 1px 4px;
+  color: var(--ctp-text); text-decoration: none; border-radius: 5px; }
+.tree-row:hover { background: var(--ctp-surface0); text-decoration: none; }
+.tree-row .branch { color: var(--ctp-overlay0); white-space: pre; }
+.tree-row .name { flex: 0 1 auto; }
+.tree-row .tail { color: var(--ctp-overlay1); font-size: 12.5px; }
+.tree-row.empty { color: var(--ctp-overlay0); }
+
 /* ------------------------------------------------------------------- files */
 
 /* A file that is not text is shown, not described. */

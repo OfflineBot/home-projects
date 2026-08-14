@@ -97,7 +97,7 @@ export default function CreateProject({
         />
       </Field>
 
-      <Field label="What it starts as" hint="Only the icon and the first tab. Everything else stays open.">
+      <Field label="What it starts as" hint="Sets the icon and the first tab.">
         <div className="tiles" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
           {(meta?.presets ?? []).map((p) => (
             <button
@@ -127,7 +127,7 @@ export default function CreateProject({
 
       <Field
         label="Start from a zip (optional)"
-        hint="The archive's contents become the project's files. A single wrapping folder is dropped."
+        hint="A single wrapping folder is dropped."
       >
         <div
           className={zip ? "dropzone over" : "dropzone"}

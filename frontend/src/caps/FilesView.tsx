@@ -647,9 +647,7 @@ function FileEditor({
         ) : shape === "video" ? (
           <video className="file-preview" controls src={raw} />
         ) : (
-          <Empty icon="file">
-            This kind of file cannot be shown here. Download it — the copy on the server stays as it is.
-          </Empty>
+          <Empty icon="file">No preview for this kind of file.</Empty>
         )}
       </div>
     );

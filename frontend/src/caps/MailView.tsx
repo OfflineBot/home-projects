@@ -35,7 +35,7 @@ export default function MailView({ project }: { project: Project; reload: () => 
         <ErrorBox error={error} onRetry={reloadList} />
         {loading && !data ? <Spinner /> : null}
         {data && data.messages.length === 0 ? (
-          <Empty icon="mail">Nothing here. A mail scheduler fills this folder.</Empty>
+          <Empty icon="mail">Nothing here.</Empty>
         ) : null}
         <div className="list">
           {data?.messages.map((m) => (
@@ -144,7 +144,7 @@ function Compose({ project, onClose, onSent }: { project: Project; onClose: () =
       }
     >
       <ErrorBox error={error} />
-      <Field label="Through which account" hint="Credentials live in the accounts menu, never in a project.">
+      <Field label="Through which account" >
         <select value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
           <option value="">— pick one —</option>
           {mailAccounts.map((a) => (

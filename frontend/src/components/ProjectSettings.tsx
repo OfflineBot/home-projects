@@ -201,7 +201,7 @@ export default function ProjectSettings({
         <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </Field>
 
-      <Field label="Group" hint="Moving it carries the history over as a branch move.">
+      <Field label="Group" hint="Carries the history over.">
         <select value={project.groupId ?? ""} onChange={(e) => move(e.target.value || "ungrouped")}>
           <option value="">Ungrouped</option>
           {groups.map((g) => (
@@ -241,7 +241,7 @@ export default function ProjectSettings({
         </label>
       ) : null}
 
-      <Field label="Capabilities" hint="Views onto the same files. Every combination is allowed.">
+      <Field label="Capabilities" hint="Views onto the same files.">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(meta?.capabilities ?? []).map((c) => {
             const on = form.capabilities.includes(c.name);

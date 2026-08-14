@@ -25,7 +25,6 @@ export default function CalendarOverlay() {
       <div className="page-head">
         <div>
           <h1>Calendar</h1>
-          <p>Every calendar project at once — each in its own colour, each switchable.</p>
         </div>
       </div>
       <ErrorBox error={error} />

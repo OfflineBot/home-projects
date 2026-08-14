@@ -21,7 +21,7 @@ export default function FeedView({ project }: { project: Project; reload: () => 
         </p>
       ) : null}
       {data && data.entries.length === 0 ? (
-        <Empty icon="rss">Nothing fetched yet. Add a feed scheduler for this project.</Empty>
+        <Empty icon="rss">Nothing fetched yet.</Empty>
       ) : null}
       <div className="list">
         {data?.entries.map((e) => (

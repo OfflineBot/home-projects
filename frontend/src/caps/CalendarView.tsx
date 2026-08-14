@@ -390,16 +390,12 @@ export function CalendarGrid({
 
       {subscription ? (
         <Modal title="Subscribe to this calendar" onClose={() => setSubscription(null)}>
-          <p style={{ marginTop: 0 }}>
-            This address returns one complete <code className="mono">VCALENDAR</code> — Google Calendar,
-            Thunderbird and iOS can be pointed straight at it, without an account on this server.
+          <p className="meta" style={{ marginTop: 0 }}>
+            One complete VCALENDAR. No account needed to read it.
           </p>
           <input readOnly value={subscription} onFocus={(e) => e.currentTarget.select()} />
           <p className="hint">
-            Deadlines are stored as <code className="mono">VTODO</code>, which Google Calendar ignores on a
-            feed — so they leave as short events by default. Append{" "}
-            <code className="mono">&amp;deadlines=todos</code> to get them as todos, which Thunderbird and
-            Apple Reminders do understand.
+            Deadlines leave as events. Append <code className="mono">&amp;deadlines=todos</code> for VTODO.
           </p>
         </Modal>
       ) : null}
@@ -1113,10 +1109,7 @@ function EventDialog({
     >
       <ErrorBox error={error} />
       {initial.readOnly ? (
-        <div className="warning">
-          This entry comes from a subscription. It is read-only and gets overwritten on the next run — but you
-          can put your own note next to it, which no pull can touch.
-        </div>
+        <div className="warning">From a subscription — read-only, overwritten on the next run.</div>
       ) : null}
 
       <Field label="Kind" hint={KINDS.find((k) => k.key === kind)?.hint}>
@@ -1198,10 +1191,7 @@ function EventDialog({
               </select>
             </Field>
           </div>
-          <p className="hint">
-            Stored as a <code className="mono">VTODO</code> — that is what iCalendar has for something that can
-            be finished. The subscription URL hands it out as an event, because Google Calendar ignores todos.
-          </p>
+
         </>
       ) : null}
 
@@ -1250,18 +1240,14 @@ function EventDialog({
       {kind !== "phase" ? (
         <Field
           label="Reminders"
-          hint={
-            kind === "deadline"
-              ? "Minutes before it is due. A day and an hour before, unless you say otherwise."
-              : "Minutes before the start, comma separated."
-          }
+          hint="Minutes before, comma separated."
         >
           <input value={form.alarms} onChange={(e) => setForm({ ...form, alarms: e.target.value })} placeholder="15" />
         </Field>
       ) : null}
 
       {phases.length && kind !== "phase" ? (
-        <Field label="Belongs to" hint="A phase — the semester or the period this is part of.">
+        <Field label="Belongs to" hint="A phase.">
           <select value={form.relatedTo} onChange={(e) => setForm({ ...form, relatedTo: e.target.value })}>
             <option value="">nothing in particular</option>
             {phases.map((p) => (
@@ -1273,13 +1259,13 @@ function EventDialog({
         </Field>
       ) : null}
 
-      <Field label="Tags" hint="Comma separated. The filter above picks them up.">
+      <Field label="Tags" hint="Comma separated.">
         <input value={form.categories} onChange={(e) => setForm({ ...form, categories: e.target.value })} />
       </Field>
 
       <Field
         label="Link into the project"
-        hint="A folder or a file in this project — the material for this lecture, the folder for this assignment."
+        hint="A folder or file in this project."
       >
         <div style={{ display: "flex", gap: 8 }}>
           <input
@@ -1296,7 +1282,7 @@ function EventDialog({
       </Field>
 
       {kind === "slot" ? (
-        <Field label="Person" hint="The lecturer, so it can be filtered by.">
+        <Field label="Person" hint="Lecturer — filterable.">
           <input value={form.person} onChange={(e) => setForm({ ...form, person: e.target.value })} />
         </Field>
       ) : null}

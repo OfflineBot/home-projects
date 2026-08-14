@@ -46,7 +46,6 @@ export default function Security() {
       <div className="page-head">
         <div>
           <h1>Security</h1>
-          <p>Who is signed in, what may reach the server, and what happened.</p>
         </div>
       </div>
 
