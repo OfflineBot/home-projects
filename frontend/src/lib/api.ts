@@ -312,6 +312,13 @@ export interface AccountField {
   hint?: string;
 }
 
+export interface Provider {
+  name: string;
+  title: string;
+  fields: Record<string, string>;
+  note?: string;
+}
+
 export interface AccountKind {
   name: string;
   title: string;
@@ -320,6 +327,7 @@ export interface AccountKind {
   secretLabel?: string;
   locks: boolean;
   secretIsKey?: boolean;
+  providers?: Provider[];
 }
 
 export interface Account {

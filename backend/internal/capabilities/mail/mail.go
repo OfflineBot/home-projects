@@ -72,6 +72,42 @@ func (Capability) AccountKinds() []capability.AccountKind {
 			{Name: "smtpHost", Label: "SMTP server", Type: "text", Placeholder: "smtp.example.com"},
 			{Name: "smtpPort", Label: "SMTP port", Type: "number", Placeholder: "587"},
 		},
+		Providers: []capability.Provider{
+			{Name: "gmail", Title: "Gmail", Fields: map[string]string{
+				"host": "imap.gmail.com", "port": "993",
+				"smtpHost": "smtp.gmail.com", "smtpPort": "587",
+			}, Note: "Gmail refuses your normal password: make an app password with two-factor on."},
+			{Name: "outlook", Title: "Outlook / Microsoft 365", Fields: map[string]string{
+				"host": "outlook.office365.com", "port": "993",
+				"smtpHost": "smtp.office365.com", "smtpPort": "587",
+			}, Note: "Works where the organisation still allows IMAP; many switch it off."},
+			{Name: "gmx", Title: "GMX", Fields: map[string]string{
+				"host": "imap.gmx.net", "port": "993",
+				"smtpHost": "mail.gmx.net", "smtpPort": "587",
+			}, Note: "IMAP has to be switched on once in the GMX settings."},
+			{Name: "webde", Title: "WEB.DE", Fields: map[string]string{
+				"host": "imap.web.de", "port": "993",
+				"smtpHost": "smtp.web.de", "smtpPort": "587",
+			}, Note: "IMAP has to be switched on once in the WEB.DE settings."},
+			{Name: "posteo", Title: "Posteo", Fields: map[string]string{
+				"host": "posteo.de", "port": "993",
+				"smtpHost": "posteo.de", "smtpPort": "587",
+			}},
+			{Name: "mailbox", Title: "mailbox.org", Fields: map[string]string{
+				"host": "imap.mailbox.org", "port": "993",
+				"smtpHost": "smtp.mailbox.org", "smtpPort": "587",
+			}},
+			{Name: "icloud", Title: "iCloud", Fields: map[string]string{
+				"host": "imap.mail.me.com", "port": "993",
+				"smtpHost": "smtp.mail.me.com", "smtpPort": "587",
+			}, Note: "Needs an app-specific password from appleid.apple.com."},
+			{Name: "dhbw", Title: "DHBW Ravensburg", Fields: map[string]string{
+				"host": "webmail.dhbw-ravensburg.de", "port": "993",
+				"smtpHost": "webmail.dhbw-ravensburg.de", "smtpPort": "587",
+			}, Note: "Measured from here: that server answers on neither IMAP port, only on Exchange " +
+				"web services. Until this speaks EWS, the address cannot be fetched — the fields are " +
+				"filled in for the day it can."},
+		},
 		SecretLabel: "Password",
 		Locks:       true,
 		Test:        testMailAccount,

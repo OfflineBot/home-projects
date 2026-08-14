@@ -197,6 +197,7 @@ function CreateAccount({
   const [title, setTitle] = useState("");
   const [config, setConfig] = useState<Record<string, string>>({});
   const [secret, setSecret] = useState("");
+  const [provider, setProvider] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const kind = kinds.find((k) => k.name === kindName);
 
@@ -238,6 +239,31 @@ function CreateAccount({
         </select>
       </Field>
       {kind?.description ? <p className="hint">{kind.description}</p> : null}
+      {kind?.providers?.length ? (
+        <Field label="Provider" hint="Fills in the servers and ports. Only the user name is left.">
+          <select
+            value={provider}
+            onChange={(e) => {
+              const p = kind.providers?.find((x) => x.name === e.target.value);
+              setProvider(e.target.value);
+              if (p) {
+                setConfig({ ...config, ...p.fields });
+                if (!title.trim()) setTitle(p.title);
+              }
+            }}
+          >
+            <option value="">Somewhere else</option>
+            {kind.providers.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {kind?.providers?.find((p) => p.name === provider)?.note ? (
+        <p className="hint">{kind.providers.find((p) => p.name === provider)?.note}</p>
+      ) : null}
       <Field label="Name">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind?.title} />
       </Field>
@@ -350,6 +376,7 @@ function EditAccount({
   const [config, setConfig] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(account.config ?? {}).map(([k, v]) => [k, String(v ?? "")])),
   );
+  const [provider, setProvider] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -389,6 +416,32 @@ function EditAccount({
       <Field label="Name">
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
+      {kind?.providers?.length ? (
+        <Field label="Provider" hint="Fills in the servers and ports. Only the user name is left.">
+          <select
+            value={provider}
+            onChange={(e) => {
+              const p = kind.providers?.find((x) => x.name === e.target.value);
+              setProvider(e.target.value);
+              if (p) {
+                setConfig({ ...config, ...p.fields });
+                if (!title.trim()) setTitle(p.title);
+              }
+            }}
+          >
+            <option value="">Somewhere else</option>
+            {kind.providers.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {kind?.providers?.find((p) => p.name === provider)?.note ? (
+        <p className="hint">{kind.providers.find((p) => p.name === provider)?.note}</p>
+      ) : null}
+
       {(kind?.fields ?? []).map((f) => (
         <Field key={f.name} label={f.label} hint={f.hint}>
           <input

@@ -161,6 +161,10 @@ type AccountKind struct {
 	// the other end. It runs before the credential is reserved, so finding out
 	// that a URL was pasted wrong does not cost a password.
 	Precheck func(ctx context.Context, env *Env, a *model.Account) error `json:"-"`
+	// Providers are ready-made answers for the fields above: "Gmail" fills in
+	// the servers and the ports, and what is left is the user name. Nobody
+	// should have to look up a port number to read their mail.
+	Providers []Provider `json:"providers,omitempty"`
 	// Test performs exactly one sign-in attempt. Returning nil means an
 	// unambiguous success; anything else consumes the credential.
 	Test func(ctx context.Context, env *Env, a *model.Account, secret []byte) error `json:"-"`
@@ -410,4 +414,14 @@ type RouteTo struct {
 	Skip    bool
 	Matched bool
 	Rule    string
+}
+
+// Provider is one ready-made filling of an account kind's fields.
+type Provider struct {
+	Name   string            `json:"name"`
+	Title  string            `json:"title"`
+	Fields map[string]string `json:"fields"`
+	// Note says what the provider expects that a form cannot fill in — an app
+	// password, a setting to switch on first.
+	Note string `json:"note,omitempty"`
 }
