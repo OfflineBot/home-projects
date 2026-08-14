@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Spinner, useGuarded } from "../components/ui";
-import { api, type Filter, type FilterRule, type Project } from "../lib/api";
+import { api, type Filter, type FilterRule } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 
 /**
@@ -122,7 +122,6 @@ function FilterDialog({
     (existing?.rules ?? []).map(ruleLine).join("\n"),
   );
   const [names, setNames] = useState("");
-  const projects = useQuery<{ projects: Project[] }>("/api/projects");
   const [tried, setTried] = useState<{ results: TryResult[]; unusable?: string[] } | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
@@ -179,7 +178,7 @@ function FilterDialog({
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
 
-      <Field label="Rules" hint="One per line, first match wins.">
+      <Field label="Rules" hint="One per line. Where things go is set on the project that uses this.">
         <textarea
           value={text}
           onChange={(e) => {
@@ -187,58 +186,31 @@ function FilterDialog({
             setTried(null);
           }}
           style={{ minHeight: 150, fontFamily: "var(--mono)", fontSize: 13 }}
-          placeholder={"Grundlagen* -> {Studies/semester1}\nfirst *.pdf -> ./skripte\nWerbung -> skip\n* -> {Studies/rest}"}
+          placeholder={"Grundlagen* ->\nfirst *.pdf ->\nWerbung -> skip"}
         />
       </Field>
 
-      <details className="syntax-help" open>
+      <details className="syntax-help">
         <summary>What can stand there</summary>
         <table className="syntax">
           <tbody>
-            <tr><td colSpan={2} className="head">what is matched — on the left</td></tr>
-            <tr><td><code className="mono">Grundlagen</code></td><td>the name contains it</td></tr>
-            <tr><td><code className="mono">Grundlagen*</code></td><td>the name starts with it</td></tr>
-            <tr><td><code className="mono">*.pdf</code></td><td>the name ends with it</td></tr>
-            <tr><td><code className="mono">*Kap*</code></td><td>somewhere in the middle</td></tr>
-            <tr><td><code className="mono">2</code></td><td>the semester (Moodle says which)</td></tr>
-            <tr><td><code className="mono">*</code></td><td>everything left over</td></tr>
-            <tr><td><code className="mono">/^WDS\d+ - Grund/</code></td><td>a regular expression, if none of the above fits</td></tr>
-
-            <tr><td colSpan={2} className="head">how many — in front of it</td></tr>
-            <tr><td><code className="mono">first Grundlagen*</code></td><td>only the first, by name</td></tr>
-            <tr><td><code className="mono">last Grundlagen*</code></td><td>only the last</td></tr>
-            <tr><td><code className="mono">first 3 *.pdf</code></td><td>the first three</td></tr>
-            <tr><td><code className="mono">newest 5 *</code></td><td>the five most recently changed</td></tr>
-
-            <tr><td colSpan={2} className="head">where it goes — on the right</td></tr>
-            <tr><td><code className="mono">{"{Studies/semester1}"}</code></td><td>into that project</td></tr>
-            <tr><td><code className="mono">{"{Studies/semester1}/skripte"}</code></td><td>and into a folder in it</td></tr>
-            <tr><td><code className="mono">./skripte</code></td><td>a folder where it already is</td></tr>
-            <tr><td><code className="mono">skip</code></td><td>leave it alone</td></tr>
+            <tr><td><code className="mono">Grundlagen</code></td><td>name contains</td></tr>
+            <tr><td><code className="mono">Grundlagen*</code></td><td>starts with</td></tr>
+            <tr><td><code className="mono">*.pdf</code></td><td>ends with</td></tr>
+            <tr><td><code className="mono">*Kap*</code></td><td>contains</td></tr>
+            <tr><td><code className="mono">2</code></td><td>semester</td></tr>
+            <tr><td><code className="mono">*</code></td><td>everything left</td></tr>
+            <tr><td><code className="mono">/^WDS\d+/</code></td><td>regular expression</td></tr>
+            <tr><td><code className="mono">first last newest oldest</code></td><td>in front, with an optional count</td></tr>
+            <tr><td className="head" colSpan={2}>after the arrow — only if this rule needs its own destination</td></tr>
+            <tr><td><code className="mono">{"{Studies/semester1}"}</code></td><td>that project</td></tr>
+            <tr><td><code className="mono">./skripte</code></td><td>a folder</td></tr>
+            <tr><td><code className="mono">skip</code></td><td>leave it</td></tr>
           </tbody>
         </table>
-        <p className="meta">One rule per line. The first that matches wins, and what it takes, no later rule sees.</p>
       </details>
 
-      <Field label="Insert a project" hint="Puts it in the rules as {group/project}.">
-        <select
-          value=""
-          onChange={(e) => {
-            if (!e.target.value) return;
-            setText((t) => (t.endsWith("\n") || t === "" ? t : t + "\n") + `* -> {${e.target.value}}`);
-            setTried(null);
-          }}
-        >
-          <option value="">— pick one —</option>
-          {(projects.data?.projects ?? []).map((p) => (
-            <option key={p.id} value={`${p.groupSlug || "ungrouped"}/${p.slug}`}>
-              {p.groupSlug || "ungrouped"}/{p.slug}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Try it" hint="One name per line.">
+      <Field label="Try it">
         <textarea
           value={names}
           onChange={(e) => setNames(e.target.value)}

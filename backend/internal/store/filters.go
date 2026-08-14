@@ -129,14 +129,24 @@ type ProjectFilter struct {
 	model.Filter
 	Position  int  `json:"position"`
 	Automatic bool `json:"automatic"`
+	// Where this project sends what the filter matches, when the rule itself
+	// does not say.
+	TargetProjectID *uuid.UUID `json:"targetProjectId,omitempty"`
+	TargetProject   string     `json:"targetProject,omitempty"`
+	TargetFolder    string     `json:"targetFolder,omitempty"`
 }
 
 func (s *Store) FiltersForProject(ctx context.Context, projectID uuid.UUID) ([]ProjectFilter, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.id, f.slug, f.title, f.description, f.rules, f.created_at, f.updated_at,
 			(SELECT count(*) FROM project_filters x WHERE x.filter_id = f.id),
-			pf.position, pf.automatic
-		FROM project_filters pf JOIN filters f ON f.id = pf.filter_id
+			pf.position, pf.automatic, pf.target_project_id, pf.target_folder,
+			COALESCE(CASE WHEN tg.slug IS NULL OR tg.slug = '' THEN tp.slug
+				ELSE tg.slug || '/' || tp.slug END, '')
+		FROM project_filters pf
+		JOIN filters f ON f.id = pf.filter_id
+		LEFT JOIN projects tp ON tp.id = pf.target_project_id
+		LEFT JOIN groups tg ON tg.id = tp.group_id
 		WHERE pf.project_id = $1
 		ORDER BY pf.position, f.title`, projectID)
 	if err != nil {
@@ -147,7 +157,8 @@ func (s *Store) FiltersForProject(ctx context.Context, projectID uuid.UUID) ([]P
 	for rows.Next() {
 		var pf ProjectFilter
 		if err := rows.Scan(&pf.ID, &pf.Slug, &pf.Title, &pf.Description, &pf.Rules,
-			&pf.CreatedAt, &pf.UpdatedAt, &pf.UsedBy, &pf.Position, &pf.Automatic); err != nil {
+			&pf.CreatedAt, &pf.UpdatedAt, &pf.UsedBy, &pf.Position, &pf.Automatic,
+			&pf.TargetProjectID, &pf.TargetFolder, &pf.TargetProject); err != nil {
 			return nil, norm(err)
 		}
 		if len(pf.Rules) == 0 {
@@ -158,12 +169,14 @@ func (s *Store) FiltersForProject(ctx context.Context, projectID uuid.UUID) ([]P
 	return out, norm(rows.Err())
 }
 
-func (s *Store) AddFilterToProject(ctx context.Context, projectID, filterID uuid.UUID, automatic bool) error {
+func (s *Store) AddFilterToProject(ctx context.Context, projectID, filterID uuid.UUID,
+	automatic bool, target *uuid.UUID, folder string) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO project_filters (project_id, filter_id, automatic, position)
-		VALUES ($1,$2,$3, COALESCE((SELECT max(position)+1 FROM project_filters WHERE project_id=$1),0))
-		ON CONFLICT (project_id, filter_id) DO UPDATE SET automatic = EXCLUDED.automatic`,
-		projectID, filterID, automatic)
+		INSERT INTO project_filters (project_id, filter_id, automatic, target_project_id, target_folder, position)
+		VALUES ($1,$2,$3,$4,$5, COALESCE((SELECT max(position)+1 FROM project_filters WHERE project_id=$1),0))
+		ON CONFLICT (project_id, filter_id) DO UPDATE SET automatic = EXCLUDED.automatic,
+			target_project_id = EXCLUDED.target_project_id, target_folder = EXCLUDED.target_folder`,
+		projectID, filterID, automatic, target, folder)
 	return norm(err)
 }
 

@@ -205,9 +205,14 @@ func ParseText(text string) ([]Rule, []string) {
 			continue
 		}
 		left, right = strings.TrimSpace(left), strings.TrimSpace(right)
-		if left == "" || right == "" {
+		if left == "" {
 			bad = append(bad, line)
 			continue
+		}
+		if right == "" {
+			// "Grundlagen* ->" is a pattern with no destination: the project
+			// that picks the filter up says where it goes.
+			right = "here"
 		}
 		rule := Rule{Match: left, To: right}
 		// "first Grundlagen*", "last 2 *.pdf" — the quantifier is the first

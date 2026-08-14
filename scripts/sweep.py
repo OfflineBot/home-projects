@@ -439,7 +439,11 @@ def main() -> int:
 
         # A project picks up the filters it wants; the filter itself belongs to
         # nobody.
-        c.call("POST", f"/api/projects/{data}/filters", {"filter": fid, "automatic": True}, expect=201)
+        c.call("POST", f"/api/projects/{data}/filters",
+               {"filter": fid, "automatic": True, "target": f"{gslug}/{made['notes']['slug']}"}, expect=201)
+        with_target = c.call("GET", f"/api/projects/{data}/filters")
+        check(bool(with_target) and with_target["filters"][0]["targetProject"].endswith(made["notes"]["slug"]),
+              "where a filter sends things is set on the project that uses it")
         attached = c.call("GET", f"/api/projects/{data}/filters")
         check(bool(attached) and any(x["id"] == fid and x["automatic"] for x in attached["filters"]),
               "a project adds a filter, rather than being assigned one")

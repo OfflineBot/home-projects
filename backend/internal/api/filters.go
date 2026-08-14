@@ -161,6 +161,10 @@ func (s *Server) mountProjectFilter(r fiber.Router) {
 		var in struct {
 			Filter    string `json:"filter"`
 			Automatic bool   `json:"automatic"`
+			// Where this project sends what the filter matches. A rule that
+			// names a project itself still wins.
+			Target string `json:"target"`
+			Folder string `json:"folder"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The request could not be read.")
@@ -169,7 +173,16 @@ func (s *Server) mountProjectFilter(r fiber.Router) {
 		if err != nil {
 			return err
 		}
-		if err := s.Store.AddFilterToProject(c.UserContext(), p.ID, f.ID, in.Automatic); err != nil {
+		var target *uuid.UUID
+		if strings.TrimSpace(in.Target) != "" {
+			found, err := s.resolveProjectRef(c, in.Target)
+			if err != nil {
+				return err
+			}
+			target = &found.ID
+		}
+		if err := s.Store.AddFilterToProject(c.UserContext(), p.ID, f.ID, in.Automatic,
+			target, strings.Trim(in.Folder, "/")); err != nil {
 			return httpx.Internal("the filter could not be added").WithCause(err)
 		}
 		return c.Status(fiber.StatusCreated).JSON(f)
@@ -216,12 +229,7 @@ func (s *Server) mountProjectFilter(r fiber.Router) {
 			if err != nil {
 				return httpx.Internal("the project's filters could not be read").WithCause(err)
 			}
-			for _, f := range mine {
-				var part []filter.Rule
-				if json.Unmarshal(f.Rules, &part) == nil {
-					rules = append(rules, part...)
-				}
-			}
+			rules = withTargets(mine)
 			if len(rules) == 0 {
 				return httpx.BadRequest("This project has no filters yet. Add one first.")
 			}
@@ -381,16 +389,13 @@ func (s *Server) SortProject(ctx context.Context, p *model.Project) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	var rules []filter.Rule
+	automatic := make([]store.ProjectFilter, 0, len(mine))
 	for _, f := range mine {
-		if !f.Automatic {
-			continue
-		}
-		var part []filter.Rule
-		if json.Unmarshal(f.Rules, &part) == nil {
-			rules = append(rules, part...)
+		if f.Automatic {
+			automatic = append(automatic, f)
 		}
 	}
+	rules := withTargets(automatic)
 	if len(rules) == 0 {
 		return 0, nil
 	}
@@ -465,4 +470,35 @@ func (s *Server) projectByRef(ctx context.Context, ref string) (*model.Project, 
 		return &p, nil
 	}
 	return nil, httpx.NotFound("There is no project called %q.", ref)
+}
+
+// withTargets flattens a project's filters into one list of rules, filling in
+// the destination each was given here.
+//
+// This is what makes a filter reusable: the rules say *what* ("folders called
+// Grundlagen-something"), and the project that picked them up says *where*.
+func withTargets(mine []store.ProjectFilter) []filter.Rule {
+	var out []filter.Rule
+	for _, f := range mine {
+		var part []filter.Rule
+		if json.Unmarshal(f.Rules, &part) != nil {
+			continue
+		}
+		for _, r := range part {
+			if strings.TrimSpace(r.To) == "" || strings.EqualFold(strings.TrimSpace(r.To), "here") {
+				switch {
+				case f.TargetProject != "" && f.TargetFolder != "":
+					r.To = "{" + f.TargetProject + "}/" + f.TargetFolder
+				case f.TargetProject != "":
+					r.To = "{" + f.TargetProject + "}"
+				case f.TargetFolder != "":
+					r.To = "./" + f.TargetFolder
+				default:
+					continue // nothing said here and nothing said there
+				}
+			}
+			out = append(out, r)
+		}
+	}
+	return out
 }
