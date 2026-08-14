@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.cookiejar import CookieJar
 from typing import Any
@@ -32,6 +33,25 @@ class Client:
         self.jar = CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
         self.token: str | None = None
+
+    def head(self, path: str, token_in_query: bool = False) -> tuple[int, dict[str, str]]:
+        """The status and headers of a GET — for the checks that are about how
+        something is served, not about what it says."""
+        url = self.base + path
+        headers = {}
+        if self.token and not token_in_query:
+            headers["Authorization"] = "Bearer " + self.token
+        if token_in_query and self.token:
+            url += ("&" if "?" in url else "?") + "token=" + urllib.parse.quote(self.token)
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with self.opener.open(req, timeout=60) as resp:
+                return resp.status, {k.lower(): v for k, v in resp.headers.items()}
+        except urllib.error.HTTPError as e:
+            return e.code, {k.lower(): v for k, v in e.headers.items()}
+        except Exception as e:
+            failures.append(f"GET {path} → {e}")
+            return 0, {}
 
     def call(
         self,
@@ -241,6 +261,42 @@ def main() -> int:
     c.call("POST", f"/api/projects/{data}/files/move", {"from": "docs/notes.txt", "to": "docs/renamed.txt"})
     c.call("GET", f"/api/projects/{data}/files/download?path=docs/renamed.txt")
     c.call("GET", f"/api/projects/{data}/download")
+
+    # A download link is an <a href> and a picture is an <img src>: neither can
+    # set an Authorization header, so the token has to work in the query. This
+    # is what made every download in the browser answer "no project here".
+    status, _ = c.head(f"/api/projects/{data}/files/download?path=docs/renamed.txt", token_in_query=True)
+    check(status == 200, "a download link works with the token in the address, without a header")
+
+    # Not everything is text, and a file that is not text still has to be
+    # *lookable at* rather than only downloadable.
+    png = bytes.fromhex("89504e470d0a1a0a0000000d494844520000000100000001080600000"
+                        "01f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd4"
+                        "0000000049454e44ae426082")
+    boundary2 = "----sweepbin"
+    binparts = (
+        f"--{boundary2}\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\nmedia\r\n"
+        f"--{boundary2}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"dot.png\"\r\n"
+        f"Content-Type: image/png\r\n\r\n"
+    ).encode() + png + f"\r\n--{boundary2}--\r\n".encode()
+    c.call("POST", f"/api/projects/{data}/files/upload", raw=binparts,
+           content_type=f"multipart/form-data; boundary={boundary2}")
+    status, head = c.head(f"/api/projects/{data}/files/raw?path=media/dot.png")
+    check(status == 200 and head.get("content-type", "").startswith("image/png")
+          and head.get("content-disposition", "").startswith("inline"),
+          "a picture is served to be shown, not to be saved")
+    check(head.get("x-content-type-options") == "nosniff" and "sandbox" in head.get("content-security-policy", ""),
+          "and it is served so it cannot become something executable")
+
+    # The editor still refuses it, and says what to do instead.
+    c.call("GET", f"/api/projects/{data}/files/content?path=media/dot.png", expect=400)
+
+    # Anything a browser would run is handed over instead of shown.
+    c.call("PUT", f"/api/projects/{data}/files/content",
+           {"path": "media/page.html", "content": "<b>hi</b>"})
+    _, head = c.head(f"/api/projects/{data}/files/raw?path=media/page.html")
+    check(head.get("content-disposition", "").startswith("attachment"),
+          "html is handed over as a download, never rendered in the origin")
 
     boundary = "----sweep"
     parts = (

@@ -437,6 +437,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 
 /* ------------------------------------------------------------------- files */
 
+/* A file that is not text is shown, not described. */
+.file-preview { width: 100%; height: min(78vh, 900px); border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius); background: var(--ctp-crust); }
+.file-preview.image { height: auto; max-height: min(78vh, 900px); object-fit: contain; padding: 8px; }
+
 .crumbs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;
   color: var(--ctp-subtext0); font-size: 13.5px; }
 .crumbs button { background: none; border: none; color: var(--accent); cursor: pointer; padding: 2px 4px; }

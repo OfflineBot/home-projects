@@ -236,6 +236,43 @@ func (s *Server) mountFiles(r fiber.Router) {
 		return httpx.OK(c)
 	})
 
+	// The same bytes as /download, but meant to be *shown*: a PDF in a frame,
+	// a picture, a recording. A project full of lecture slides is unusable if
+	// the only thing you can do with a file is put it on your disk first.
+	//
+	// Only types the browser can render harmlessly go out inline. HTML and SVG
+	// are executable in the origin's own context, so they are handed over as a
+	// download like everything else.
+	f.Get("/raw", func(c *fiber.Ctx) error {
+		p := project(c)
+		res, err := s.Files.Resolve(c.UserContext(), p, c.Query("path"))
+		if err != nil {
+			return err
+		}
+		fs := s.WS.Open(res.Project.ID)
+		entry, err := fs.Stat(res.Path)
+		if err != nil || entry.IsDir {
+			return httpx.NotFound("There is no file at this path.")
+		}
+		handle, info, err := fs.OpenFile(res.Path)
+		if err != nil {
+			return httpx.NotFound("There is no file at this path.")
+		}
+		mime := workspace.MimeOf(entry.Name)
+		disposition := "attachment"
+		if showableInline(mime) {
+			disposition = "inline"
+		}
+		c.Set("Content-Type", mime)
+		c.Set("Content-Disposition", fmt.Sprintf("%s; filename=%q", disposition, entry.Name))
+		c.Set("Content-Length", fmt.Sprintf("%d", info.Size()))
+		// Nothing served from here may be sniffed into something executable,
+		// and nothing in it may reach back into the page that framed it.
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("Content-Security-Policy", "sandbox; default-src 'none'; object-src 'self'; img-src 'self'; media-src 'self'")
+		return c.SendStream(handle, int(info.Size()))
+	})
+
 	f.Get("/download", func(c *fiber.Ctx) error {
 		p := project(c)
 		rel := c.Query("path")
@@ -304,3 +341,23 @@ func parentOf(p string) string {
 }
 
 var _ = strings.TrimSpace
+
+// showableInline decides what a browser may render in place. The list is short
+// and made of things that cannot execute: documents, pictures, sound, film,
+// plain text. SVG is a picture that can carry script, so it is not on it.
+func showableInline(mime string) bool {
+	base, _, _ := strings.Cut(mime, ";")
+	base = strings.ToLower(strings.TrimSpace(base))
+	switch base {
+	case "application/pdf", "text/plain":
+		return true
+	case "image/svg+xml":
+		return false
+	}
+	for _, family := range []string{"image/", "audio/", "video/"} {
+		if strings.HasPrefix(base, family) {
+			return true
+		}
+	}
+	return false
+}

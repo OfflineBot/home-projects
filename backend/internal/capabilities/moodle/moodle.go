@@ -226,6 +226,18 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	written := 0
 	skipped := 0
 
+	// Say out loud where things are about to land. "It made no folders" is
+	// almost always this switch, and the log is where that should be visible.
+	where := "the project itself"
+	if base != "" {
+		where = base + "/"
+	}
+	if flat {
+		job.Log("%d courses found — everything goes flat into %s, no folder per course", len(courses), where)
+	} else {
+		job.Log("%d courses found — one folder per course under %s", len(courses), where)
+	}
+
 	for _, course := range courses {
 		if onlyCurrent && !course.IsCurrent {
 			continue
@@ -279,8 +291,20 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			fmt.Sprintf("Moodle: %d new file(s)", written), "the Moodle scheduler", "scheduler@home-projects")
 	}
 
+	// A run that fetched nothing is a normal outcome, not a silent one: it
+	// takes a second and has to say why.
+	message := fmt.Sprintf("%d new files, %d were already there, across %d courses",
+		written, skipped, len(courses))
+	if written == 0 && skipped > 0 {
+		message = fmt.Sprintf("nothing new — all %d files across %d courses were already here",
+			skipped, len(courses))
+	}
+	if written == 0 && skipped == 0 {
+		message = fmt.Sprintf("%d courses, but not one file came back — check the course filter", len(courses))
+	}
+
 	return capability.Report{
-		Message:       fmt.Sprintf("%d new files, %d already there, across %d courses", written, skipped, len(courses)),
+		Message:       message,
 		FilesChanged:  written,
 		Authenticated: true,
 		Variables: []store.VariableInput{

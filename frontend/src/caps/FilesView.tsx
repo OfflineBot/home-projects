@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Menu, Modal, Spinner, formatBytes, formatDate } from "../components/ui";
-import { api, type FileEntry, type Project } from "../lib/api";
+import { api, authedUrl, type FileEntry, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 
 /**
@@ -196,7 +196,9 @@ export default function FilesView({ project, reload }: { project: Project; reloa
                       label: "Download",
                       icon: "download",
                       onClick: () =>
-                        (location.href = `/api/projects/${project.id}/files/download?path=${encodeURIComponent(entry.path)}`),
+                        (location.href = authedUrl(
+                          `/api/projects/${project.id}/files/download?path=${encodeURIComponent(entry.path)}`,
+                        )),
                     },
                     { label: "Rename", icon: "wrench", onClick: () => void rename(entry) },
                     { label: "Send to another project…", icon: "link", onClick: () => setSending(entry) },
@@ -212,7 +214,9 @@ export default function FilesView({ project, reload }: { project: Project; reloa
               ) : (
                 <a
                   className="btn ghost icon"
-                  href={`/api/projects/${project.id}/files/download?path=${encodeURIComponent(entry.path)}`}
+                  href={authedUrl(
+                    `/api/projects/${project.id}/files/download?path=${encodeURIComponent(entry.path)}`,
+                  )}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Icon name="download" size={15} />
@@ -536,6 +540,36 @@ function ImportZip({
   );
 }
 
+/**
+ * What a file is decides how it is opened. A lecture slide is a PDF, and a
+ * project full of them is unusable if the only answer to a click is "this file
+ * is not text". Text goes into the editor; everything the browser can show is
+ * shown; the rest says what it is and offers itself for download.
+ */
+type Shape = "text" | "pdf" | "image" | "audio" | "video" | "opaque";
+
+const SHAPES: { shape: Shape; extensions: string[] }[] = [
+  { shape: "pdf", extensions: ["pdf"] },
+  { shape: "image", extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico"] },
+  { shape: "audio", extensions: ["mp3", "m4a", "wav", "ogg", "opus", "flac"] },
+  { shape: "video", extensions: ["mp4", "webm", "mov", "mkv"] },
+  {
+    shape: "text",
+    extensions: [
+      "md", "txt", "ics", "json", "yaml", "yml", "toml", "csv", "tsv", "log", "sql",
+      "go", "ts", "tsx", "js", "jsx", "css", "html", "xml", "sh", "py", "rs", "java",
+      "conf", "ini", "env", "gitignore", "dockerfile", "makefile",
+    ],
+  },
+];
+
+function shapeOf(path: string): Shape {
+  const name = path.split("/").pop() ?? "";
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : name.toLowerCase();
+  for (const s of SHAPES) if (s.extensions.includes(ext)) return s.shape;
+  return "opaque";
+}
+
 function FileEditor({
   project,
   path,
@@ -546,6 +580,67 @@ function FileEditor({
   path: string;
   readOnly: boolean;
   onClose: () => void;
+}) {
+  const shape = shapeOf(path);
+  const raw = authedUrl(`/api/projects/${project.id}/files/raw?path=${encodeURIComponent(path)}`);
+  const download = authedUrl(`/api/projects/${project.id}/files/download?path=${encodeURIComponent(path)}`);
+
+  const head = (extra?: React.ReactNode) => (
+    <div className="crumbs">
+      <button onClick={onClose}>
+        <Icon name="chevronLeft" size={13} /> back
+      </button>
+      <strong>{path}</strong>
+      <div style={{ flex: 1 }} />
+      <a className="btn small" href={download}>
+        <Icon name="download" size={14} /> Download
+      </a>
+      {extra}
+    </div>
+  );
+
+  if (shape !== "text") {
+    return (
+      <div>
+        {head(
+          shape === "pdf" || shape === "image" ? (
+            <a className="btn small" href={raw} target="_blank" rel="noreferrer">
+              <Icon name="eye" size={14} /> Open in a tab
+            </a>
+          ) : null,
+        )}
+        {shape === "pdf" ? (
+          <iframe className="file-preview" src={raw} title={path} />
+        ) : shape === "image" ? (
+          <img className="file-preview image" src={raw} alt={path} />
+        ) : shape === "audio" ? (
+          <audio controls src={raw} style={{ width: "100%" }} />
+        ) : shape === "video" ? (
+          <video className="file-preview" controls src={raw} />
+        ) : (
+          <Empty icon="file">
+            This kind of file cannot be shown here. Download it — the copy on the server stays as it is.
+          </Empty>
+        )}
+      </div>
+    );
+  }
+
+  return <TextFile project={project} path={path} readOnly={readOnly} onClose={onClose} download={download} />;
+}
+
+function TextFile({
+  project,
+  path,
+  readOnly,
+  onClose,
+  download,
+}: {
+  project: Project;
+  path: string;
+  readOnly: boolean;
+  onClose: () => void;
+  download: string;
 }) {
   const { data, error, loading } = useQuery<{ content: string; linked: boolean }>(
     `/api/projects/${project.id}/files/content?path=${encodeURIComponent(path)}`,
@@ -568,7 +663,7 @@ function FileEditor({
           </span>
         ) : null}
         <div style={{ flex: 1 }} />
-        <a className="btn small" href={`/api/projects/${project.id}/files/download?path=${encodeURIComponent(path)}`}>
+        <a className="btn small" href={download}>
           <Icon name="download" size={14} /> Download
         </a>
         {!readOnly ? (

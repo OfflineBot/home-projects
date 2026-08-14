@@ -48,6 +48,17 @@ export function hasToken() {
   return accessToken !== null;
 }
 
+/**
+ * An address the browser itself fetches — a download link, a picture, a PDF in
+ * a frame. None of those can carry an Authorization header, so the token rides
+ * in the query, exactly as the calendar subscriptions do. It is worthless
+ * without the httpOnly binding cookie that goes with it.
+ */
+export function authedUrl(path: string) {
+  if (!accessToken) return path;
+  return path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(accessToken);
+}
+
 type Options = {
   method?: string;
   body?: unknown;

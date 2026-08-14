@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Spinner, formatDate } from "../components/ui";
-import { api, type Account, type Project } from "../lib/api";
+import { api, authedUrl, type Account, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 
 /** The mailbox: every message is an .eml file in the project. */
@@ -98,7 +98,7 @@ function Message({ project, path }: { project: Project; path: string }) {
               This message has only an HTML part. It is not rendered here on purpose — open the .eml file for it.
             </div>
           ) : null}
-          <a className="btn small" href={`/api/projects/${project.id}/files/download?path=${encodeURIComponent(path)}`}>
+          <a className="btn small" href={authedUrl(`/api/projects/${project.id}/files/download?path=${encodeURIComponent(path)}`)}>
             <Icon name="download" size={14} /> Download the .eml
           </a>
         </div>
