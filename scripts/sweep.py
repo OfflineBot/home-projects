@@ -724,6 +724,38 @@ def main() -> int:
     if f:
         c.call("DELETE", f"/api/filters/{f['id']}")
 
+    # A scheduler runs several filters, in the order they are given: one for the
+    # first semester, one for the second.
+    first = c.call("POST", "/api/filters", {"title": f"sweep-first-{stamp}", "text": "Grundlagen -> ./semester1"})
+    second = c.call("POST", "/api/filters", {"title": f"sweep-second-{stamp}", "text": "Vertiefung -> ./semester2"})
+    many = c.call("POST", "/api/schedulers", {
+        "projectId": cal, "kind": "ics", "title": "sweep-many-filters", "schedule": "manual",
+        "options": {"url": "https://example.com/x.ics"},
+        "filterIds": [first["id"], second["id"]] if first and second else [],
+    }, expect=201)
+
+    def scheduler_now(sid):
+        listed = c.call("GET", "/api/schedulers") or {}
+        return next((x for x in listed.get("schedulers", []) if x["id"] == sid), None)
+
+    if many and first and second:
+        with_filters = scheduler_now(many["id"])
+        check(bool(with_filters) and with_filters.get("filterIds") == [first["id"], second["id"]],
+              "a scheduler is created with several filters")
+        check(bool(with_filters) and len(with_filters.get("filterNames") or []) == 2,
+              "and says which ones")
+        c.call("PATCH", f"/api/schedulers/{many['id']}", {"filterIds": [second["id"], first["id"]]})
+        swapped = scheduler_now(many["id"])
+        check(bool(swapped) and swapped.get("filterIds") == [second["id"], first["id"]],
+              "their order is theirs to set")
+        c.call("PATCH", f"/api/schedulers/{many['id']}", {"filterIds": []})
+        cleared = scheduler_now(many["id"])
+        check(bool(cleared) and not cleared.get("filterIds"), "and they can all be taken off again")
+        c.call("DELETE", f"/api/schedulers/{many['id']}")
+    for one in (first, second):
+        if one:
+            c.call("DELETE", f"/api/filters/{one['id']}")
+
     # ------------------------------------------------------------ automation
     system = made["system"]["id"]
     c.call("PUT", f"/api/projects/{system}/automation/rules", {"rules": [{

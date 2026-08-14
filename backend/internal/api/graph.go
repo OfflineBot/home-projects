@@ -129,12 +129,15 @@ func (s *Server) graphOf(c *fiber.Ctx, groupID *uuid.UUID) ([]graphNode, []graph
 			if label == "" {
 				label = sc.Kind
 			}
-			if sc.FilterID == nil {
-				continue
-			}
-			rules, err := filter.RulesFor(ctx, s.Store, sc.FilterID.String())
-			if err != nil {
-				continue
+			// Every filter the scheduler runs, so the arrows show where the
+			// material actually ends up.
+			var rules []filter.Rule
+			for _, id := range sc.FilterIDs {
+				part, err := filter.RulesFor(ctx, s.Store, id.String())
+				if err != nil {
+					continue
+				}
+				rules = append(rules, part...)
 			}
 			for _, r := range rules {
 				to, _, _ := strings.Cut(r.To, "/")

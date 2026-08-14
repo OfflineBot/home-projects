@@ -372,8 +372,8 @@ export interface Scheduler {
   nextRun?: string;
   /** True while a run is in flight — a second start is refused, not queued. */
   running?: boolean;
-  filterId?: string;
-  filterName?: string;
+  filterIds?: string[];
+  filterNames?: string[];
 }
 
 export interface FilterRule {

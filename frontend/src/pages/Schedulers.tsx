@@ -110,7 +110,7 @@ export default function Schedulers() {
               {s.schedule === "manual" ? "by hand only" : s.schedule}
               {s.nextRun ? ` · next ${formatDate(s.nextRun)}` : ""}
               {s.accountName ? ` · ${s.accountName}` : ""}
-              {s.filterName ? ` · ${s.filterName}` : ""}
+              {s.filterNames?.length ? ` · ${s.filterNames.join(" → ")}` : ""}
             </div>
             {s.pausedReason ? <div className="warning" style={{ margin: 0 }}>{s.pausedReason}</div> : null}
             <div className="tile-foot">
@@ -272,7 +272,7 @@ function SchedulerDialog({
     title: existing?.title ?? "",
     schedule: existing?.schedule ?? "0 */6 * * *",
     targetPath: existing?.targetPath ?? "",
-    filterId: existing?.filterId ?? "",
+    filterIds: existing?.filterIds ?? [],
     enabled: existing?.enabled ?? true,
   });
   // Each kind says what it can be told; this holds those answers.
@@ -302,7 +302,7 @@ function SchedulerDialog({
             schedule: form.schedule,
             targetPath: form.targetPath,
             accountId: form.accountId,
-            filterId: form.filterId,
+            filterIds: form.filterIds,
             enabled: form.enabled,
             options,
           },
@@ -313,7 +313,7 @@ function SchedulerDialog({
             kind: form.kind,
             projectId: form.projectId,
             accountId: form.accountId,
-            filterId: form.filterId,
+            filterIds: form.filterIds,
             title: form.title,
             schedule: form.schedule,
             targetPath: form.targetPath,
@@ -495,16 +495,70 @@ function SchedulerDialog({
       <Section title="Sorting" />
 
       <Field
-        label="Filter"
-        hint="Sorts what this fetches straight away, so no project is needed in between."
+        label="Filters"
+        hint="Sorts what this fetches straight away, so no project is needed in between. Several run in the order below, and the first rule that matches takes the file."
       >
-        <select value={form.filterId} onChange={(e) => setForm({ ...form, filterId: e.target.value })}>
-          <option value="">— none —</option>
-          {(filters.data?.filters ?? []).map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.title}
-            </option>
-          ))}
+        {form.filterIds.length ? (
+          <div className="list" style={{ marginBottom: 8 }}>
+            {form.filterIds.map((id, i) => {
+              const f = (filters.data?.filters ?? []).find((x) => x.id === id);
+              return (
+                <div key={id} className="list-row">
+                  <span className="meta" style={{ width: 18 }}>{i + 1}.</span>
+                  <span className="grow">{f?.title ?? "a filter that is gone"}</span>
+                  <button
+                    className="btn ghost icon"
+                    aria-label="Earlier"
+                    disabled={i === 0}
+                    onClick={() => {
+                      const next = [...form.filterIds];
+                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                      setForm({ ...form, filterIds: next });
+                    }}
+                  >
+                    <Icon name="chevronUp" size={14} />
+                  </button>
+                  <button
+                    className="btn ghost icon"
+                    aria-label="Later"
+                    disabled={i === form.filterIds.length - 1}
+                    onClick={() => {
+                      const next = [...form.filterIds];
+                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                      setForm({ ...form, filterIds: next });
+                    }}
+                  >
+                    <Icon name="chevronDown" size={14} />
+                  </button>
+                  <button
+                    className="btn ghost icon"
+                    aria-label={`Remove ${f?.title ?? "it"}`}
+                    onClick={() =>
+                      setForm({ ...form, filterIds: form.filterIds.filter((x) => x !== id) })
+                    }
+                  >
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        <select
+          value=""
+          onChange={(e) => {
+            if (!e.target.value) return;
+            setForm({ ...form, filterIds: [...form.filterIds, e.target.value] });
+          }}
+        >
+          <option value="">— add a filter —</option>
+          {(filters.data?.filters ?? [])
+            .filter((f) => !form.filterIds.includes(f.id))
+            .map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.title}
+              </option>
+            ))}
         </select>
       </Field>
 

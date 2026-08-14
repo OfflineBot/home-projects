@@ -219,20 +219,22 @@ type Scheduler struct {
 	ProjectSlug string     `json:"projectSlug,omitempty"`
 	AccountID   *uuid.UUID `json:"accountId,omitempty"`
 	AccountName string     `json:"accountName,omitempty"`
-	// FilterID names the rules this scheduler's results are run through.
-	FilterID   *uuid.UUID      `json:"filterId,omitempty"`
-	FilterName string          `json:"filterName,omitempty"`
-	Title      string          `json:"title"`
-	Kind       string          `json:"kind"`
-	Schedule   string          `json:"schedule"`
-	TargetPath string          `json:"targetPath"`
-	Options    json.RawMessage `json:"options"`
-	Enabled    bool            `json:"enabled"`
-	PausedFor  string          `json:"pausedReason"`
-	LastRunAt  *time.Time      `json:"lastRunAt,omitempty"`
-	LastStatus string          `json:"lastStatus"`
-	CreatedAt  time.Time       `json:"createdAt"`
-	UpdatedAt  time.Time       `json:"updatedAt"`
+	// FilterIDs names the filters this scheduler's results are run through, in
+	// the order they run. Several, because one pull can hold several shapes:
+	// the first semester, the second, the seminars.
+	FilterIDs   []uuid.UUID     `json:"filterIds"`
+	FilterNames []string        `json:"filterNames,omitempty"`
+	Title       string          `json:"title"`
+	Kind        string          `json:"kind"`
+	Schedule    string          `json:"schedule"`
+	TargetPath  string          `json:"targetPath"`
+	Options     json.RawMessage `json:"options"`
+	Enabled     bool            `json:"enabled"`
+	PausedFor   string          `json:"pausedReason"`
+	LastRunAt   *time.Time      `json:"lastRunAt,omitempty"`
+	LastStatus  string          `json:"lastStatus"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
 type SchedulerRun struct {

@@ -215,20 +215,27 @@ func (s *Store) RecoverInFlight(ctx context.Context) ([]uuid.UUID, error) {
 
 // ---------------------------------------------------------------- schedulers
 
-const schedulerCols = `s.id, s.project_id, s.account_id, s.filter_id, s.title, s.kind, s.schedule, s.target_path,
+const schedulerCols = `s.id, s.project_id, s.account_id, s.title, s.kind, s.schedule, s.target_path,
 	s.options, s.enabled, s.paused_reason, s.last_run_at, s.last_status, s.created_at, s.updated_at`
 
-const schedulerSelect = `SELECT ` + schedulerCols + `, COALESCE(p.slug,''), COALESCE(a.title,''), COALESCE(f.title,'')
+// The filters come back in the order they are meant to run, as two lists that
+// line up: the ids for the form, the titles for the eye.
+const schedulerSelect = `SELECT ` + schedulerCols + `, COALESCE(p.slug,''), COALESCE(a.title,''),
+	COALESCE((SELECT array_agg(f.id ORDER BY sf.position, f.title)
+		FROM scheduler_filters sf JOIN filters f ON f.id = sf.filter_id
+		WHERE sf.scheduler_id = s.id), '{}'),
+	COALESCE((SELECT array_agg(f.title ORDER BY sf.position, f.title)
+		FROM scheduler_filters sf JOIN filters f ON f.id = sf.filter_id
+		WHERE sf.scheduler_id = s.id), '{}')
 	FROM schedulers s
 	LEFT JOIN projects p ON p.id = s.project_id
-	LEFT JOIN accounts a ON a.id = s.account_id
-	LEFT JOIN filters f ON f.id = s.filter_id`
+	LEFT JOIN accounts a ON a.id = s.account_id`
 
 func scanScheduler(r scanner) (*model.Scheduler, error) {
 	var s model.Scheduler
-	err := r.Scan(&s.ID, &s.ProjectID, &s.AccountID, &s.FilterID, &s.Title, &s.Kind, &s.Schedule, &s.TargetPath,
+	err := r.Scan(&s.ID, &s.ProjectID, &s.AccountID, &s.Title, &s.Kind, &s.Schedule, &s.TargetPath,
 		&s.Options, &s.Enabled, &s.PausedFor, &s.LastRunAt, &s.LastStatus, &s.CreatedAt, &s.UpdatedAt,
-		&s.ProjectSlug, &s.AccountName, &s.FilterName)
+		&s.ProjectSlug, &s.AccountName, &s.FilterIDs, &s.FilterNames)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -239,7 +246,7 @@ type NewScheduler struct {
 	OwnerID    uuid.UUID
 	ProjectID  uuid.UUID
 	AccountID  *uuid.UUID
-	FilterID   *uuid.UUID
+	FilterIDs  []uuid.UUID
 	Title      string
 	Kind       string
 	Schedule   string
@@ -254,13 +261,16 @@ func (s *Store) CreateScheduler(ctx context.Context, in NewScheduler) (*model.Sc
 	}
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO schedulers (owner_id, project_id, account_id, filter_id, title, kind, schedule,
+		INSERT INTO schedulers (owner_id, project_id, account_id, title, kind, schedule,
 			target_path, options, enabled)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-		in.OwnerID, in.ProjectID, in.AccountID, in.FilterID, in.Title, in.Kind, in.Schedule, in.TargetPath,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+		in.OwnerID, in.ProjectID, in.AccountID, in.Title, in.Kind, in.Schedule, in.TargetPath,
 		in.Options, in.Enabled).Scan(&id)
 	if err != nil {
 		return nil, norm(err)
+	}
+	if err := s.SetSchedulerFilters(ctx, id, in.FilterIDs); err != nil {
+		return nil, err
 	}
 	return s.SchedulerByID(ctx, id)
 }
@@ -319,7 +329,8 @@ func (s *Store) schedulerCountsByAccount(ctx context.Context) (map[uuid.UUID]int
 
 type SchedulerPatch struct {
 	AccountID **uuid.UUID
-	FilterID  **uuid.UUID
+	// FilterIDs replaces the whole row of filters when it is given.
+	FilterIDs *[]uuid.UUID
 	// ProjectID moves a scheduler to another project: from then on it writes
 	// there. What it already wrote stays where it was written.
 	ProjectID   *uuid.UUID
@@ -346,9 +357,6 @@ func (s *Store) UpdateScheduler(ctx context.Context, id uuid.UUID, p SchedulerPa
 	}
 	if p.AccountID != nil {
 		add("account_id", *p.AccountID)
-	}
-	if p.FilterID != nil {
-		add("filter_id", *p.FilterID)
 	}
 	if p.ProjectID != nil {
 		add("project_id", *p.ProjectID)
@@ -380,6 +388,11 @@ func (s *Store) UpdateScheduler(ctx context.Context, id uuid.UUID, p SchedulerPa
 		}
 		set += "last_run_at = now()"
 	}
+	if p.FilterIDs != nil {
+		if err := s.SetSchedulerFilters(ctx, id, *p.FilterIDs); err != nil {
+			return nil, err
+		}
+	}
 	if set == "" {
 		return s.SchedulerByID(ctx, id)
 	}
@@ -388,6 +401,27 @@ func (s *Store) UpdateScheduler(ctx context.Context, id uuid.UUID, p SchedulerPa
 		return nil, norm(err)
 	}
 	return s.SchedulerByID(ctx, id)
+}
+
+// SetSchedulerFilters writes the row of filters a scheduler runs its results
+// through. The order is the order they were given: rules are tried top to
+// bottom and the first match takes the file, so the order is the meaning.
+func (s *Store) SetSchedulerFilters(ctx context.Context, schedulerID uuid.UUID, filters []uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return norm(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM scheduler_filters WHERE scheduler_id=$1`, schedulerID); err != nil {
+		return norm(err)
+	}
+	for i, f := range filters {
+		if _, err := tx.Exec(ctx, `INSERT INTO scheduler_filters (scheduler_id, filter_id, position)
+			VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, schedulerID, f, i); err != nil {
+			return norm(err)
+		}
+	}
+	return norm(tx.Commit(ctx))
 }
 
 func (s *Store) DeleteScheduler(ctx context.Context, id uuid.UUID) error {

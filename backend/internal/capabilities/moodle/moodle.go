@@ -335,10 +335,18 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			}
 			into = to.Folder
 			if to.Project != "" {
-				target, err = projectBySlug(ctx, env, to.Project)
-				if err != nil {
-					job.Log("%s → %s: %v", name, to.Project, err)
-					continue
+				found, perr := projectBySlug(ctx, env, to.Project)
+				switch {
+				case perr == nil:
+					target = found
+				default:
+					// Somebody wrote "moodle/…" meaning a folder here, not a
+					// project somewhere else. Both are reasonable readings of
+					// the same line, and dropping the course over it — which is
+					// what used to happen — is the one unreasonable answer.
+					job.Log("there is no project called %q here, so %s goes into a folder of that name",
+						to.Project, name)
+					into = path.Join(to.Project, to.Folder)
 				}
 			}
 		}

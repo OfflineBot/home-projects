@@ -189,3 +189,36 @@ func TestList(t *testing.T) {
 		t.Errorf("the list did not survive: %+v", again)
 	}
 }
+
+// Where a line sends things, in the forms people actually write.
+//
+// "moodle/<the rest>" was written meaning "a folder called moodle in this
+// project" and read as "a project called moodle" — so every course was sent
+// somewhere that did not exist and quietly dropped. Both readings are fair;
+// what matters is that the reading is visible and that the run says which one
+// it took.
+func TestWhereALineSendsThings(t *testing.T) {
+	cases := []struct {
+		to      string
+		project string
+		folder  string
+		skip    bool
+	}{
+		{"skip", "", "", true},
+		{"{dhbw/semester1}", "dhbw/semester1", "", false},
+		{"{dhbw/semester1}/vorlesungen", "dhbw/semester1", "vorlesungen", false},
+		{"./moodle", "", "moodle", false},
+		{"/moodle", "", "moodle", false},
+		{"./moodle/kurse", "", "moodle/kurse", false},
+		// Without a leading ./ the first word is a project — that is the rule,
+		// and the run says so out loud when no such project is there.
+		{"moodle/kurse", "moodle", "kurse", false},
+	}
+	for _, c := range cases {
+		project, folder, skip := Destinations(c.to)
+		if project != c.project || folder != c.folder || skip != c.skip {
+			t.Errorf("%q → project=%q folder=%q skip=%v, wanted project=%q folder=%q skip=%v",
+				c.to, project, folder, skip, c.project, c.folder, c.skip)
+		}
+	}
+}

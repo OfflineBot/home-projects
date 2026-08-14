@@ -233,16 +233,23 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 	// A filter, if this scheduler points at one. The capability is handed a
 	// function, not a table: it asks where something belongs and gets an
 	// answer, and never learns what a filter is.
-	if sched.FilterID != nil {
-		f, err := st.FilterByID(ctx, *sched.FilterID)
-		if err != nil {
-			return finish("error", "the filter this scheduler uses no longer exists", 0)
-		}
+	if len(sched.FilterIDs) > 0 {
+		// Several filters run as one long list of rules, in the order they were
+		// given: the first rule that matches takes the file. That is what makes
+		// "one filter for the first semester, one for the second" work.
 		var rules []filter.Rule
-		if err := json.Unmarshal(f.Rules, &rules); err != nil {
-			return finish("error", "the filter's rules could not be read", 0)
+		for _, id := range sched.FilterIDs {
+			f, err := st.FilterByID(ctx, id)
+			if err != nil {
+				return finish("error", "a filter this scheduler uses no longer exists", 0)
+			}
+			var part []filter.Rule
+			if err := json.Unmarshal(f.Rules, &part); err != nil {
+				return finish("error", "the rules of "+f.Title+" could not be read", 0)
+			}
+			logf("filter %q: %d rule(s)", f.Title, len(part))
+			rules = append(rules, part...)
 		}
-		logf("filter %q: %d rule(s)", f.Title, len(rules))
 		job.Route = func(items []capability.RouteItem) []capability.RouteTo {
 			in := make([]filter.Item, len(items))
 			for i, item := range items {

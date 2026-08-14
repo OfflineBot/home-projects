@@ -216,7 +216,7 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 			TargetPath string          `json:"targetPath"`
 			Options    json.RawMessage `json:"options"`
 			Enabled    *bool           `json:"enabled"`
-			FilterID   string          `json:"filterId"`
+			FilterIDs  []string        `json:"filterIds"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The scheduler could not be read.")
@@ -253,17 +253,13 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		if in.Enabled != nil {
 			enabled = *in.Enabled
 		}
-		var filterID *uuid.UUID
-		if in.FilterID != "" {
-			id, err := uuid.Parse(in.FilterID)
-			if err != nil {
-				return httpx.BadRequest("That is not a filter id.")
-			}
-			filterID = &id
+		filterIDs, err := parseFilterIDs(in.FilterIDs)
+		if err != nil {
+			return err
 		}
 		actor := auth.From(c)
 		created, err := s.Store.CreateScheduler(c.UserContext(), store.NewScheduler{
-			OwnerID: actor.User.ID, ProjectID: p.ID, AccountID: accountID, FilterID: filterID, Title: in.Title,
+			OwnerID: actor.User.ID, ProjectID: p.ID, AccountID: accountID, FilterIDs: filterIDs, Title: in.Title,
 			Kind: in.Kind, Schedule: in.Schedule, TargetPath: in.TargetPath,
 			Options: in.Options, Enabled: enabled,
 		})
@@ -288,7 +284,7 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 			Options    *json.RawMessage `json:"options"`
 			Enabled    *bool            `json:"enabled"`
 			AccountID  *string          `json:"accountId"`
-			FilterID   *string          `json:"filterId"`
+			FilterIDs  *[]string        `json:"filterIds"`
 			ProjectID  *string          `json:"projectId"`
 		}
 		if err := c.BodyParser(&in); err != nil {
@@ -316,18 +312,12 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 			}
 			patch.ProjectID = &target.ID
 		}
-		if in.FilterID != nil {
-			if *in.FilterID == "" {
-				var none *uuid.UUID
-				patch.FilterID = &none
-			} else {
-				fid, err := uuid.Parse(*in.FilterID)
-				if err != nil {
-					return httpx.BadRequest("That is not a filter id.")
-				}
-				ref := &fid
-				patch.FilterID = &ref
+		if in.FilterIDs != nil {
+			ids, err := parseFilterIDs(*in.FilterIDs)
+			if err != nil {
+				return err
 			}
+			patch.FilterIDs = &ids
 		}
 		if in.AccountID != nil {
 			if *in.AccountID == "" {
@@ -439,3 +429,20 @@ func contains(list []string, v string) bool {
 
 func ptrBool(v bool) *bool       { return &v }
 func ptrString(v string) *string { return &v }
+
+// parseFilterIDs reads the row of filters a scheduler was given. An empty list
+// is a real answer — it means "run nothing through anything".
+func parseFilterIDs(raw []string) ([]uuid.UUID, error) {
+	out := []uuid.UUID{}
+	for _, one := range raw {
+		if strings.TrimSpace(one) == "" {
+			continue
+		}
+		id, err := uuid.Parse(one)
+		if err != nil {
+			return nil, httpx.BadRequest("That is not a filter id: %s", one)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
