@@ -444,6 +444,27 @@ def main() -> int:
                       {"filter": fid, "path": "loose", "apply": False})
         check(bool(plan) and plan["applied"] is False, "applying a filter to a project asks first")
 
+    # ------------------------------------------------------- a number out of others
+    # A value can be worked out of variables anywhere on the server, which is
+    # what makes the dashboard more than a list of what each project reports.
+    c.call("PUT", f"/api/projects/{data}/files/content", {"path": "project.yaml", "content":
+           "variables:\n  eins:\n    from: constant\n    value: 2.3\n"
+           "  zwei:\n    from: constant\n    value: 1.7\n"})
+    c.call("GET", f"/api/projects/{data}/variables?refresh=true")
+    formula = c.call("POST", f"/api/groups/{gslug}/variables", {
+        "name": "schnitt", "op": "expr",
+        "expr": f"({{{gslug}/{made['data']['slug']}/eins}} + {{{gslug}/{made['data']['slug']}/zwei}}) / 2",
+    }, expect=201)
+    view = c.call("GET", f"/api/groups/{gslug}/variables")
+    schnitt = next((d for d in (view or {}).get("derived", []) if d["name"] == "schnitt"), None)
+    check(bool(schnitt) and abs((schnitt.get("value") or 0) - 2.0) < 1e-9,
+          "a value can be worked out of variables from anywhere")
+    # A formula that cannot be read is refused when it is written, not shown
+    # broken on the dashboard.
+    c.call("POST", f"/api/groups/{gslug}/variables", {"name": "kaputt", "expr": "(1 +"}, expect=400)
+    if formula:
+        c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
+
     # ---------------------------------------------------------- emptying a project
     # A project can be emptied without being deleted — with the password, and
     # with its name typed.

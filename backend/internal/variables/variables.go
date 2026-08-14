@@ -409,9 +409,11 @@ type GroupView struct {
 }
 
 type Derived struct {
-	Name  string `json:"name"`
-	Op    string `json:"op"`
-	Unit  string `json:"unit,omitempty"`
+	Name string `json:"name"`
+	Op   string `json:"op"`
+	Unit string `json:"unit,omitempty"`
+	// Expr is set when this is a formula rather than an operation over a list.
+	Expr  string `json:"expr,omitempty"`
 	Value any    `json:"value"`
 	Type  string `json:"type"`
 	Error string `json:"error,omitempty"`
@@ -440,9 +442,88 @@ func ForGroup(ctx context.Context, st *store.Store, groupID uuid.UUID, visible f
 	}
 	derived := make([]Derived, 0, len(defs))
 	for _, d := range defs {
+		if strings.TrimSpace(d.Expr) != "" {
+			derived = append(derived, evaluate(ctx, st, d))
+			continue
+		}
 		derived = append(derived, compute(d, byName))
 	}
 	return &GroupView{Variables: vars, Derived: derived}, nil
+}
+
+// evaluate works out a derived value that is written as an expression rather
+// than an operation over a list. A reference reaches anywhere on the server —
+// {group/project/variable} — because "the average of these two, halved" is not
+// a question that respects a group boundary.
+func evaluate(ctx context.Context, st *store.Store, d model.GroupVariable) Derived {
+	out := Derived{Name: d.Name, Op: "expr", Unit: d.Unit, Type: "number", Expr: d.Expr}
+	value, err := Eval(d.Expr, func(ref string) (float64, bool) {
+		return Resolve(ctx, st, ref)
+	})
+	if err != nil {
+		out.Error = err.Error()
+		out.Value = nil
+		return out
+	}
+	out.Value = value
+	return out
+}
+
+// Resolve reads one reference: group/project/variable, or project/variable when
+// the project's address is unambiguous.
+func Resolve(ctx context.Context, st *store.Store, ref string) (float64, bool) {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(ref), "/"), "/")
+	if len(parts) < 2 {
+		return 0, false
+	}
+	name := parts[len(parts)-1]
+	projectSlug := parts[len(parts)-2]
+	groupSlug := ""
+	if len(parts) >= 3 {
+		groupSlug = parts[len(parts)-3]
+	}
+
+	projects, err := st.ListProjects(ctx, nil, false, true)
+	if err != nil {
+		return 0, false
+	}
+	for i := range projects {
+		p := projects[i]
+		if !strings.EqualFold(p.Slug, projectSlug) {
+			continue
+		}
+		if groupSlug != "" && !strings.EqualFold(p.GroupSlug, groupSlug) {
+			continue
+		}
+		vars, err := st.VariablesForProject(ctx, p.ID)
+		if err != nil {
+			continue
+		}
+		for _, v := range vars {
+			if !strings.EqualFold(v.Name, name) {
+				continue
+			}
+			var raw any
+			if err := json.Unmarshal(v.Value, &raw); err != nil {
+				return 0, false
+			}
+			switch t := raw.(type) {
+			case float64:
+				return t, true
+			case bool:
+				if t {
+					return 1, true
+				}
+				return 0, true
+			case string:
+				if f, err := strconv.ParseFloat(t, 64); err == nil {
+					return f, true
+				}
+			}
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 func compute(d model.GroupVariable, byName map[string]model.Variable) Derived {

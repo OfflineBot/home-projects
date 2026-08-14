@@ -417,6 +417,14 @@ func (s *Server) mountGroups(r fiber.Router) {
 		if in.Name == "" {
 			return httpx.BadRequest("A variable needs a name.")
 		}
+		// A formula is checked before it is stored: a broken one would sit on
+		// the dashboard showing an error instead of being refused here.
+		if strings.TrimSpace(in.Expr) != "" {
+			if _, err := variables.Eval(in.Expr, func(string) (float64, bool) { return 1, true }); err != nil {
+				return httpx.BadRequest("That formula cannot be read: %v", err)
+			}
+			in.Op = "expr"
+		}
 		in.GroupID = grp.ID
 		created, err := s.Store.CreateGroupVariable(c.UserContext(), in)
 		if err != nil {

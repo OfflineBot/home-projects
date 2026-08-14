@@ -127,7 +127,18 @@ export default function Dashboard() {
           <h2 style={{ fontSize: 17, display: "flex", alignItems: "center", gap: 8 }}>
             <Icon name={block.group.icon} size={17} />
             <Link to={`/groups/${block.group.slug}`}>{block.group.title}</Link>
-            {block.group.pinned ? <span className="badge">pinned</span> : null}
+            {block.group.pinned && session.user ? (
+              <button
+                className="btn ghost icon"
+                title="Take this group off the dashboard"
+                onClick={async () => {
+                  await api(`/api/groups/${block.group.slug}`, { method: "PATCH", body: { pinned: false } });
+                  reload();
+                }}
+              >
+                <Icon name="x" size={14} />
+              </button>
+            ) : null}
           </h2>
           {block.variables.length === 0 && block.derived.length === 0 ? (
             <p style={{ color: "var(--ctp-subtext0)", marginTop: 0 }}>
@@ -330,8 +341,15 @@ function AddTile({
   const [variable, setVariable] = useState("");
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("number");
+  const [formula, setFormula] = useState(false);
+  const [expr, setExpr] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const block = blocks.find((b) => b.group.id === groupId);
+
+  // Every variable on the server, written the way a formula refers to it.
+  const everything = blocks.flatMap((b) =>
+    b.variables.map((v) => `${b.group.slug}/${v.projectSlug}/${v.name}`),
+  );
 
   const names = [
     ...(block?.variables.map((v) => `${v.projectSlug}.${v.name}`) ?? []),
@@ -352,6 +370,14 @@ function AddTile({
             disabled={!groupId || !variable}
             onClick={async () => {
               try {
+                // A formula becomes a variable of the group first; the tile
+                // then points at it by name like any other.
+                if (formula) {
+                  const group = blocks.find((b) => b.group.id === groupId);
+                  await api(`/api/groups/${group?.group.slug}/variables`, {
+                    body: { name: variable, expr, op: "expr" },
+                  });
+                }
                 await api("/api/dashboard/tiles", {
                   body: { groupId, variable, title, kind, w: kind === "table" || kind === "list" ? 2 : 1, h: 1 },
                 });
@@ -367,10 +393,6 @@ function AddTile({
       }
     >
       <ErrorBox error={error} />
-      <p style={{ marginTop: 0, color: "var(--ctp-subtext0)" }}>
-        Pick a group, then one of its variables. A group's variables are named{" "}
-        <code className="mono">project.name</code>.
-      </p>
       <Field label="Group">
         <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
           {blocks.map((b) => (
@@ -389,16 +411,56 @@ function AddTile({
         </Field>
       ) : (
         <Field label="Variable">
-          <select value={variable} onChange={(e) => setVariable(e.target.value)}>
+          <select
+            value={formula ? "__formula" : variable}
+            onChange={(e) => {
+              setFormula(e.target.value === "__formula");
+              setVariable(e.target.value === "__formula" ? "" : e.target.value);
+            }}
+          >
             <option value="">— pick one —</option>
             {names.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
+            <option value="__formula">a number worked out of others…</option>
           </select>
         </Field>
       )}
+
+      {formula ? (
+        <>
+          <Field label="Call it">
+            <input value={variable} onChange={(e) => setVariable(e.target.value)} placeholder="schnitt" />
+          </Field>
+          <Field label="Worked out as">
+            <textarea
+              value={expr}
+              onChange={(e) => setExpr(e.target.value)}
+              style={{ minHeight: 64, fontFamily: "var(--mono)", fontSize: 13 }}
+              placeholder="({studies/noten/durchschnitt} + {studies/noten/durchschnitt2}) / 2"
+            />
+          </Field>
+          <Field label="Insert a variable" hint="Anything on the server, not only this group.">
+            <select
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setExpr((x) => (x ? x + " " : "") + `{${e.target.value}}`);
+              }}
+            >
+              <option value="">— pick one —</option>
+              {everything.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <p className="meta">+ − × ÷ and brackets. A missing reference says so instead of showing a zero.</p>
+        </>
+      ) : null}
       <Field label="Title">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={variable} />
       </Field>
