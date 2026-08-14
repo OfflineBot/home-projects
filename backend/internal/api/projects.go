@@ -515,6 +515,64 @@ func (s *Server) mountProjects(r fiber.Router) {
 		return c.Status(fiber.StatusCreated).JSON(copyOf)
 	})
 
+	// Emptying a project without deleting it: the schedulers, the links, the
+	// address and the branch all stay; what goes is the contents.
+	//
+	// It asks for the password, and for the project's name to be typed, because
+	// an undo is only as good as the history — and a project that was never
+	// git-tracked has none.
+	one.Post("/clear", requireOwner, func(c *fiber.Ctx) error {
+		p := project(c)
+		ctx := c.UserContext()
+		if err := writable(c); err != nil {
+			return err
+		}
+		if err := s.Auth.RequireStepUp(auth.From(c), "emptying "+p.Title); err != nil {
+			return err
+		}
+		var in struct {
+			Confirm string `json:"confirm"`
+			Path    string `json:"path"`
+		}
+		if err := c.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The request could not be read.")
+		}
+		if !strings.EqualFold(strings.TrimSpace(in.Confirm), p.Title) &&
+			!strings.EqualFold(strings.TrimSpace(in.Confirm), p.Slug) {
+			return httpx.BadRequest("Type the project's name to confirm.")
+		}
+
+		fs := s.WS.Open(p.ID)
+		before, _ := fs.Count()
+		author, email := authorOf(c)
+		op := files.Op{Author: author, Email: email, Commit: false,
+			Message: "Empty " + p.Title}
+
+		target := strings.Trim(in.Path, "/")
+		entries, err := fs.List(target)
+		if err != nil {
+			return httpx.NotFound("There is no folder at this path.")
+		}
+		removed := 0
+		for _, e := range entries {
+			if err := s.Files.Remove(ctx, p, e.Path, true, op); err != nil {
+				return httpx.Internal("%s could not be removed", e.Path).WithCause(err)
+			}
+			removed++
+		}
+		if p.GitTracked {
+			// One commit for the lot, so the history has a single point to
+			// come back from.
+			_, _, _ = s.Files.Commit(ctx, p, "Empty "+p.Title, author, email)
+		}
+		s.reindex(c, p)
+		s.Vars.Refresh(ctx, p)
+		s.Store.Audit(ctx, auth.From(c).UserID(), "project.cleared", p.Slug, auth.ClientIP(c),
+			map[string]any{"entries": removed, "files": before, "path": target})
+		after, _ := fs.Count()
+		return c.JSON(fiber.Map{"removed": removed, "filesBefore": before, "filesNow": after})
+	})
+
 	one.Get("/deletion-preview", requireOwner, func(c *fiber.Ctx) error {
 		p := project(c)
 		ctx := c.UserContext()

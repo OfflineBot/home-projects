@@ -444,6 +444,21 @@ def main() -> int:
                       {"filter": fid, "path": "loose", "apply": False})
         check(bool(plan) and plan["applied"] is False, "applying a filter to a project asks first")
 
+    # ---------------------------------------------------------- emptying a project
+    # A project can be emptied without being deleted — with the password, and
+    # with its name typed.
+    empty = c.call("POST", "/api/projects", {
+        "title": f"sweep-empty-{stamp}", "groupId": gslug, "preset": "data"}, expect=201)
+    if empty:
+        c.call("PUT", f"/api/projects/{empty['id']}/files/content",
+               {"path": "a/b/c.txt", "content": "gone soon"})
+        c.call("POST", f"/api/projects/{empty['id']}/clear", {"confirm": "not the name"}, expect=400)
+        cleared = c.call("POST", f"/api/projects/{empty['id']}/clear", {"confirm": empty["title"]})
+        check(bool(cleared) and cleared["filesNow"] == 0, "a project can be emptied without being deleted")
+        still = c.call("GET", f"/api/projects/{empty['id']}")
+        check(bool(still), "and it is still there afterwards")
+        c.call("DELETE", f"/api/projects/{empty['id']}?confirm={empty['slug']}")
+
     # ------------------------------------------------------- moving, and what breaks
     impact = c.call("GET", f"/api/projects/{data}/move-impact?group=ungrouped")
     levels = {n["level"] for n in (impact or {}).get("notes", [])}

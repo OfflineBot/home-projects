@@ -73,6 +73,10 @@ test: test-db ## go vet, go test (incl. the single-use credential test), tsc
 	cd backend && TEST_DATABASE_URL="$(TEST_DB_URL)" go test ./...
 	cd frontend && npm run typecheck
 
+.PHONY: screens
+screens: ## render every page against a running server and fail on a blank one
+	cd frontend && HP_URL=$(API) npm test
+
 .PHONY: sweep
 sweep: ## walk every endpoint and complain at any non-2xx
 	python3 scripts/sweep.py --url $(API)
@@ -106,7 +110,7 @@ calendar-kinds: ## the five kinds of entry, and the file that stays iCalendar
 	python3 scripts/calendar_kinds.py --url $(API)
 
 .PHONY: check
-check: test sweep git-roundtrip ssh-access password-push two-projects blueprint calendar-kinds site-pointer ## what has to be green before a deploy
+check: test screens sweep git-roundtrip ssh-access password-push two-projects blueprint calendar-kinds site-pointer ## what has to be green before a deploy
 
 .PHONY: build
 build: ## compile both halves

@@ -39,6 +39,8 @@ export default function ProjectSettings({
   const [pendingMove, setPendingMove] = useState<{ groupId: string; notes: MoveNote[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
   const [preview, setPreview] = useState<any>(null);
   const [note, setNote] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
@@ -125,6 +127,63 @@ export default function ProjectSettings({
       setError(err as Error);
     }
   };
+
+  // Emptying keeps the project, its address, its schedulers and every link —
+  // and removes the contents. It asks for the name and for the password,
+  // because a project that is not git-tracked has no history to come back from.
+  if (clearing) {
+    return (
+      <Modal
+        title={`Empty ${project.title}`}
+        onClose={() => setClearing(false)}
+        footer={
+          <>
+            <a className="btn" href={`/api/projects/${project.id}/download`}>
+              <Icon name="download" size={15} /> Download first
+            </a>
+            <div style={{ flex: 1 }} />
+            <button className="btn" onClick={() => setClearing(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn danger"
+              disabled={busy || confirmText.trim().toLowerCase() !== project.title.toLowerCase()}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  const res = await guarded(`emptying ${project.title}`, () =>
+                    api<{ removed: number; filesBefore: number }>(`/api/projects/${project.id}/clear`, {
+                      body: { confirm: confirmText },
+                    }),
+                  );
+                  setNote(`${res.filesBefore} file(s) removed. The project itself is untouched.`);
+                  setClearing(false);
+                  setConfirmText("");
+                  onChanged(project);
+                } catch (err) {
+                  setError(err as Error);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Empty it
+            </button>
+          </>
+        }
+      >
+        <ErrorBox error={error} />
+        <p style={{ marginTop: 0 }}>
+          Every file goes. The project, its address, its schedulers and its links stay.
+          {project.gitTracked ? " The history keeps them — this is one commit." : " There is no history to undo it."}
+        </p>
+        <Field label={`Type ${project.title} to confirm`}>
+          <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoFocus />
+        </Field>
+      </Modal>
+    );
+  }
 
   if (confirming) {
     return (
@@ -418,6 +477,9 @@ export default function ProjectSettings({
         <a className="btn" href={`/api/projects/${project.id}/download`}>
           <Icon name="download" size={15} /> Download as ZIP
         </a>
+        <button className="btn danger" onClick={() => setClearing(true)}>
+          <Icon name="trash" size={15} /> Empty it
+        </button>
         <button
           className="btn"
           onClick={async () => {

@@ -6,6 +6,7 @@ import { logout } from "./lib/api";
 import { loadMeta, setUser, startSession, useSession } from "./lib/store";
 import Accounts from "./pages/Accounts";
 import Filters from "./pages/Filters";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import Dashboard from "./pages/Dashboard";
 import GroupPage from "./pages/GroupPage";
 import Groups from "./pages/Groups";
@@ -113,6 +114,7 @@ export default function App() {
             <strong>home-projects</strong>
           </div>
           <main className="main">
+            <Boundary>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/groups" element={<Groups />} />
@@ -129,9 +131,49 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Boundary>
           </main>
         </div>
       </div>
     </StepUpProvider>
   );
+}
+
+/**
+ * A blank page is the worst way to fail: it says nothing, and it hides which
+ * part broke. Anything that throws while rendering ends up here instead, with
+ * its message, and the rest of the app keeps working.
+ */
+class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("render failed", error, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    // The commonest cause by far: the page was open while the server was
+    // updated, so a part it goes to fetch is no longer there under that name.
+    const stale = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(
+      this.state.error.message,
+    );
+    return (
+      <div className="error" style={{ margin: 20 }}>
+        <strong>{stale ? "This page is older than the server." : "This part could not be drawn."}</strong>
+        {stale ? null : (
+          <div className="mono" style={{ marginTop: 6 }}>
+            {this.state.error.message}
+          </div>
+        )}
+        <button className="btn small" style={{ marginTop: 10 }} onClick={() => location.reload()}>
+          Reload
+        </button>
+      </div>
+    );
+  }
 }
