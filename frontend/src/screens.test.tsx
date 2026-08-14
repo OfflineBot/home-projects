@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import GroupSettings from "./components/GroupSettings";
 import ProjectSettings from "./components/ProjectSettings";
 import { api, login, type Group, type Project } from "./lib/api";
+import { loadMeta } from "./lib/store";
 import { Route, Routes } from "react-router-dom";
 import FilesView from "./caps/FilesView";
 import ProjectPage from "./pages/ProjectPage";
@@ -59,6 +60,10 @@ beforeAll(async () => {
   }) as typeof fetch;
 
   await login("offlinebot", password);
+  // The app loads this once at startup, and half the dialogs are drawn from
+  // it. Without it the test renders the empty half of every branch — which is
+  // how a capability list that crashes on real data passed nine times.
+  await loadMeta();
   group = await api<Group>("/api/groups", { body: { title: "ui-test-" + Date.now() } });
   project = await api<Project>("/api/projects", {
     body: { title: "ui probe", groupId: group.slug, preset: "data" },
@@ -113,6 +118,10 @@ describe("every screen draws something", () => {
     for (const label of ["Name", "Address", "Group", "Visibility", "Capabilities"]) {
       expect(dialog.textContent).toContain(label);
     }
+    // The capability list has to be *drawn*, not merely present as an empty
+    // branch: that list is built from the server's own answer, and the empty
+    // branch is what let a null in it go unnoticed.
+    expect(dialog.textContent).toContain("Calendar");
     expect(dialog.textContent).not.toMatch(/could not be drawn/i);
   });
 

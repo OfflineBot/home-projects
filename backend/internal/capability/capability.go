@@ -360,7 +360,14 @@ type Info struct {
 func Catalog() []Info {
 	out := []Info{}
 	for _, c := range All() {
-		out = append(out, Info{Name: c.Name(), Title: c.Title(), Icon: c.Icon(), Owns: c.Owns()})
+		// A capability that owns no files says so with an empty list, not with
+		// null: everything on the other side treats this as a list, and one
+		// null is enough to take a page down.
+		owns := c.Owns()
+		if owns == nil {
+			owns = []string{}
+		}
+		out = append(out, Info{Name: c.Name(), Title: c.Title(), Icon: c.Icon(), Owns: owns})
 	}
 	return out
 }

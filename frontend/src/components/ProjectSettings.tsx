@@ -366,7 +366,7 @@ export default function ProjectSettings({
                       : [...form.capabilities, c.name],
                   })
                 }
-                title={`owns ${c.owns.join(", ")}`}
+                title={c.owns?.length ? `owns ${c.owns.join(", ")}` : c.title}
               >
                 <Icon name={c.icon} size={14} /> {c.title}
               </button>

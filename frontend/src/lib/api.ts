@@ -282,7 +282,8 @@ export interface CapabilityInfo {
   name: string;
   title: string;
   icon: string;
-  owns: string[];
+  /** May be absent: a capability that owns no files. */
+  owns?: string[];
 }
 
 export interface SchedulerKind {
