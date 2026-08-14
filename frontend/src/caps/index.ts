@@ -27,4 +27,5 @@ export const capabilityViews: Record<string, CapabilityView> = {
   feed: { tab: "Feed", icon: "rss", component: lazy(() => import("./FeedView")) },
   automation: { tab: "Rules", icon: "zap", component: lazy(() => import("./AutomationView")) },
   moodle: { tab: "Moodle", icon: "graduation", component: lazy(() => import("./MoodleView")) },
+  machines: { tab: "Machines", icon: "server", component: lazy(() => import("./MachinesView")) },
 };

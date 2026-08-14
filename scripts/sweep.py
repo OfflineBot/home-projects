@@ -891,6 +891,58 @@ def main() -> int:
         check(bool(row) and row["state"] != "needs_password", "and the account is still ready")
         c.call("DELETE", f"/api/accounts/{dead['id']}")
 
+    # ------------------------------------------------- another machine, over ssh
+    # Wake, power, and the tmux sessions. The connection itself needs a machine
+    # to connect to, so the parts that need one run only when HP_SSH is set:
+    #   HP_SSH=host:port:user:password python3 scripts/sweep.py
+    pcs = c.call("POST", "/api/projects", {
+        "title": f"Sweep machines {stamp}", "groupId": gslug, "preset": "machines",
+    }, expect=201)
+    if pcs:
+        empty = c.call("GET", f"/api/projects/{pcs['id']}/machines")
+        check(bool(empty) and empty.get("machines") == [], "a machines project starts with none")
+        ssh_env = os.environ.get("HP_SSH", "")
+        host, port, user, password = (ssh_env.split(":") + ["", "", "", ""])[:4] if ssh_env else ("", "", "", "")
+        c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{
+            "name": "probe", "host": host or "127.0.0.1", "port": int(port or 22),
+            "user": user or "nobody", "mac": "aa:bb:cc:dd:ee:ff", "note": "the sweep's",
+        }]})
+        listed = c.call("GET", f"/api/projects/{pcs['id']}/machines") or {}
+        check(len(listed.get("machines", [])) == 1, "a machine can be written down")
+        check("up" in (listed.get("machines") or [{}])[0], "and it says whether it is up")
+        # A magic packet needs no credential and answers nothing — but it must
+        # not fail, and a machine without a MAC must say so rather than pretend.
+        c.call("POST", f"/api/projects/{pcs['id']}/machines/probe/wake", {})
+        c.call("POST", f"/api/projects/{pcs['id']}/machines/nothing-here/wake", {}, expect=404)
+        c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{"name": "no mac", "host": "127.0.0.1"}]})
+        c.call("POST", f"/api/projects/{pcs['id']}/machines/no%20mac/wake", {}, expect=400)
+        c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{"name": "", "host": "x"}]}, expect=400)
+
+        if ssh_env:
+            c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{
+                "name": "probe", "host": host, "port": int(port), "user": user,
+            }]})
+            base = f"/api/projects/{pcs['id']}/machines/probe"
+            c.call("POST", f"{base}/tmux", {"password": "not-the-password"}, expect=502)
+            sessions = c.call("POST", f"{base}/tmux", {"password": password})
+            check(sessions is not None and "sessions" in sessions, "the tmux sessions can be listed")
+            name = f"sweep-{stamp}"
+            c.call("POST", f"{base}/tmux-new", {"password": password, "session": name})
+            after = c.call("POST", f"{base}/tmux", {"password": password}) or {}
+            check(any(x["name"] == name for x in after.get("sessions", [])), "a session can be started")
+            typed = c.call("POST", f"{base}/tmux/{name}/keys",
+                           {"password": password, "keys": "echo swept-through", "enter": True})
+            check(bool(typed) and "swept-through" in typed.get("screen", ""),
+                  "something typed into it lands on its screen")
+            seen = c.call("POST", f"{base}/tmux/{name}", {"password": password, "lines": 20})
+            check(bool(seen) and "swept-through" in seen.get("screen", ""), "and is there when looked at again")
+            c.call("POST", f"{base}/tmux/{name}/kill", {"password": password})
+            gone = c.call("POST", f"{base}/tmux", {"password": password}) or {}
+            check(not any(x["name"] == name for x in gone.get("sessions", [])), "and it can be closed again")
+        else:
+            print("  (no HP_SSH — the parts that need a real machine were not measured)")
+        c.call("DELETE", f"/api/projects/{pcs['id']}?confirm={pcs['slug']}")
+
     # ------------------------------------------------- packed up and carried over
     # The whole point: a group set up here, taken somewhere else, whole. It is
     # proved the only way that proves anything — export it, delete it, bring it

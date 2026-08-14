@@ -11,6 +11,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/capabilities/calendar"
 	"github.com/offlinebot/home-projects/backend/internal/capabilities/feed"
 	"github.com/offlinebot/home-projects/backend/internal/capabilities/grades"
+	"github.com/offlinebot/home-projects/backend/internal/capabilities/machines"
 	"github.com/offlinebot/home-projects/backend/internal/capabilities/mail"
 	"github.com/offlinebot/home-projects/backend/internal/capabilities/markdown"
 	"github.com/offlinebot/home-projects/backend/internal/capabilities/moodle"
@@ -28,4 +29,5 @@ func Register() {
 	capability.Register(feed.New())
 	capability.Register(automation.New())
 	capability.Register(moodle.New())
+	capability.Register(machines.New())
 }

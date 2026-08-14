@@ -29,6 +29,7 @@ import Schedulers from "./pages/Schedulers";
 import Structure from "./pages/Structure";
 import Users from "./pages/Users";
 import MailView from "./caps/MailView";
+import MachinesView from "./caps/MachinesView";
 import Login from "./pages/Login";
 
 declare const process: { env: Record<string, string | undefined> };
@@ -201,6 +202,30 @@ describe("every screen draws something", () => {
       expect(frame.getAttribute("srcdoc") ?? "").toContain("Die Prüfung fällt aus.");
     } finally {
       await api(`/api/projects/${mail.id}?confirm=${mail.slug}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
+  // Machines: the state of one, and the buttons that belong to that state.
+  // Nothing here signs in — that needs a password and a real machine, which
+  // the sweep does — but the page has to draw what it knows.
+  it("machines, with what is known without signing in", async () => {
+    const pcs = await api<Project>("/api/projects", {
+      body: { title: "ui machines " + Date.now(), groupId: group.slug, preset: "machines" },
+    });
+    try {
+      await api(`/api/projects/${pcs.id}/machines`, {
+        method: "PUT",
+        body: { machines: [{ name: "cellar pc", host: "127.0.0.1", port: 22, user: "someone", mac: "aa:bb:cc:dd:ee:ff" }] },
+      });
+      const c = await draw(<MachinesView project={pcs} reload={() => {}} />, /cellar pc/i);
+      expect(c.textContent).toMatch(/up|not answering/i);
+      expect(c.querySelector(".dot-status")).not.toBeNull();
+      // The password lives in the page, and the page says so.
+      expect(c.textContent).toMatch(/Keep the SSH password/i);
+      expect(c.textContent).not.toMatch(/could not be drawn/i);
+    } finally {
+      await api(`/api/projects/${pcs.id}?confirm=${pcs.slug}`, { method: "DELETE" });
       cleanup();
     }
   });

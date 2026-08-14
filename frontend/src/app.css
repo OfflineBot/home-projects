@@ -691,3 +691,24 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   .mail-panes.has-selection .mail-list { display: none; }
   .mail-list, .mail-read { max-height: none; }
 }
+
+/* --------------------------------------------------------------- machines */
+.machines-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.machine .tile-top { align-items: center; }
+.machine-row {
+  border: 1px solid var(--ctp-surface0); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 10px;
+}
+.tmux { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 10px; }
+.tmux-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+/* The pane as tmux itself shows it: fixed width, scrolling on its own, dark
+   whatever the rest of the page does — a terminal that changes colour is a
+   terminal you stop trusting. */
+.tmux-screen {
+  background: var(--ctp-crust); color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface0); border-radius: 8px;
+  padding: 10px 12px; margin: 0; max-height: 420px; overflow: auto;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.45; white-space: pre;
+}
+.tmux-type { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.tmux-type input { flex: 1; }
