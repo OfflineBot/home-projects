@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import GroupSettings from "./components/GroupSettings";
 import ProjectSettings from "./components/ProjectSettings";
 import { api, login, type Group, type Project } from "./lib/api";
+import FilesView from "./caps/FilesView";
 import Accounts from "./pages/Accounts";
 import Dashboard from "./pages/Dashboard";
 import FiltersPage from "./pages/Filters";
@@ -111,6 +112,39 @@ describe("every screen draws something", () => {
       expect(dialog.textContent).toContain(label);
     }
     expect(dialog.textContent).not.toMatch(/could not be drawn/i);
+  });
+
+  // The file browser is what a Moodle project is looked at through, so it is
+  // checked the way it is used: folders first, a file that opens, and a search
+  // that reaches into folders you are not standing in.
+  it("the files of a project", async () => {
+    for (const [path, content] of [
+      ["Vorlesung/Kap 3 Differentialrechnung.md", "# Kapitel 3\n\nEin **Satz** und `Code`.\n\n- eins\n- zwei"],
+      ["Vorlesung/Übung 1.txt", "aufgaben"],
+      ["liesmich.md", "# Oben"],
+    ]) {
+      await api(`/api/projects/${project.id}/files/content`, { method: "PUT", body: { path, content } });
+    }
+
+    const c = await draw(<FilesView project={project} reload={() => {}} />, /Vorlesung/);
+    const rows = [...c.querySelectorAll(".list-row")].map((r) => r.textContent ?? "");
+    expect(rows[0]).toContain("Vorlesung");           // folders first
+    expect(rows.some((r) => r.includes("liesmich.md"))).toBe(true);
+
+    // Searching reaches into the folder without opening it.
+    const hits = await api<{ entries: { path: string }[] }>(
+      `/api/projects/${project.id}/files/search?q=${encodeURIComponent("kap 3")}`,
+    );
+    expect(hits.entries.map((e) => e.path)).toContain("Vorlesung/Kap 3 Differentialrechnung.md");
+
+    // And a markdown file is rendered rather than shown as asterisks.
+    const view = render(
+      <MemoryRouter initialEntries={["/?file=liesmich.md"]}>
+        <FilesView project={project} reload={() => {}} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(view.container.querySelector(".prose h1")).not.toBeNull(), { timeout: 8000 });
+    expect(view.container.querySelector(".prose h1")?.textContent).toBe("Oben");
   });
 
   it("a group's settings", async () => {

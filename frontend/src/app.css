@@ -464,6 +464,21 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 
 /* ------------------------------------------------------------------- files */
 
+/* Rendered markdown. Enough to read notes as notes. */
+.prose { max-width: 46rem; line-height: 1.65; }
+.prose h1, .prose h2, .prose h3 { margin: 1.4em 0 .5em; line-height: 1.25; }
+.prose h1 { font-size: 1.55rem; }
+.prose h2 { font-size: 1.3rem; }
+.prose h3 { font-size: 1.1rem; }
+.prose p { margin: .7em 0; }
+.prose ul, .prose ol { margin: .7em 0; padding-left: 1.3em; }
+.prose li { margin: .25em 0; }
+.prose code { background: var(--ctp-surface0); padding: .1em .35em; border-radius: 5px;
+  font-family: var(--mono); font-size: .9em; }
+.prose pre.block code { background: none; padding: 0; }
+.prose hr { border: none; border-top: 1px solid var(--ctp-surface1); margin: 1.4em 0; }
+.prose a { color: var(--accent); }
+
 /* A file that is not text is shown, not described. */
 .file-preview { width: 100%; height: min(78vh, 900px); border: 1px solid var(--ctp-surface0);
   border-radius: var(--radius); background: var(--ctp-crust); }

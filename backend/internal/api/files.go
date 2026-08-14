@@ -60,6 +60,32 @@ func (s *Server) mountFiles(r fiber.Router) {
 		})
 	})
 
+	// Searching the whole project, not the folder you happen to stand in.
+	// Three hundred lecture slides in twenty folders is a filing cabinet, and a
+	// filing cabinet without a search is a pile.
+	f.Get("/search", func(c *fiber.Ctx) error {
+		p := project(c)
+		needle := strings.ToLower(strings.TrimSpace(c.Query("q")))
+		if needle == "" {
+			return c.JSON(fiber.Map{"entries": []workspace.Entry{}})
+		}
+		limit := c.QueryInt("limit", 300)
+		fs := s.WS.Open(p.ID)
+		found := []workspace.Entry{}
+		_ = fs.Walk("", func(e workspace.Entry) error {
+			if len(found) >= limit {
+				return nil
+			}
+			// The path counts too: "analysis kap 3" should find a file called
+			// "Kap 3.pdf" inside the folder "Analysis".
+			if strings.Contains(strings.ToLower(e.Path), needle) || matchesWords(e.Path, needle) {
+				found = append(found, e)
+			}
+			return nil
+		})
+		return c.JSON(fiber.Map{"entries": found, "limit": limit})
+	})
+
 	f.Get("/content", func(c *fiber.Ctx) error {
 		p := project(c)
 		body, res, err := s.Files.Read(c.UserContext(), p, c.Query("path"))
@@ -360,4 +386,16 @@ func showableInline(mime string) bool {
 		}
 	}
 	return false
+}
+
+// matchesWords lets a search be typed the way a thing is remembered: several
+// words, in any order, anywhere in the path.
+func matchesWords(path, needle string) bool {
+	lower := strings.ToLower(path)
+	for _, word := range strings.Fields(needle) {
+		if !strings.Contains(lower, word) {
+			return false
+		}
+	}
+	return true
 }

@@ -13,6 +13,7 @@ export default function FilesView({ project, reload }: { project: Project; reloa
   const [params, setParams] = useSearchParams();
   const path = params.get("path") ?? "";
   const editing = params.get("file");
+  const query = params.get("q") ?? "";
 
   const { data, error, loading, reload: reloadList } = useQuery<{
     path: string;
@@ -20,6 +21,14 @@ export default function FilesView({ project, reload }: { project: Project; reloa
     readOnly: boolean;
     parent: string;
   }>(`/api/projects/${project.id}/files?path=${encodeURIComponent(path)}`);
+
+  // Searching looks through the whole project, not the folder you stand in.
+  const search = useQuery<{ entries: FileEntry[] }>(
+    query.trim() ? `/api/projects/${project.id}/files/search?q=${encodeURIComponent(query)}` : null,
+    [query],
+  );
+  const searching = query.trim().length > 0;
+  const shown = searching ? (search.data?.entries ?? []) : (data?.entries ?? []);
 
   const [newFolder, setNewFolder] = useState(false);
   const [newFile, setNewFile] = useState(false);
@@ -35,7 +44,15 @@ export default function FilesView({ project, reload }: { project: Project; reloa
     if (next) p.set("path", next);
     else p.delete("path");
     p.delete("file");
+    p.delete("q");
     setParams(p);
+  };
+
+  const setQuery = (next: string) => {
+    const p = new URLSearchParams(params);
+    if (next) p.set("q", next);
+    else p.delete("q");
+    setParams(p, { replace: true });
   };
 
   const open = (entry: FileEntry) => {
@@ -118,7 +135,23 @@ export default function FilesView({ project, reload }: { project: Project; reloa
             <button onClick={() => go(crumbs.slice(0, i + 1).join("/"))}>{part}</button>
           </span>
         ))}
+        {path ? (
+          <a
+            className="btn small"
+            href={authedUrl(`/api/projects/${project.id}/files/download?path=${encodeURIComponent(path)}`)}
+            title="This folder and everything under it, as a zip"
+          >
+            <Icon name="download" size={14} /> Folder
+          </a>
+        ) : null}
         <div style={{ flex: 1 }} />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search this project"
+          style={{ width: 200 }}
+        />
         {!data?.readOnly ? (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button className="btn small" onClick={() => setNewFile(true)}>
@@ -171,21 +204,25 @@ export default function FilesView({ project, reload }: { project: Project; reloa
       {dragging ? <div className="dropzone over">Drop the files to upload them here</div> : null}
       {loading && !data ? <Spinner /> : null}
 
-      {data && data.entries.length === 0 ? (
-        <Empty icon="folder">This folder is empty.</Empty>
+      {searching && search.loading ? <Spinner /> : null}
+      {shown.length === 0 && !search.loading ? (
+        <Empty icon="folder">{searching ? "Nothing found." : "This folder is empty."}</Empty>
       ) : (
         <div className="list">
-          {path ? (
+          {path && !searching ? (
             <div className="list-row" style={{ cursor: "pointer" }} onClick={() => go(data?.parent ?? "")}>
               <Icon name="chevronLeft" size={16} />
               <span className="grow meta">up one level</span>
             </div>
           ) : null}
-          {data?.entries.map((entry) => (
+          {shown.map((entry) => (
             <div key={entry.path} className="list-row" style={{ cursor: "pointer" }} onClick={() => open(entry)}>
               <Icon name={iconFor(entry)} size={16} />
               <span className="grow">
                 {entry.name}
+                {searching && entry.path.includes("/") ? (
+                  <span className="meta"> · {entry.path.split("/").slice(0, -1).join("/")}</span>
+                ) : null}
                 {entry.linkId ? (
                   <span className="badge" style={{ marginLeft: 8 }}>
                     <Icon name="link" size={11} /> {entry.linkedFrom}
@@ -194,7 +231,7 @@ export default function FilesView({ project, reload }: { project: Project; reloa
               </span>
               <span className="meta">{entry.isDir ? "" : formatBytes(entry.size)}</span>
               <span className="meta">{formatDate(entry.modifiedAt)}</span>
-              {!data.readOnly ? (
+              {!data?.readOnly ? (
                 <Menu
                   label={`Actions for ${entry.name}`}
                   items={[
@@ -656,6 +693,80 @@ function FileEditor({
   return <TextFile project={project} path={path} readOnly={readOnly} onClose={onClose} download={download} />;
 }
 
+/**
+ * Markdown, rendered — enough of it that a set of lecture notes reads as notes
+ * and not as asterisks. Headings, emphasis, code, lists, links, rules. It is
+ * escaped first, so a file that contains HTML shows its HTML rather than
+ * running it.
+ */
+function markdownToHtml(source: string): string {
+  const escaped = source
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const inline = (t: string) =>
+    t
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" rel="noreferrer noopener" target="_blank">$1</a>');
+
+  const out: string[] = [];
+  let inCode = false;
+  let listKind: "ul" | "ol" | null = null;
+  const closeList = () => {
+    if (listKind) out.push(`</${listKind}>`);
+    listKind = null;
+  };
+
+  for (const line of escaped.split("\n")) {
+    if (line.trimStart().startsWith("```")) {
+      closeList();
+      out.push(inCode ? "</code></pre>" : '<pre class="block"><code>');
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) {
+      out.push(line);
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      out.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+      continue;
+    }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+      closeList();
+      out.push("<hr />");
+      continue;
+    }
+    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
+    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (bullet || numbered) {
+      const want = bullet ? "ul" : "ol";
+      if (listKind !== want) {
+        closeList();
+        out.push(`<${want}>`);
+        listKind = want;
+      }
+      out.push(`<li>${inline((bullet ?? numbered)![1])}</li>`);
+      continue;
+    }
+    if (line.trim() === "") {
+      closeList();
+      continue;
+    }
+    closeList();
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  closeList();
+  if (inCode) out.push("</code></pre>");
+  return out.join("\n");
+}
+
 function TextFile({
   project,
   path,
@@ -675,6 +786,8 @@ function TextFile({
   const [content, setContent] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<Error | null>(null);
   const [saved, setSaved] = useState(false);
+  const isMarkdown = /\.(md|markdown)$/i.test(path);
+  const [editing, setEditing] = useState(false);
   const value = content ?? data?.content ?? "";
 
   return (
@@ -693,7 +806,12 @@ function TextFile({
         <a className="btn small" href={download}>
           <Icon name="download" size={14} /> Download
         </a>
-        {!readOnly ? (
+        {isMarkdown ? (
+          <button className="btn small" onClick={() => setEditing((e) => !e)}>
+            <Icon name={editing ? "eye" : "wrench"} size={14} /> {editing ? "Read" : "Edit"}
+          </button>
+        ) : null}
+        {!readOnly && (!isMarkdown || editing) ? (
           <button
             className="btn small primary"
             onClick={async () => {
@@ -716,7 +834,9 @@ function TextFile({
       </div>
       <ErrorBox error={saveError ?? error} />
       {loading && !data ? <Spinner /> : null}
-      {data ? (
+      {data && isMarkdown && !editing ? (
+        <div className="prose" dangerouslySetInnerHTML={{ __html: markdownToHtml(value) }} />
+      ) : data ? (
         <textarea
           className="editor"
           value={value}
