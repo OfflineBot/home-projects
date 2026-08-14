@@ -108,9 +108,16 @@ type Report struct {
 type AccountField struct {
 	Name        string `json:"name"`
 	Label       string `json:"label"`
-	Type        string `json:"type"` // text | url | password | number
+	Type        string `json:"type"` // text | url | password | number | bool
 	Placeholder string `json:"placeholder,omitempty"`
 	Required    bool   `json:"required"`
+	// Default is what the field means when nothing was said. It is sent to the
+	// dialog so the box on screen shows what the server will actually do — a
+	// tick-box that reads "off" while the code treats it as "on" is how a
+	// scheduler quietly skips eighteen courses.
+	Default any `json:"default,omitempty"`
+	// Hint explains the consequence, not the field.
+	Hint string `json:"hint,omitempty"`
 }
 
 // AccountKind is one entry in the accounts menu. Credentials live there and

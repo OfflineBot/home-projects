@@ -288,6 +288,9 @@ export interface AccountField {
   type: string;
   placeholder?: string;
   required: boolean;
+  /** What the field means when nothing was said — the box shows what the server does. */
+  default?: unknown;
+  hint?: string;
 }
 
 export interface AccountKind {

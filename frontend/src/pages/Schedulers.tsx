@@ -347,16 +347,28 @@ function SchedulerDialog({
 
       {(kind?.options ?? []).map((o) =>
         o.type === "bool" ? (
-          <label className="check" key={o.name}>
-            <input
-              type="checkbox"
-              checked={Boolean(options[o.name])}
-              onChange={(e) => setOptions({ ...options, [o.name]: e.target.checked })}
+          <div key={o.name}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={options[o.name] === undefined ? Boolean(o.default) : Boolean(options[o.name])}
+                onChange={(e) => setOptions({ ...options, [o.name]: e.target.checked })}
+              />
+              <span>{o.label}</span>
+            </label>
+            {o.hint ? <p className="hint" style={{ marginTop: -8 }}>{o.hint}</p> : null}
+          </div>
+        ) : o.type === "textarea" ? (
+          <Field key={o.name} label={o.label} hint={o.hint}>
+            <textarea
+              style={{ minHeight: 92, fontFamily: "var(--mono)", fontSize: 13 }}
+              placeholder={o.placeholder}
+              value={String(options[o.name] ?? "")}
+              onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
             />
-            <span>{o.label}</span>
-          </label>
+          </Field>
         ) : (
-          <Field key={o.name} label={o.label}>
+          <Field key={o.name} label={o.label} hint={o.hint}>
             <input
               type={o.type === "number" ? "number" : "text"}
               placeholder={o.placeholder}

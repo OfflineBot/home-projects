@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 
 	lib "github.com/OfflineBot/nicht-libs/moodle"
 	"github.com/offlinebot/home-projects/backend/internal/capability"
@@ -56,15 +57,23 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 	return []capability.SchedulerKind{{
 		Name:            "moodle",
 		Title:           "Moodle material",
-		Description:     "Signs in once, then downloads the courses' files into the project — one folder per course.",
+		Description:     "Signs in once, then downloads the courses' material with the shape Moodle gives it: a folder per course, sections and folders inside. Rules can send each course into a different project.",
 		AccountKinds:    []string{"moodle"},
 		AccountRequired: true,
 		Options: []capability.AccountField{
-			{Name: "onlyCurrent", Label: "Only courses that are still running", Type: "bool"},
+			{Name: "onlyCurrent", Label: "Only courses that are still running", Type: "bool",
+				Hint: "Off means every course you are enrolled in, including past semesters."},
 			{Name: "courses", Label: "Only these courses (short names, comma separated)", Type: "text",
 				Placeholder: "leave empty for all of them"},
-			{Name: "flat", Label: "No folder per course — everything straight into the target folder",
-				Type: "bool"},
+			{Name: "routes", Label: "Which course goes into which project", Type: "textarea",
+				Placeholder: "2 -> semester-2\n3 -> semester-3\n* -> moodle-archiv",
+				Hint: "One rule per line, first match wins. A bare number is the semester Moodle " +
+					"derives; anything else matches the course name; * catches the rest. " +
+					"Leave empty and everything lands in this scheduler's own project."},
+			{Name: "flat", Label: "No folders at all — every file straight into the target folder",
+				Type: "bool",
+				Hint: "Off keeps Moodle's own shape: a folder per course, and the sections and " +
+					"folders inside it as they are there."},
 		},
 		Run: runMoodle,
 	}}
@@ -200,13 +209,10 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		return capability.Report{Authenticated: true}, fmt.Errorf("signed in, but the courses could not be read: %w", err)
 	}
 
-	onlyCurrent := true
-	if v, ok := job.Options["onlyCurrent"].(bool); ok {
-		onlyCurrent = v
-	}
-	// One folder per course is the default. "flat" puts everything straight
-	// into the target folder — and an empty target folder is the project
-	// itself, so nothing extra is created at all.
+	// Absent means off — the same as the unticked box in the dialog. The other
+	// way round, the server quietly did something the screen did not show.
+	onlyCurrent, _ := job.Options["onlyCurrent"].(bool)
+	// flat throws the shape away: no folder per course, no sections, one heap.
 	flat, _ := job.Options["flat"].(bool)
 	wanted := map[string]bool{}
 	if list, ok := job.Options["courses"].([]any); ok {
@@ -221,86 +227,159 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			}
 		}
 	}
+	routeText, _ := job.Options["routes"].(string)
+	routes, badLines := parseRoutes(routeText)
+	for _, line := range badLines {
+		job.Log("this line is not a rule and was ignored: %q — write it as \"2 -> semester-2\"", line)
+	}
 
 	base := job.Scheduler.TargetPath
 	written := 0
 	skipped := 0
 
-	// Say out loud where things are about to land. "It made no folders" is
-	// almost always this switch, and the log is where that should be visible.
 	where := "the project itself"
 	if base != "" {
 		where = base + "/"
 	}
 	if flat {
-		job.Log("%d courses found — everything goes flat into %s, no folder per course", len(courses), where)
+		job.Log("%d courses found — everything goes flat into %s, no folders at all", len(courses), where)
 	} else {
-		job.Log("%d courses found — one folder per course under %s", len(courses), where)
+		job.Log("%d courses found — one folder per course under %s, sections and folders as they are in Moodle",
+			len(courses), where)
+	}
+	if len(routes) > 0 {
+		job.Log("%d routing rule(s): courses go into the projects they name", len(routes))
 	}
 
+	// A course that is left out has to say so. Silence about skipped work reads
+	// as "there was nothing", and that is how eighteen courses can disappear
+	// behind a default nobody chose.
+	var passedOver, filteredOut, unrouted []string
+	// Two courses can own a file of the same name. Without this the later one
+	// would look like "already there" and never arrive.
+	seen := map[string]string{}
+	taken := 0
+	// Which projects were written into, so each gets one commit at the end.
+	touched := map[uuid.UUID]*model.Project{}
+
 	for _, course := range courses {
-		if onlyCurrent && !course.IsCurrent {
-			continue
-		}
-		if len(wanted) > 0 && !wanted[fmt.Sprint(course.ID)] && !wanted[course.Shortname] {
-			continue
-		}
 		name := course.Shortname
 		if name == "" {
 			name = course.Fullname
 		}
-		folder := path.Join(base, slug.Make(name))
+		if onlyCurrent && !course.IsCurrent {
+			passedOver = append(passedOver, name)
+			continue
+		}
+		if len(wanted) > 0 && !wanted[fmt.Sprint(course.ID)] && !wanted[course.Shortname] {
+			filteredOut = append(filteredOut, name)
+			continue
+		}
+
+		// Where this course belongs. Without rules that is the scheduler's own
+		// project; with them, whichever project the matching rule names.
+		target := job.Project
+		if len(routes) > 0 {
+			slugName, matched := pick(routes, course)
+			if !matched {
+				unrouted = append(unrouted, fmt.Sprintf("%s (semester %d)", name, course.SemesterNumber))
+				continue
+			}
+			target, err = projectBySlug(ctx, env, slugName)
+			if err != nil {
+				job.Log("%s → %s: %v", name, slugName, err)
+				continue
+			}
+		}
+
+		taken++
+		folder := path.Join(base, courseFolder(course))
 		if flat {
 			folder = base
 		}
 
-		items, err := lib.GetCourseFiles(cfg.URL, token, course.ID)
+		items, err := courseTree(cfg.URL, token, course.ID, !flat)
 		if err != nil {
-			job.Log("course %s: %v", course.Shortname, err)
+			job.Log("course %s: %v", name, err)
 			continue
 		}
-		for _, item := range items {
-			if item.Filename == "" || item.Fileurl == "" {
-				continue
+		for _, it := range items {
+			rel := path.Join(folder, it.Rel)
+			key := target.ID.String() + "|" + rel
+			// One filename, one folder, two courses: the later one keeps its
+			// name and gains the course it came from, instead of vanishing.
+			if owner, clash := seen[key]; clash && owner != name {
+				rel = path.Join(path.Dir(rel), withSuffix(path.Base(rel), slug.Make(name)))
+				key = target.ID.String() + "|" + rel
 			}
-			rel := path.Join(folder, sanitise(item.Filename))
-			// A file that is already here and unchanged is not fetched again.
-			if env.Files.Exists(job.Project, rel) {
+			seen[key] = name
+			// A file that is already here and the same size is not fetched
+			// again. A different size means Moodle has a newer one.
+			if env.Files.Exists(target, rel) && sameSize(env, target, rel, it.Filesize) {
 				skipped++
 				continue
 			}
-			body, _, err := lib.DownloadFile(token, item.Fileurl)
+			body, _, err := lib.DownloadFile(token, it.Fileurl)
 			if err != nil {
 				job.Log("%s: %v", rel, err)
 				continue
 			}
-			_, err = env.Files.WriteFrom(ctx, job.Project, rel, io.LimitReader(body, 512<<20), files.Op{
+			_, err = env.Files.WriteFrom(ctx, target, rel, io.LimitReader(body, 512<<20), files.Op{
 				Author: "the Moodle scheduler", Email: "scheduler@home-projects", Commit: false,
 			})
 			body.Close()
 			if err != nil {
 				return capability.Report{Authenticated: true}, err
 			}
+			touched[target.ID] = target
 			written++
 		}
-		job.Log("%s: %d files", course.Shortname, len(items))
+		if target.ID != job.Project.ID {
+			job.Log("%s: %d files → project %s", name, len(items), target.Slug)
+		} else {
+			job.Log("%s: %d files", name, len(items))
+		}
 	}
 
-	if written > 0 && job.Project.GitTracked {
-		_, _, _ = env.Files.Commit(ctx, job.Project,
-			fmt.Sprintf("Moodle: %d new file(s)", written), "the Moodle scheduler", "scheduler@home-projects")
+	if len(passedOver) > 0 {
+		job.Log("%d of %d courses were passed over because they have ended: %s",
+			len(passedOver), len(courses), strings.Join(passedOver, ", "))
+		job.Log("untick \"only courses that are still running\" to include them")
+	}
+	if len(filteredOut) > 0 {
+		job.Log("%d more were left out by the course filter: %s",
+			len(filteredOut), strings.Join(filteredOut, ", "))
+	}
+	if len(unrouted) > 0 {
+		job.Log("%d courses matched no rule and were not fetched: %s",
+			len(unrouted), strings.Join(unrouted, ", "))
+		job.Log("add a \"* -> some-project\" line to catch the rest")
+	}
+
+	for _, p := range touched {
+		if p.GitTracked {
+			_, _, _ = env.Files.Commit(ctx, p,
+				fmt.Sprintf("Moodle: %d new file(s)", written), "the Moodle scheduler", "scheduler@home-projects")
+		}
 	}
 
 	// A run that fetched nothing is a normal outcome, not a silent one: it
 	// takes a second and has to say why.
-	message := fmt.Sprintf("%d new files, %d were already there, across %d courses",
-		written, skipped, len(courses))
+	left := len(passedOver) + len(filteredOut) + len(unrouted)
+	message := fmt.Sprintf("%d new files, %d were already there, from %d of %d courses",
+		written, skipped, taken, len(courses))
 	if written == 0 && skipped > 0 {
-		message = fmt.Sprintf("nothing new — all %d files across %d courses were already here",
-			skipped, len(courses))
+		message = fmt.Sprintf("nothing new — all %d files from %d of %d courses were already here",
+			skipped, taken, len(courses))
 	}
 	if written == 0 && skipped == 0 {
-		message = fmt.Sprintf("%d courses, but not one file came back — check the course filter", len(courses))
+		message = fmt.Sprintf("%d of %d courses had no files at all", taken, len(courses))
+	}
+	if left > 0 {
+		message += fmt.Sprintf(" (%d courses left out)", left)
+	}
+	if len(touched) > 1 {
+		message += fmt.Sprintf(", across %d projects", len(touched))
 	}
 
 	return capability.Report{
@@ -312,6 +391,30 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			{Name: "fetched_at", Type: "date", Value: time.Now(), Source: "capability:moodle"},
 		},
 	}, nil
+}
+
+// projectBySlug finds the project a routing rule names, and refuses the ones
+// that cannot be written into rather than failing later, file by file.
+func projectBySlug(ctx context.Context, env *capability.Env, name string) (*model.Project, error) {
+	all, err := env.Store.ListProjects(ctx, nil, false, false)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		p := all[i]
+		if !strings.EqualFold(p.Slug, name) && !strings.EqualFold(p.Title, name) {
+			continue
+		}
+		var group *model.Group
+		if p.GroupID != nil {
+			group, _ = env.Store.GroupByID(ctx, *p.GroupID)
+		}
+		if p.EffectiveReadOnly(group) {
+			return nil, fmt.Errorf("the project %s is read-only", p.Slug)
+		}
+		return &p, nil
+	}
+	return nil, fmt.Errorf("there is no project called %q on this server", name)
 }
 
 // sanitise keeps a Moodle filename usable as a path segment.
@@ -402,4 +505,25 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			"log":     lines,
 		})
 	})
+}
+
+// withSuffix puts something between a name and its extension, so a second
+// "Skript.pdf" becomes "Skript (wds125).pdf" rather than a collision.
+func withSuffix(name, suffix string) string {
+	ext := path.Ext(name)
+	return strings.TrimSuffix(name, ext) + " (" + suffix + ")" + ext
+}
+
+// sameSize decides whether what is on disk is still what Moodle has. Moodle
+// gives a size with every file; a lecture slide that grew by a chapter has a
+// different one, and then it is fetched again.
+func sameSize(env *capability.Env, p *model.Project, rel string, want int) bool {
+	if want <= 0 {
+		return true // Moodle said nothing about the size; leave what is here.
+	}
+	entry, err := env.Files.Workspace().Open(p.ID).Stat(rel)
+	if err != nil {
+		return false
+	}
+	return entry.Size == int64(want)
 }
