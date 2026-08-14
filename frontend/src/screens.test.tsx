@@ -118,7 +118,10 @@ describe("every screen draws something", () => {
     try {
       const c = await draw(<Dashboard />, /straight in/i);
       expect(c.querySelector(".project-tile")).not.toBeNull();
-      expect(c.textContent).toContain("Open");
+      // The tile is drawn from two answers — the tiles and the projects — and
+      // the second one lands a moment later. Asserting before it does is how
+      // this test failed while the page itself was right.
+      await waitFor(() => expect(c.textContent).toContain("Open"), { timeout: 8000 });
       expect(c.textContent).not.toMatch(/could not be drawn|That project is gone/i);
     } finally {
       await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
@@ -202,6 +205,29 @@ describe("every screen draws something", () => {
       expect(frame.getAttribute("srcdoc") ?? "").toContain("Die Prüfung fällt aus.");
     } finally {
       await api(`/api/projects/${mail.id}?confirm=${mail.slug}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
+  // A calendar that gathers another calendar draws both, each switchable.
+  it("a calendar gathers other calendars", async () => {
+    const main = await api<Project>("/api/projects", {
+      body: { title: "ui main calendar " + Date.now(), groupId: group.slug, preset: "calendar" },
+    });
+    const other = await api<Project>("/api/projects", {
+      body: { title: "ui second calendar " + Date.now(), groupId: group.slug, preset: "calendar" },
+    });
+    try {
+      await api(`/api/projects/${main.id}/sources`, { method: "PUT", body: { sources: [other.id] } });
+      const CalendarView = (await import("./caps/CalendarView")).default;
+      const c = await draw(<CalendarView project={main} reload={() => {}} />, new RegExp(other.title, "i"));
+      // Both names are there, which is the whole point of gathering.
+      expect(c.textContent).toContain(main.title);
+      expect(c.textContent).toContain(other.title);
+      expect(c.textContent).not.toMatch(/could not be drawn/i);
+    } finally {
+      await api(`/api/projects/${main.id}?confirm=${main.slug}`, { method: "DELETE" });
+      await api(`/api/projects/${other.id}?confirm=${other.slug}`, { method: "DELETE" });
       cleanup();
     }
   });

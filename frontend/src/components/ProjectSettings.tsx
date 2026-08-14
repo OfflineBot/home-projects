@@ -4,6 +4,7 @@ import { useMeta } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon } from "./Icon";
 import ProjectFilters from "./ProjectFilters";
+import Gathers from "./Gathers";
 import { ConfirmDelete, Copyable, ErrorBox, Field, Modal, Section, useGuarded } from "./ui";
 
 /** Everything the settings table in section 7 lists for a project. */
@@ -546,6 +547,13 @@ export default function ProjectSettings({
 
       <Field label="Filters" hint="Rules that sort what lands here. Written once under Filters, picked up here.">
         <ProjectFilters project={project} />
+      </Field>
+
+      <Field
+        label="Gathers"
+        hint="Other projects shown inside this one. A calendar draws their entries beside its own, each switchable and in its own colour. What a project may not read, it does not gather."
+      >
+        <Gathers project={project} onError={setError} />
       </Field>
 
       <Section title="Getting it out" />

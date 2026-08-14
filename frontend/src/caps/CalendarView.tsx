@@ -64,12 +64,41 @@ export const KINDS: { key: Kind; title: string; hint: string }[] = [
 ];
 
 export default function CalendarView({ project }: { project: Project; reload: () => void }) {
+  // A calendar that gathers other calendars is not a different kind of
+  // calendar: it is this one, with more sources. Which projects those are is
+  // set in the project's settings, and each is switchable here.
+  const gathered = useQuery<{ sources: Project[] }>(`/api/projects/${project.id}/sources`);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const others = (gathered.data?.sources ?? []).filter((p) => p.capabilities?.includes("calendar"));
+
+  const sources = [
+    { id: project.id, title: project.title, color: project.color, readOnly: project.readOnly },
+    ...others.map((p) => ({ id: p.id, title: p.title, color: p.color, readOnly: p.readOnly })),
+  ];
+  const ids = sources.map((s) => s.id).join(",");
+
   return (
     <CalendarGrid
-      sources={[{ id: project.id, title: project.title, color: project.color, readOnly: project.readOnly }]}
-      endpoint={(from, to) => `/api/projects/${project.id}/calendar/events?from=${from}&to=${to}`}
+      sources={sources}
+      endpoint={(from, to) =>
+        others.length
+          ? `/api/capabilities/calendar/events?from=${from}&to=${to}&projects=${ids}`
+          : `/api/projects/${project.id}/calendar/events?from=${from}&to=${to}`
+      }
       defaultProject={project.id}
       showSubscription={project.id}
+      hidden={others.length ? hidden : undefined}
+      onToggleSource={
+        others.length
+          ? (id) =>
+              setHidden((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+          : undefined
+      }
     />
   );
 }

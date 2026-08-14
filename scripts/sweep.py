@@ -891,6 +891,30 @@ def main() -> int:
         check(bool(row) and row["state"] != "needs_password", "and the account is still ready")
         c.call("DELETE", f"/api/accounts/{dead['id']}")
 
+    # ------------------------------------------------- one project gathering others
+    # A main calendar is not a kind of calendar: it is a project that gathers
+    # the others, and a view that draws them beside its own.
+    hero = c.call("POST", "/api/projects", {
+        "title": f"Sweep main calendar {stamp}", "groupId": gslug, "preset": "calendar",
+    }, expect=201)
+    if hero:
+        none_yet = c.call("GET", f"/api/projects/{hero['id']}/sources")
+        check(bool(none_yet) and none_yet.get("sources") == [], "a project gathers nothing to begin with")
+        c.call("PUT", f"/api/projects/{hero['id']}/sources", {"sources": [cal]})
+        gathered = c.call("GET", f"/api/projects/{hero['id']}/sources") or {}
+        check([p["id"] for p in gathered.get("sources", [])] == [cal], "it can be told to gather another")
+        # The entries of both come back from one request, which is what the
+        # view asks for.
+        both = c.call("GET",
+                      f"/api/capabilities/calendar/events?from=2025-01-01&to=2026-12-31&projects={hero['id']},{cal}")
+        check(both is not None and "sources" in both, "and both are asked for at once")
+        c.call("PUT", f"/api/projects/{hero['id']}/sources", {"sources": [hero["id"]]}, expect=400)
+        c.call("PUT", f"/api/projects/{hero['id']}/sources", {"sources": ["not-an-id"]}, expect=400)
+        c.call("PUT", f"/api/projects/{hero['id']}/sources", {"sources": []})
+        emptied = c.call("GET", f"/api/projects/{hero['id']}/sources") or {}
+        check(emptied.get("sources") == [], "and it can gather nothing again")
+        c.call("DELETE", f"/api/projects/{hero['id']}?confirm={hero['slug']}")
+
     # ------------------------------------------------- another machine, over ssh
     # Wake, power, and the tmux sessions. The connection itself needs a machine
     # to connect to, so the parts that need one run only when HP_SSH is set:

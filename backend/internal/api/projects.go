@@ -668,6 +668,7 @@ func (s *Server) mountProjects(r fiber.Router) {
 	s.mountMoveImpact(one)
 	s.mountOneway(one)
 	s.mountDetect(one)
+	s.mountSources(one)
 	s.mountProjectGit(one)
 }
 

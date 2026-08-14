@@ -305,3 +305,49 @@ func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	}
 	return nil
 }
+
+// ------------------------------------------------------- what a project gathers
+
+// SourcesOf are the projects this one gathers into its own view, in the order
+// they were given.
+func (s *Store) SourcesOf(ctx context.Context, projectID uuid.UUID) ([]model.Project, error) {
+	rows, err := s.pool.Query(ctx, projectSelect+`
+		JOIN project_sources ps ON ps.source_id = p.id
+		WHERE ps.project_id = $1 ORDER BY ps.position`, projectID)
+	if err != nil {
+		return nil, norm(err)
+	}
+	defer rows.Close()
+	out := []model.Project{}
+	for rows.Next() {
+		p, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
+	}
+	return out, norm(rows.Err())
+}
+
+// SetSources replaces the whole list. A project cannot gather itself, and the
+// same project twice is once.
+func (s *Store) SetSources(ctx context.Context, projectID uuid.UUID, sources []uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return norm(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM project_sources WHERE project_id=$1`, projectID); err != nil {
+		return norm(err)
+	}
+	for i, id := range sources {
+		if id == projectID {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO project_sources (project_id, source_id, position)
+			VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, projectID, id, i); err != nil {
+			return norm(err)
+		}
+	}
+	return norm(tx.Commit(ctx))
+}
