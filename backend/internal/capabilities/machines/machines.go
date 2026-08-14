@@ -77,6 +77,51 @@ func (Capability) Presets() []capability.Preset {
 	}}
 }
 
+// A machine can be an account, which is the difference between typing a
+// password every time and adding the PC once.
+//
+// Its secret is a password or a private key — whichever that machine wants.
+// Nothing about it locks: a Linux box on the home network does not shut you out
+// after a typo, so a failed attempt says so and leaves the account alone. That
+// is what Locks: false means, and the accounts code keeps that promise.
+func (Capability) AccountKinds() []capability.AccountKind {
+	return []capability.AccountKind{{
+		Name:        "machine",
+		Title:       "Machine (SSH)",
+		Description: "A computer of yours: the password or the key it is reached with.",
+		Fields: []capability.AccountField{
+			{Name: "user", Label: "User", Type: "text", Required: true,
+				Hint: "Who to sign in as on that machine."},
+			{Name: "host", Label: "Address", Type: "text", Placeholder: "192.168.178.50",
+				Hint: "Only needed if this account is used without a machine beside it."},
+			{Name: "port", Label: "Port", Type: "number", Placeholder: "22"},
+			{Name: "passphrase", Label: "Key passphrase", Type: "password",
+				Hint: "Only if the key has one."},
+		},
+		SecretLabel: "Password or private key",
+		Test:        testMachineAccount,
+	}}
+}
+
+func testMachineAccount(ctx context.Context, env *capability.Env, a *model.Account, secret []byte) error {
+	var settings map[string]string
+	_ = json.Unmarshal(a.Config, &settings)
+	if strings.TrimSpace(settings["host"]) == "" {
+		return fmt.Errorf("this account has no address, so it can only be tested through a machine")
+	}
+	port := settings["port"]
+	if port == "" {
+		port = "22"
+	}
+	client, err := dial(ctx, settings["host"], port, settings["user"], secret, settings["passphrase"])
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	_, err = run(client, "true")
+	return err
+}
+
 // ------------------------------------------------------------------- reading
 
 func read(ctx context.Context, env *capability.Env, p *model.Project) List {
@@ -145,8 +190,28 @@ func (c Capability) signIn(ctx context.Context, env *capability.Env, m Machine, 
 	if m.Account != "" && password == "" {
 		return c.signInWithAccount(ctx, env, m)
 	}
+	if password == "" {
+		return nil, fmt.Errorf("no password was given for %s", m.Name)
+	}
+	return dial(ctx, m.Host, m.port(), m.User, []byte(password), "")
+}
+
+// dial is the one place that opens an SSH connection. The secret is either a
+// private key or a password — a key says so in its own first line, so nobody
+// has to tick a box about it.
+func dial(ctx context.Context, host, port, user string, secret []byte, passphrase string) (*ssh.Client, error) {
+	if user == "" {
+		return nil, fmt.Errorf("no user to sign in as")
+	}
 	var auths []ssh.AuthMethod
-	if password != "" {
+	if strings.Contains(string(secret), "PRIVATE KEY") {
+		signer, err := parseKey(secret, passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("the key could not be read: %w", err)
+		}
+		auths = append(auths, ssh.PublicKeys(signer))
+	} else {
+		password := string(secret)
 		auths = append(auths, ssh.Password(password),
 			// Some servers ask the password as a keyboard question instead.
 			ssh.KeyboardInteractive(func(_, _ string, questions []string, _ []bool) ([]string, error) {
@@ -157,25 +222,22 @@ func (c Capability) signIn(ctx context.Context, env *capability.Env, m Machine, 
 				return answers, nil
 			}))
 	}
-	if len(auths) == 0 {
-		return nil, fmt.Errorf("no password was given for %s", m.Name)
-	}
+	address := net.JoinHostPort(host, port)
 	dialer := net.Dialer{Timeout: 15 * time.Second}
-	address := net.JoinHostPort(m.Host, m.port())
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, fmt.Errorf("%s does not answer on %s", m.Name, address)
+		return nil, fmt.Errorf("%s does not answer", address)
 	}
 	// The host key is not pinned: these are machines on the home network, and a
 	// known_hosts file here would be theatre.
 	clientConn, chans, reqs, err := ssh.NewClientConn(conn, address, &ssh.ClientConfig{
-		User: m.User, Auth: auths,
+		User: user, Auth: auths,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         15 * time.Second,
 	})
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("the sign-in on %s failed", m.Name)
+		return nil, fmt.Errorf("the sign-in on %s failed", host)
 	}
 	return ssh.NewClient(clientConn, chans, reqs), nil
 }
@@ -247,27 +309,22 @@ func (c Capability) signInWithAccount(ctx context.Context, env *capability.Env, 
 		user = settings["user"]
 	}
 
+	host := m.Host
+	if host == "" {
+		host = settings["host"]
+	}
+	port := m.port()
+	if m.Port == 0 && settings["port"] != "" {
+		port = settings["port"]
+	}
+
 	var client *ssh.Client
 	err = env.UseAccount(ctx, found.ID, func(secret []byte) error {
-		signer, serr := parseKey(secret, settings["passphrase"])
-		if serr != nil {
-			return serr
-		}
-		address := net.JoinHostPort(m.Host, m.port())
-		dialer := net.Dialer{Timeout: 15 * time.Second}
-		conn, derr := dialer.DialContext(ctx, "tcp", address)
+		opened, derr := dial(ctx, host, port, user, secret, settings["passphrase"])
 		if derr != nil {
-			return fmt.Errorf("%s does not answer on %s", m.Name, address)
+			return derr
 		}
-		clientConn, chans, reqs, cerr := ssh.NewClientConn(conn, address, &ssh.ClientConfig{
-			User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 15 * time.Second,
-		})
-		if cerr != nil {
-			conn.Close()
-			return fmt.Errorf("the key was refused by %s", m.Name)
-		}
-		client = ssh.NewClient(clientConn, chans, reqs)
+		client = opened
 		return nil
 	})
 	if err != nil {

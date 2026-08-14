@@ -193,6 +193,10 @@ a.tile:hover { text-decoration: none; border-color: var(--tile-color, var(--acce
    pointer: a dashboard is for reading, not for its own buttons. */
 .tile-tools { display: flex; gap: 2px; opacity: 0; transition: opacity .12s ease; }
 .tile:hover .tile-tools, .tile:focus-within .tile-tools { opacity: 1; }
+/* In edit mode the handles are simply there: hunting for a button that only
+   appears under the pointer is not an interface. */
+.tiles.editing .tile-tools { opacity: 1; }
+.tiles.editing .tile { outline: 1px dashed var(--ctp-surface2); outline-offset: 2px; }
 .project-tile h3 a { display: inline-flex; align-items: center; gap: 7px; color: inherit; text-decoration: none; }
 .project-tile h3 a:hover { text-decoration: underline; }
 .tile-numbers { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 12px; }
@@ -208,6 +212,7 @@ a.tile:hover { text-decoration: none; border-color: var(--tile-color, var(--acce
 .project-block-head a:hover { text-decoration: underline; }
 .project-block-head button { opacity: 0; transition: opacity .12s ease; }
 .project-block:hover .project-block-head button { opacity: 1; }
+.project-block-head button:focus-visible { opacity: 1; }
 .put-away { margin-top: 8px; }
 
 /* Controls sit on the object, and nothing is hover-only: the menu button is

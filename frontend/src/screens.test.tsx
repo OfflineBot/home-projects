@@ -97,8 +97,9 @@ describe("every screen draws something", () => {
   it("things put away can be brought back", async () => {
     await api("/api/dashboard/hidden", { body: { kind: "project", ref: project.id } });
     try {
-      const c = await draw(<Dashboard />, /put away/i);
-      expect(c.textContent).toMatch(/1 put away/);
+      const c = await draw(<Dashboard />, /Edit/i);
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
+      await waitFor(() => expect(c.textContent).toMatch(/1 put away/));
       const open = [...c.querySelectorAll("button")].find((b) => /put away/i.test(b.textContent ?? ""));
       fireEvent.click(open!);
       await waitFor(() => expect(c.textContent).toMatch(/Bring back/i));
@@ -221,6 +222,7 @@ describe("every screen draws something", () => {
       });
       const c = await draw(<Dashboard />, /in a section/i);
       await waitFor(() => expect(c.querySelector(".board-heading")?.textContent).toBe("Everyday"));
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
       // The arranging dialog opens from the tile itself.
       const arrange = [...c.querySelectorAll("button")].find(
         (b) => b.getAttribute("aria-label") === "Arrange this tile",

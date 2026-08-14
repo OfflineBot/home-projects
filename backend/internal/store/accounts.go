@@ -160,6 +160,19 @@ func (s *Store) ConfirmSuccess(ctx context.Context, id uuid.UUID) error {
 	return norm(err)
 }
 
+// ReleaseAttempt ends an attempt that failed without taking the secret away.
+// It is for the kinds whose remote side does not lock: a home machine over SSH
+// does not shut you out after a typo, and deleting the password every time
+// somebody mistypes it is a worse failure than the one it guards against.
+func (s *Store) ReleaseAttempt(ctx context.Context, id uuid.UUID, reason string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE accounts
+		SET attempt_in_flight=false, attempt_started_at=NULL, state='error',
+		    last_error=$2, updated_at=now()
+		WHERE id=$1`, id, reason)
+	return norm(err)
+}
+
 // ConsumeSecret deletes the stored password. Every outcome that is not a
 // confirmed success ends here — wrong password, timeout, abort, an ambiguous
 // answer, or a crash discovered at the next start.

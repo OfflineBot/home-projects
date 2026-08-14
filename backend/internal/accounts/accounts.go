@@ -74,6 +74,17 @@ func Attempt(ctx context.Context, env *capability.Env, accountID uuid.UUID, time
 
 	if attemptErr != nil {
 		reason := attemptErr.Error()
+		// A kind whose remote side locks pays the full price for a failed
+		// attempt: the stored password goes. A kind that does not lock — a
+		// machine on the home network, a key — keeps it, because there is
+		// nothing to protect and everything to lose.
+		if kind, ok := capability.AccountKindByName(account.Kind); ok && !kind.Locks {
+			if rerr := st.ReleaseAttempt(ctx, accountID, reason); rerr != nil {
+				return httpx.Internal("the attempt could not be closed").WithCause(rerr)
+			}
+			st.Audit(ctx, nil, "account.attempt_failed", account.Title, "", map[string]any{"reason": reason})
+			return httpx.New(502, "attempt_failed", "%s", reason)
+		}
 		if cerr := st.ConsumeSecret(ctx, accountID, reason); cerr != nil {
 			return httpx.Internal("the credential could not be removed after a failed attempt").WithCause(cerr)
 		}

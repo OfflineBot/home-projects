@@ -21,6 +21,7 @@ interface Machine {
   user?: string;
   mac?: string;
   broadcast?: string;
+  account?: string;
   note?: string;
   up: boolean;
 }
@@ -32,11 +33,19 @@ interface Session {
   created: string;
 }
 
+interface AccountRow {
+  id: string;
+  kind: string;
+  title: string;
+  needsSecret?: boolean;
+}
+
 export default function MachinesView({ project }: { project: Project; reload: () => void }) {
   const { data, error, loading, reload } = useQuery<{ machines: Machine[] }>(
     `/api/projects/${project.id}/machines`,
   );
   const [editing, setEditing] = useState<Machine[] | null>(null);
+  const accounts = useQuery<{ accounts: AccountRow[] }>("/api/accounts");
   const [open, setOpen] = useState<string | null>(null);
   const [failed, setFailed] = useState<Error | null>(null);
 
@@ -45,9 +54,17 @@ export default function MachinesView({ project }: { project: Project; reload: ()
   const [keep, setKeep] = useState(true);
   const [asking, setAsking] = useState<null | { why: string; go: (password: string) => void }>(null);
 
-  /** Runs something that needs the sign-in, asking for it if it is not here. */
+  /**
+   * Runs something that needs the sign-in. A machine that has an account
+   * behind it needs nothing from anybody: the empty password tells the server
+   * to use that account.
+   */
   const withPassword = useCallback(
-    (why: string, run: (password: string) => Promise<void>) => {
+    (why: string, run: (password: string) => Promise<void>, byAccount = false) => {
+      if (byAccount) {
+        void run("");
+        return;
+      }
       if (password) {
         void run(password).then(() => {
           if (!keep) setPassword("");
@@ -133,6 +150,7 @@ export default function MachinesView({ project }: { project: Project; reload: ()
               <span className="meta">{m.up ? "up" : "not answering"}</span>
             </div>
             {m.note ? <p className="meta">{m.note}</p> : null}
+            {m.account ? <p className="meta">signs in with the account “{m.account}”</p> : null}
             <div className="tile-foot">
               {!m.up && m.mac ? (
                 <button
@@ -160,14 +178,24 @@ export default function MachinesView({ project }: { project: Project; reload: ()
                   <button
                     className="btn small ghost"
                     onClick={() =>
-                      withPassword(`shutting ${m.name} down`, (secret) => act(m, "shutdown", secret))
+                      withPassword(
+                        `shutting ${m.name} down`,
+                        (secret) => act(m, "shutdown", secret),
+                        Boolean(m.account),
+                      )
                     }
                   >
                     Shut down
                   </button>
                   <button
                     className="btn small ghost"
-                    onClick={() => withPassword(`restarting ${m.name}`, (secret) => act(m, "reboot", secret))}
+                    onClick={() =>
+                      withPassword(
+                        `restarting ${m.name}`,
+                        (secret) => act(m, "reboot", secret),
+                        Boolean(m.account),
+                      )
+                    }
                   >
                     Restart
                   </button>
@@ -176,7 +204,11 @@ export default function MachinesView({ project }: { project: Project; reload: ()
             </div>
 
             {open === m.name ? (
-              <Tmux project={project} machine={m} withPassword={withPassword} />
+              <Tmux
+                project={project}
+                machine={m}
+                withPassword={(why, run) => withPassword(why, run, Boolean(m.account))}
+              />
             ) : null}
           </div>
         ))}
@@ -196,6 +228,9 @@ export default function MachinesView({ project }: { project: Project; reload: ()
         <EditMachines
           project={project}
           machines={editing}
+          accounts={(accounts.data?.accounts ?? []).filter(
+            (a) => a.kind === "machine" || a.kind === "ssh",
+          )}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -484,11 +519,13 @@ function AskPassword({
 function EditMachines({
   project,
   machines,
+  accounts,
   onClose,
   onSaved,
 }: {
   project: Project;
   machines: Machine[];
+  accounts: AccountRow[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -524,6 +561,7 @@ function EditMachines({
                       user: m.user,
                       mac: m.mac,
                       broadcast: m.broadcast,
+                      account: m.account,
                       note: m.note,
                     })),
                   },
@@ -580,6 +618,22 @@ function EditMachines({
                 placeholder="192.168.178.255"
                 onChange={(e) => set(i, { broadcast: e.target.value })}
               />
+            </Field>
+          </div>
+          <div className="row">
+            <Field
+              label="Account"
+              hint="Add the machine once under Accounts and it is never asked for a password here."
+            >
+              <select value={m.account ?? ""} onChange={(e) => set(i, { account: e.target.value })}>
+                <option value="">— type the password each time —</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.title}>
+                    {a.title}
+                    {a.needsSecret ? " (needs its password again)" : ""}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
           <div className="row" style={{ alignItems: "end" }}>

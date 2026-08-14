@@ -170,6 +170,11 @@ func run() error {
 		ReadTimeout:           5 * time.Minute,
 		WriteTimeout:          10 * time.Minute,
 		ProxyHeader:           "X-Forwarded-For",
+		// A name in an address arrives encoded — "Start%20PC" for a rule
+		// called "Start PC". Decoding it here is the only place it can be
+		// done once: every capability that addresses a thing by its name was
+		// otherwise one space away from "there is no rule called that".
+		UnescapePath: true,
 	})
 	app.Use(recover.New())
 	app.Use(securityHeaders(cfg))

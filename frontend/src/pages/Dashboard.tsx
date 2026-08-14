@@ -77,6 +77,10 @@ export default function Dashboard() {
   };
   const [showHidden, setShowHidden] = useState(false);
   const [arranging, setArranging] = useState<Tile | null>(null);
+  // Reading is the normal state of this page; arranging is a thing you go into
+  // on purpose. Without the switch every tile carried three buttons that were
+  // in the way 99 days out of 100.
+  const [editing, setEditing] = useState(false);
 
   // Tiles are kept in the order they are shown, so moving one is a swap of the
   // two positions and nothing else.
@@ -121,9 +125,20 @@ export default function Dashboard() {
             <button className="btn" onClick={reload}>
               <Icon name="refresh" size={16} /> Refresh
             </button>
-            <button className="btn primary" onClick={() => setAdding(true)}>
-              <Icon name="plus" size={16} /> Add a tile
-            </button>
+            {editing ? (
+              <>
+                <button className="btn" onClick={() => setAdding(true)}>
+                  <Icon name="plus" size={16} /> Add a tile
+                </button>
+                <button className="btn primary" onClick={() => setEditing(false)}>
+                  <Icon name="check" size={16} /> Done
+                </button>
+              </>
+            ) : (
+              <button className="btn" onClick={() => setEditing(true)}>
+                <Icon name="settings" size={16} /> Edit
+              </button>
+            )}
           </div>
         ) : null}
       </div>
@@ -136,7 +151,7 @@ export default function Dashboard() {
           {sections(data.tiles).map(([heading, group]) => (
           <section key={heading || "—"} className="board-section">
             {heading ? <h2 className="board-heading">{heading}</h2> : null}
-          <div className="tiles" style={{ marginBottom: 24 }}>
+          <div className={editing ? "tiles editing" : "tiles"} style={{ marginBottom: 24 }}>
             {group.map((tile) => {
               const index = data.tiles.indexOf(tile);
               const block = data.groups.find((b) => b.group.id === tile.groupId);
@@ -153,7 +168,7 @@ export default function Dashboard() {
                     tile={tile}
                     project={project}
                     numbers={numbers}
-                    editable={Boolean(session.user)}
+                    editable={editing}
                     onArrange={() => setArranging(tile)}
                     onMove={(by) => move(index, by)}
                     onRemove={async () => {
@@ -179,7 +194,7 @@ export default function Dashboard() {
                       </div>
                       <h3>{tile.title || tile.variable}</h3>
                     </div>
-                    {session.user ? (
+                    {editing ? (
                       <div className="tile-tools">
                         <button
                           className="btn ghost icon"
@@ -233,7 +248,7 @@ export default function Dashboard() {
             </button>
             <Icon name={block.group.icon} size={17} />
             <Link to={`/groups/${block.group.slug}`}>{block.group.title}</Link>
-            {block.group.pinned && session.user ? (
+            {block.group.pinned && editing ? (
               <button
                 className="btn ghost icon"
                 title="Take this group off the dashboard"
@@ -267,7 +282,7 @@ export default function Dashboard() {
                             <div className="sub">{d.op} · the group's own</div>
                             <h3>{d.name}</h3>
                           </div>
-                          {session.user ? (
+                          {editing ? (
                             <div className="tile-tools">
                               <button
                                 className="btn ghost icon"
@@ -302,7 +317,7 @@ export default function Dashboard() {
                         <Link to={`/groups/${block.group.slug}/${list[0].projectSlug}`}>
                           {list[0].projectSlug}
                         </Link>
-                        {session.user ? (
+                        {editing ? (
                           <button
                             className="btn ghost icon"
                             title="Take this project off the dashboard"
@@ -323,7 +338,7 @@ export default function Dashboard() {
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <h3>{v.name}</h3>
                               </div>
-                              {session.user ? (
+                              {editing ? (
                                 <div className="tile-tools">
                                   <button
                                     className="btn ghost icon"
@@ -358,7 +373,7 @@ export default function Dashboard() {
 
       {/* Nothing disappears for good: what was put away is listed, with the way
           back. */}
-      {session.user && hidden.length ? (
+      {editing && hidden.length ? (
         <div className="put-away">
           <button className="btn ghost small" onClick={() => setShowHidden(!showHidden)}>
             <Icon name={showHidden ? "chevronDown" : "chevronRight"} size={13} />

@@ -3,7 +3,6 @@ package machines
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -322,10 +321,7 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 func machineOf(ctx *fiber.Ctx, env *capability.Env) (Machine, error) {
 	p := capability.Project(ctx)
 	list := read(ctx.UserContext(), env, p)
-	name, err := url.QueryUnescape(ctx.Params("name"))
-	if err != nil {
-		name = ctx.Params("name")
-	}
+	name := ctx.Params("name")
 	m, ok := find(list, name)
 	if !ok {
 		return Machine{}, httpx.NotFound("There is no machine called %q here.", name)
@@ -357,11 +353,6 @@ func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Pro
 	return out, nil
 }
 
-// sessionOf is the session name as it was typed, not as it was encoded.
-func sessionOf(ctx *fiber.Ctx) string {
-	name, err := url.QueryUnescape(ctx.Params("session"))
-	if err != nil {
-		return ctx.Params("session")
-	}
-	return name
-}
+// sessionOf is the session name as it was typed. The server decodes the path
+// itself, so nothing is undone twice here — a session called "a+b" is a+b.
+func sessionOf(ctx *fiber.Ctx) string { return ctx.Params("session") }

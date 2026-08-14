@@ -764,6 +764,16 @@ def main() -> int:
         "actions": [{"run": "ping", "host": "127.0.0.1", "port": int(args.url.rsplit(":", 1)[1].strip("/"))}],
     }]})
     run = c.call("POST", f"/api/projects/{system}/automation/rules/check-self/run", expect=(200, 502))
+    # A rule whose name has a space in it is addressed the way every other one
+    # is. "There is no rule called \"Start%20PC\"" was a real answer once.
+    c.call("PUT", f"/api/projects/{system}/automation/rules", {"rules": [{
+        "name": "check-self", "trigger": {"type": "button"},
+        "steps": [{"action": "ping", "with": {"host": "127.0.0.1", "port": "5000", "variable": "online"}}],
+    }, {
+        "name": "Start PC", "trigger": {"type": "button"},
+        "steps": [{"action": "ping", "with": {"host": "127.0.0.1", "port": "5000", "variable": "online"}}],
+    }]})
+    c.call("POST", f"/api/projects/{system}/automation/rules/Start%20PC/run", expect=(200, 502))
     check(bool(run) and run.get("run", {}).get("status") == "ok", "the automation rule ran")
     vars_after = c.call("GET", f"/api/projects/{system}/variables")
     check(bool(vars_after) and any(v["name"] == "online" for v in vars_after["variables"]),
@@ -978,6 +988,22 @@ def main() -> int:
         c.call("POST", f"/api/projects/{pcs['id']}/machines/no%20mac/wake", {}, expect=400)
         c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{"name": "", "host": "x"}]}, expect=400)
 
+        # A machine can be an account: added once, and never asked again.
+        machine_account = c.call("POST", "/api/accounts", {
+            "kind": "machine", "title": f"sweep-machine-{stamp}",
+            "config": {"user": user or "nobody", "host": host or "127.0.0.1", "port": port or "22"},
+            "secret": "whatever-it-is",
+        }, expect=201)
+        if machine_account:
+            # This kind does not lock, so a failed attempt says so and leaves
+            # the stored secret alone — losing it on every typo would be the
+            # worse failure.
+            c.call("POST", f"/api/accounts/{machine_account['id']}/test", expect=(200, 502, 400))
+            kept = next((a for a in (c.call("GET", "/api/accounts") or {}).get("accounts", [])
+                         if a["id"] == machine_account["id"]), None)
+            check(bool(kept) and kept["hasSecret"],
+                  "a machine account keeps its password after a failed attempt")
+
         if ssh_env:
             c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{
                 "name": "probe", "host": host, "port": int(port), "user": user,
@@ -996,11 +1022,23 @@ def main() -> int:
                   "something typed into it lands on its screen")
             seen = c.call("POST", f"{base}/tmux/{name}", {"password": password, "lines": 20})
             check(bool(seen) and "swept-through" in seen.get("screen", ""), "and is there when looked at again")
+            # The same, through an account: no password in the request at all.
+            if machine_account:
+                c.call("POST", f"/api/accounts/{machine_account['id']}/secret", {"secret": password})
+                c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{
+                    "name": "probe", "host": host, "port": int(port), "user": user,
+                    "account": machine_account["title"],
+                }]})
+                by_account = c.call("POST", f"{base}/tmux", {})
+                check(by_account is not None and "sessions" in by_account,
+                      "a machine with an account needs no password typed in")
             c.call("POST", f"{base}/tmux/{name}/kill", {"password": password})
             gone = c.call("POST", f"{base}/tmux", {"password": password}) or {}
             check(not any(x["name"] == name for x in gone.get("sessions", [])), "and it can be closed again")
         else:
             print("  (no HP_SSH — the parts that need a real machine were not measured)")
+        if machine_account:
+            c.call("DELETE", f"/api/accounts/{machine_account['id']}")
         c.call("DELETE", f"/api/projects/{pcs['id']}?confirm={pcs['slug']}")
 
     # ------------------------------------------------- packed up and carried over
