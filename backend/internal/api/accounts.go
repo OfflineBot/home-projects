@@ -289,6 +289,7 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 			Enabled    *bool            `json:"enabled"`
 			AccountID  *string          `json:"accountId"`
 			FilterID   *string          `json:"filterId"`
+			ProjectID  *string          `json:"projectId"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
@@ -299,6 +300,21 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		}
 		if in.Enabled != nil && *in.Enabled {
 			patch.PausedFor = ptrString("")
+		}
+		// Moving it to another project: from the next run on it writes there.
+		if in.ProjectID != nil && strings.TrimSpace(*in.ProjectID) != "" {
+			target, err := s.resolveProjectRef(c, *in.ProjectID)
+			if err != nil {
+				return err
+			}
+			var group *model.Group
+			if target.GroupID != nil {
+				group, _ = s.Store.GroupByID(c.UserContext(), *target.GroupID)
+			}
+			if target.EffectiveReadOnly(group) {
+				return httpx.ReadOnly("The project " + target.Title)
+			}
+			patch.ProjectID = &target.ID
 		}
 		if in.FilterID != nil {
 			if *in.FilterID == "" {

@@ -318,8 +318,11 @@ func (s *Store) schedulerCountsByAccount(ctx context.Context) (map[uuid.UUID]int
 }
 
 type SchedulerPatch struct {
-	AccountID   **uuid.UUID
-	FilterID    **uuid.UUID
+	AccountID **uuid.UUID
+	FilterID  **uuid.UUID
+	// ProjectID moves a scheduler to another project: from then on it writes
+	// there. What it already wrote stays where it was written.
+	ProjectID   *uuid.UUID
 	Title       *string
 	Schedule    *string
 	TargetPath  *string
@@ -346,6 +349,9 @@ func (s *Store) UpdateScheduler(ctx context.Context, id uuid.UUID, p SchedulerPa
 	}
 	if p.FilterID != nil {
 		add("filter_id", *p.FilterID)
+	}
+	if p.ProjectID != nil {
+		add("project_id", *p.ProjectID)
 	}
 	if p.Title != nil {
 		add("title", *p.Title)

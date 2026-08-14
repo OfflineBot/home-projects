@@ -203,6 +203,8 @@ export interface Group {
   hasPassword: boolean;
   readOnly: boolean;
   pushWithPassword: boolean;
+  /** Who may clone, when that is not the same answer as who may see the group. */
+  gitVisibility?: string;
   color: string;
   icon: string;
   siteProjectId?: string;

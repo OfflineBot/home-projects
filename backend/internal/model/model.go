@@ -77,6 +77,9 @@ type Group struct {
 	Projects     []ProjectBrief `json:"projects,omitempty"`
 
 	PasswordHash string `json:"-"`
+	// GitVisibility decides who may clone, when that is not the same answer as
+	// who may see the group. Empty means it is the same answer.
+	GitVisibility Visibility `json:"gitVisibility,omitempty"`
 }
 
 // ProjectBrief is the short form embedded in a group listing (id, slug, title,

@@ -167,6 +167,7 @@ func (s *Server) mountGroups(r fiber.Router) {
 			Password         *string `json:"password"`
 			ReadOnly         *bool   `json:"readOnly"`
 			PushWithPassword *bool   `json:"pushWithPassword"`
+			GitVisibility    *string `json:"gitVisibility"`
 			Color            *string `json:"color"`
 			Icon             *string `json:"icon"`
 			Pinned           *bool   `json:"pinned"`
@@ -187,6 +188,23 @@ func (s *Server) mountGroups(r fiber.Router) {
 		if in.PushWithPassword != nil && *in.PushWithPassword != grp.PushWithPassword {
 			if err := s.stepUp(c, "letting the repository password push"); err != nil {
 				return err
+			}
+		}
+		// Who may clone is its own question: a group can be public while the
+		// repository is not, and the other way round. Empty means the two are
+		// the same answer, which is what they always were.
+		if in.GitVisibility != nil {
+			v := model.Visibility(strings.TrimSpace(*in.GitVisibility))
+			switch v {
+			case "", model.VisibilityPublic, model.VisibilityPassword, model.VisibilityPrivate:
+				if v != grp.GitVisibility {
+					if err := s.stepUp(c, "changing who may clone this repository"); err != nil {
+						return err
+					}
+				}
+				patch.GitVisibility = &v
+			default:
+				return httpx.BadRequest("A repository is public, password-protected or private.")
 			}
 		}
 		if in.Color != nil {

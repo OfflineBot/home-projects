@@ -495,6 +495,19 @@ def main() -> int:
     if formula:
         c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
 
+    # --------------------------------------------- who may clone, on its own
+    # A group can be public while its repository is not, and the other way
+    # round: two different questions.
+    c.call("PATCH", f"/api/groups/{gslug}", {"gitVisibility": "private"})
+    after = c.call("GET", f"/api/groups/{gslug}")
+    check(bool(after) and after["group"]["gitVisibility"] == "private",
+          "a repository can be closed while the group is open")
+    c.call("PATCH", f"/api/groups/{gslug}", {"gitVisibility": "nonsense"}, expect=400)
+    c.call("PATCH", f"/api/groups/{gslug}", {"gitVisibility": ""})
+    back = c.call("GET", f"/api/groups/{gslug}")
+    check(bool(back) and not back["group"].get("gitVisibility"),
+          "and can go back to following the group")
+
     # --------------------------------------------------------------- one-way
     # Someone hands their material over without having an account here: a link,
     # a form, one sign-in, nothing stored.

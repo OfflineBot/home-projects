@@ -34,6 +34,7 @@ export default function GroupSettings({
     pinned: group.pinned,
     readOnly: group.readOnly,
     pushWithPassword: group.pushWithPassword,
+    gitVisibility: group.gitVisibility ?? "",
     archived: group.archived,
     siteProjectId: group.siteProjectId ?? "",
   });
@@ -58,6 +59,7 @@ export default function GroupSettings({
         pinned: form.pinned,
         readOnly: form.readOnly,
         pushWithPassword: form.pushWithPassword,
+        gitVisibility: form.gitVisibility,
         archived: form.archived,
         siteProjectId: form.siteProjectId,
       };
@@ -179,7 +181,7 @@ export default function GroupSettings({
       </Field>
 
       <div className="row">
-        <Field label="Visibility" hint="Group and repository.">
+        <Field label="Visibility">
           <select
             value={form.visibility}
             onChange={(e) => setForm({ ...form, visibility: e.target.value as Group["visibility"] })}
@@ -187,6 +189,25 @@ export default function GroupSettings({
             <option value="private">Private — only you</option>
             <option value="public">Public — anyone may look and clone</option>
             <option value="password">Password — anyone who knows it</option>
+          </select>
+        </Field>
+
+        <Field
+          label="Clone"
+          hint={
+            form.gitVisibility === ""
+              ? "As open as the group."
+              : "Answered on its own, whatever the group says."
+          }
+        >
+          <select
+            value={form.gitVisibility}
+            onChange={(e) => setForm({ ...form, gitVisibility: e.target.value })}
+          >
+            <option value="">as the group</option>
+            <option value="public">public — anyone may clone</option>
+            <option value="password">password — the group's password</option>
+            <option value="private">private — only signed in</option>
           </select>
         </Field>
         {form.visibility === "password" ? (

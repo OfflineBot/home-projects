@@ -295,6 +295,7 @@ function SchedulerDialog({
           method: "PATCH",
           body: {
             title: form.title,
+            projectId: form.projectId,
             schedule: form.schedule,
             targetPath: form.targetPath,
             accountId: form.accountId,
@@ -344,11 +345,29 @@ function SchedulerDialog({
     >
       <ErrorBox error={error} />
       {existing ? (
-        <p className="hint" style={{ marginTop: 0 }}>
-          <strong>{kind?.title ?? existing.kind}</strong> → {existing.projectSlug}
-          {existing.targetPath ? `/${existing.targetPath}` : ""}. What it does and which project it writes
-          into cannot be changed here — everything else can.
-        </p>
+        <>
+          <p className="hint" style={{ marginTop: 0 }}>
+            <strong>{kind?.title ?? existing.kind}</strong> — what it does cannot be changed; everything
+            else can.
+          </p>
+          <Field
+            label="Into which project"
+            hint={
+              form.projectId !== existing.projectId
+                ? "From the next run on it writes there. What it already wrote stays where it is."
+                : undefined
+            }
+          >
+            <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
+              {(projects.data?.projects ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.groupSlug ? `${p.groupSlug} / ` : ""}
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </>
       ) : (
         <>
           <Field label="What it does">

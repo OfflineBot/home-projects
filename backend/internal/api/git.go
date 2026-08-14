@@ -316,7 +316,7 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 			return &auth.Actor{User: u, Unlocked: actor.Unlocked}, true
 		}
 		// The password in the basic-auth field may also be the group's own.
-		if grp != nil && grp.Visibility == model.VisibilityPassword && grp.PasswordHash != "" &&
+		if grp != nil && gitVisibility(grp) == model.VisibilityPassword && grp.PasswordHash != "" &&
 			secret.Verify(pass, grp.PasswordHash) {
 			s.Store.RecordAttempt(ctx, "git", attemptKey, ip, true)
 			return &auth.Actor{Unlocked: map[uuid.UUID]bool{grp.ID: true}}, true
@@ -341,7 +341,9 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 	if grp == nil {
 		return nil, false
 	}
-	switch grp.Visibility {
+	// The repository may be more or less open than the group. Empty means the
+	// same answer as the group, which is what it always was.
+	switch gitVisibility(grp) {
 	case model.VisibilityPublic:
 		return actor, true
 	case model.VisibilityPassword:
@@ -350,6 +352,18 @@ func (s *Server) gitActor(c *fiber.Ctx, grp *model.Group, writing bool) (*auth.A
 		}
 	}
 	return nil, false
+}
+
+// gitVisibility is who may clone: the group's own answer unless the repository
+// was given a different one.
+func gitVisibility(g *model.Group) model.Visibility {
+	if g == nil {
+		return model.VisibilityPrivate
+	}
+	if g.GitVisibility != "" {
+		return g.GitVisibility
+	}
+	return g.Visibility
 }
 
 func (s *Server) gitProjects(ctx context.Context, grp *model.Group) ([]model.Project, error) {

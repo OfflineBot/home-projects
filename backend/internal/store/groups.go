@@ -9,14 +9,14 @@ import (
 )
 
 const groupCols = `id, owner_id, slug, title, description, visibility, password_hash,
-	read_only, push_with_password, color, icon, site_project_id, pinned, archived, position,
-	created_at, updated_at`
+	read_only, push_with_password, git_visibility, color, icon, site_project_id, pinned, archived,
+	position, created_at, updated_at`
 
 func scanGroup(r scanner) (*model.Group, error) {
 	var g model.Group
 	var pw *string
 	err := r.Scan(&g.ID, &g.OwnerID, &g.Slug, &g.Title, &g.Description, &g.Visibility, &pw,
-		&g.ReadOnly, &g.PushWithPassword, &g.Color, &g.Icon, &g.SiteProjectID, &g.Pinned,
+		&g.ReadOnly, &g.PushWithPassword, &g.GitVisibility, &g.Color, &g.Icon, &g.SiteProjectID, &g.Pinned,
 		&g.Archived, &g.Position, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		return nil, norm(err)
@@ -102,6 +102,7 @@ type GroupPatch struct {
 	PasswordHash     **string // set: pointer to value; clear: pointer to nil
 	ReadOnly         *bool
 	PushWithPassword *bool
+	GitVisibility    *model.Visibility
 	Color            *string
 	Icon             *string
 	SiteProjectID    **uuid.UUID
@@ -137,6 +138,9 @@ func (s *Store) UpdateGroup(ctx context.Context, id uuid.UUID, p GroupPatch) (*m
 	}
 	if p.ReadOnly != nil {
 		add("read_only", *p.ReadOnly)
+	}
+	if p.GitVisibility != nil {
+		add("git_visibility", string(*p.GitVisibility))
 	}
 	if p.PushWithPassword != nil {
 		add("push_with_password", *p.PushWithPassword)

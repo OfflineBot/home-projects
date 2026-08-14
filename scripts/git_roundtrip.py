@@ -87,6 +87,35 @@ c.call("DELETE", f"/api/projects/{p['id']}?confirm={p['slug']}")
 c.call("DELETE", f"/api/groups/{g['slug']}?confirm={g['slug']}")
 # Anything the Client itself refused is a failure too — including a cleanup that
 # did not go through.
+# --------------------------------------------- who may clone, on its own
+# The repository is its own question: a public group whose repository is
+# closed, and a private group whose repository is open, both have to behave.
+pub = c.call("POST", "/api/groups", {"title": "clone-visibility", "visibility": "public"})
+if pub:
+    open_p = c.call("POST", "/api/projects",
+                    {"title": "open", "groupId": pub["slug"], "preset": "data", "visibility": "public"})
+    c.call("PUT", f"/api/projects/{open_p['id']}/files/content", {"path": "a.txt", "content": "hi"})
+
+    def anon_clone() -> bool:
+        into = tempfile.mkdtemp()
+        env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE")}
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        done = subprocess.run(
+            ["git", "clone", "--quiet", "-b", open_p["slug"], "--single-branch",
+             f"{args.url}/git/{pub['slug']}.git", into + "/x"],
+            capture_output=True, text=True, env=env)
+        return done.returncode == 0
+
+    check(anon_clone(), "a public group hands its repository out")
+    c.call("PATCH", f"/api/groups/{pub['slug']}", {"gitVisibility": "private"})
+    check(not anon_clone(), "and stops when the repository alone is made private")
+    c.call("PATCH", f"/api/groups/{pub['slug']}", {"gitVisibility": "public", "visibility": "private"})
+    check(anon_clone(), "a private group can still hand its repository out")
+
+    c.call("DELETE", f"/api/projects/{open_p['id']}?confirm={open_p['slug']}")
+    c.call("DELETE", f"/api/groups/{pub['slug']}?confirm={pub['slug']}&withProjects=true")
+
+
 import sweep  # noqa: E402
 
 if sweep.failures:
