@@ -21,6 +21,8 @@ export default function MoodleView({ project }: { project: Project; reload: () =
     routes: "",
     onlyCurrent: true,
     flat: false,
+    prune: false,
+    rebuild: false,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -118,8 +120,23 @@ export default function MoodleView({ project }: { project: Project; reload: () =
       </label>
       <label className="check">
         <input type="checkbox" checked={form.flat} onChange={(e) => setForm({ ...form, flat: e.target.checked })} />
-        <span>No folder per course — everything straight into the target folder</span>
+        <span>No folders at all — every file straight into the target folder</span>
       </label>
+      <label className="check">
+        <input type="checkbox" checked={form.prune} onChange={(e) => setForm({ ...form, prune: e.target.checked })} />
+        <span>Remove files Moodle no longer has</span>
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={form.rebuild}
+          onChange={(e) => setForm({ ...form, rebuild: e.target.checked })}
+        />
+        <span>Rebuild — fetch everything again, not only what is new</span>
+      </label>
+      <p className="hint" style={{ marginTop: -6 }}>
+        Both only ever touch the folders this pull writes into. What you keep beside them stays.
+      </p>
 
       <div style={{ marginTop: 14 }}>
         <button

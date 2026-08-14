@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Spinner, formatDate } from "../components/ui";
 import { api, type Account, type Project, type Scheduler, type SchedulerKind, type SchedulerRun } from "../lib/api";
@@ -11,6 +11,19 @@ export default function Schedulers() {
     "/api/schedulers",
   );
   const runs = useQuery<{ runs: SchedulerRun[] }>("/api/runs");
+  const anyRunning = (data?.schedulers ?? []).some((s) => s.running);
+
+  // While something is running, the page keeps itself honest: the button stays
+  // dark and the result appears without a reload.
+  useEffect(() => {
+    if (!anyRunning) return;
+    const timer = setInterval(() => {
+      reload();
+      runs.reload();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [anyRunning, reload]);
+
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Scheduler | null>(null);
   const [showLog, setShowLog] = useState<SchedulerRun | null>(null);
@@ -19,11 +32,14 @@ export default function Schedulers() {
 
   if (!session.user) return <Empty icon="lock">Sign in to see the schedulers.</Empty>;
 
-  const run = async (s: Scheduler) => {
+  const run = async (s: Scheduler, fresh = false) => {
     setBusy(s.id);
     setActionError(null);
     try {
-      const result = await api<{ run: SchedulerRun }>(`/api/schedulers/${s.id}/run`, { method: "POST" });
+      const result = await api<{ run: SchedulerRun }>(
+        `/api/schedulers/${s.id}/run${fresh ? "?fresh=true" : ""}`,
+        { method: "POST" },
+      );
       setShowLog(result.run);
     } catch (err) {
       setActionError(err as Error);
@@ -32,6 +48,20 @@ export default function Schedulers() {
       reload();
       runs.reload();
     }
+  };
+
+  /**
+   * A rebuild does not empty the folder first: it fetches everything again and
+   * then removes what the source no longer has. Same end state, without a
+   * window where the material is gone because the fetch failed halfway.
+   */
+  const rebuild = async (s: Scheduler) => {
+    const ok = confirm(
+      `Rebuild "${s.title || s.kind}"?\n\n` +
+        "Every file is fetched again, and anything the source no longer has is removed from the folders " +
+        "this scheduler writes into. Whatever you keep beside those folders stays.",
+    );
+    if (ok) await run(s, true);
   };
 
   return (
@@ -78,9 +108,27 @@ export default function Schedulers() {
                 {s.lastStatus || "never run"}
               </span>
               {!s.enabled ? <span className="badge warn">paused</span> : null}
+              {s.running ? (
+                <span className="badge good">
+                  <Icon name="refresh" size={12} /> running
+                </span>
+              ) : null}
               <div style={{ flex: 1 }} />
-              <button className="btn small primary" disabled={busy === s.id} onClick={() => run(s)}>
-                <Icon name="play" size={13} /> Run now
+              <button
+                className="btn small primary"
+                disabled={busy === s.id || s.running}
+                title={s.running ? "It is running — a second start would write over the first" : "Run it now"}
+                onClick={() => run(s)}
+              >
+                <Icon name="play" size={13} /> {s.running || busy === s.id ? "Running…" : "Run now"}
+              </button>
+              <button
+                className="btn small"
+                disabled={busy === s.id || s.running}
+                title="Fetch everything again and remove what the source no longer has"
+                onClick={() => rebuild(s)}
+              >
+                <Icon name="refresh" size={13} /> Rebuild
               </button>
               <button className="btn small" onClick={() => setEditing(s)}>
                 <Icon name="settings" size={13} /> Edit
@@ -96,6 +144,8 @@ export default function Schedulers() {
               </button>
               <button
                 className="btn small danger"
+                disabled={s.running}
+                title={s.running ? "It is running — wait for it to finish" : "Delete this scheduler"}
                 onClick={async () => {
                   if (!confirm("Delete this scheduler?")) return;
                   await api(`/api/schedulers/${s.id}`, { method: "DELETE" });

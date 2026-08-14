@@ -92,6 +92,10 @@ type Job struct {
 	Account *model.Account
 	Secret  []byte
 	Options map[string]any
+	// Trigger is why this run is happening: "schedule", "manual",
+	// "automation" — or "rebuild", which asks for the target to be made to
+	// match the source exactly rather than added to.
+	Trigger string
 	Log     func(format string, args ...any)
 }
 

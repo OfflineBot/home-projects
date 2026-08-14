@@ -334,6 +334,8 @@ export interface Scheduler {
   lastRunAt?: string;
   lastStatus: string;
   nextRun?: string;
+  /** True while a run is in flight — a second start is refused, not queued. */
+  running?: boolean;
 }
 
 export interface SchedulerRun {

@@ -27,6 +27,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/slug"
 	"github.com/offlinebot/home-projects/backend/internal/store"
+	"github.com/offlinebot/home-projects/backend/internal/workspace"
 )
 
 type Capability struct{ capability.Base }
@@ -71,6 +72,9 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 				Hint: "One rule per line, first match wins. A bare number is the semester Moodle " +
 					"derives; anything else matches the course name; * catches the rest. " +
 					"Leave empty and everything lands in this scheduler's own project."},
+			{Name: "prune", Label: "Remove files the course no longer has", Type: "bool",
+				Hint: "Makes the folders a mirror of Moodle instead of a heap that only grows. " +
+					"Only inside the folders this scheduler writes — anything you keep beside them stays."},
 			{Name: "flat", Label: "No folders at all — every file straight into the target folder",
 				Type: "bool",
 				Hint: "Off keeps Moodle's own shape: a folder per course, and the sections and " +
@@ -215,6 +219,15 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	onlyCurrent, _ := job.Options["onlyCurrent"].(bool)
 	// flat throws the shape away: no folder per course, no sections, one heap.
 	flat, _ := job.Options["flat"].(bool)
+	// prune makes the target a mirror rather than a heap that only grows: what
+	// the course no longer has is removed here too. A rebuild always does it,
+	// and also fetches every file again instead of trusting what is there.
+	prune, _ := job.Options["prune"].(bool)
+	fresh := job.Trigger == "rebuild"
+	if fresh {
+		prune = true
+		job.Log("rebuild: every file is fetched again, and whatever Moodle no longer has is removed")
+	}
 	wanted := map[string]bool{}
 	if list, ok := job.Options["courses"].([]any); ok {
 		for _, item := range list {
@@ -262,6 +275,16 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	taken := 0
 	// Which projects were written into, so each gets one commit at the end.
 	touched := map[uuid.UUID]*model.Project{}
+	// The folders this run is responsible for: only inside them may anything
+	// be removed. Notes put next to a pulled course are not this run's to
+	// delete.
+	owned := map[uuid.UUID]map[string]*model.Project{}
+	claim := func(p *model.Project, folder string) {
+		if owned[p.ID] == nil {
+			owned[p.ID] = map[string]*model.Project{}
+		}
+		owned[p.ID][folder] = p
+	}
 
 	for _, course := range courses {
 		name := html.UnescapeString(course.Shortname)
@@ -298,6 +321,7 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		if flat {
 			folder = base
 		}
+		claim(target, folder)
 
 		items, err := courseTree(cfg.URL, token, course.ID, !flat)
 		if err != nil {
@@ -308,7 +332,7 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			rel := path.Join(folder, it.Rel)
 			// A link activity is written, not downloaded.
 			if it.Link != "" {
-				if env.Files.Exists(target, rel) {
+				if !fresh && env.Files.Exists(target, rel) {
 					skipped++
 					continue
 				}
@@ -332,8 +356,9 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			}
 			seen[key] = name
 			// A file that is already here and the same size is not fetched
-			// again. A different size means Moodle has a newer one.
-			if env.Files.Exists(target, rel) && sameSize(env, target, rel, it.Filesize) {
+			// again. A different size means Moodle has a newer one. A rebuild
+			// trusts none of that and fetches everything.
+			if !fresh && env.Files.Exists(target, rel) && sameSize(env, target, rel, it.Filesize) {
 				skipped++
 				continue
 			}
@@ -374,6 +399,17 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		job.Log("add a \"* -> some-project\" line to catch the rest")
 	}
 
+	removed := 0
+	if prune {
+		removed = pruneStrays(ctx, env, job, owned, seen)
+	}
+
+	for _, p := range owned {
+		for _, target := range p {
+			touched[target.ID] = target
+			break
+		}
+	}
 	for _, p := range touched {
 		if p.GitTracked {
 			_, _, _ = env.Files.Commit(ctx, p,
@@ -399,10 +435,13 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	if len(touched) > 1 {
 		message += fmt.Sprintf(", across %d projects", len(touched))
 	}
+	if removed > 0 {
+		message += fmt.Sprintf(", %d removed", removed)
+	}
 
 	return capability.Report{
 		Message:       message,
-		FilesChanged:  written,
+		FilesChanged:  written + removed,
 		Authenticated: true,
 		Variables: []store.VariableInput{
 			{Name: "courses", Type: "number", Value: len(courses), Source: "capability:moodle"},
@@ -472,6 +511,8 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			Routes      string `json:"routes"`
 			OnlyCurrent *bool  `json:"onlyCurrent"`
 			Flat        bool   `json:"flat"`
+			Prune       bool   `json:"prune"`
+			Rebuild     bool   `json:"rebuild"`
 		}
 		if err := ctx.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The request could not be read.")
@@ -508,7 +549,9 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 				"courses":     in.Courses,
 				"routes":      in.Routes,
 				"flat":        in.Flat,
+				"prune":       in.Prune,
 			},
+			Trigger: map[bool]string{true: "rebuild", false: "manual"}[in.Rebuild],
 			Log: func(format string, args ...any) {
 				lines = append(lines, fmt.Sprintf(format, args...))
 			},
@@ -551,4 +594,43 @@ func sameSize(env *capability.Env, p *model.Project, rel string, want int) bool 
 		return false
 	}
 	return entry.Size == int64(want)
+}
+
+// pruneStrays removes what the source no longer has.
+//
+// The rule that makes this safe enough to offer: it only ever looks inside the
+// folders this run wrote into — one per course, or the target folder when the
+// shape was thrown away. A note you put next to a pulled course is inside such
+// a folder and *will* go; a note next to the folder will not. That is why the
+// switch is off unless asked for, and why the log names every file it took.
+func pruneStrays(ctx context.Context, env *capability.Env, job capability.Job,
+	owned map[uuid.UUID]map[string]*model.Project, seen map[string]string) int {
+
+	removed := 0
+	for projectID, folders := range owned {
+		for folder, target := range folders {
+			fs := env.Files.Workspace().Open(projectID)
+			var strays []string
+			_ = fs.Walk(folder, func(e workspace.Entry) error {
+				if e.IsDir {
+					return nil
+				}
+				if _, mine := seen[projectID.String()+"|"+e.Path]; !mine {
+					strays = append(strays, e.Path)
+				}
+				return nil
+			})
+			for _, rel := range strays {
+				if err := env.Files.Remove(ctx, target, rel, false, files.Op{
+					Author: "the Moodle scheduler", Email: "scheduler@home-projects", Commit: false,
+				}); err != nil {
+					job.Log("%s could not be removed: %v", rel, err)
+					continue
+				}
+				job.Log("removed, the course no longer has it: %s", rel)
+				removed++
+			}
+		}
+	}
+	return removed
 }

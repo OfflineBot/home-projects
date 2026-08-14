@@ -433,6 +433,8 @@ def main() -> int:
         })
         after = c.call("GET", "/api/schedulers")
         mine = [x for x in (after or {}).get("schedulers", []) if x["id"] == sid]
+        check(bool(mine) and mine[0].get("running") is False,
+              "a scheduler says whether it is running, so the button can be dark before it is pressed")
         check(bool(mine) and mine[0]["title"] == "renamed"
               and mine[0]["schedule"] == "0 5 * * 1"
               and mine[0]["targetPath"] == "elsewhere"

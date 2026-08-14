@@ -9,6 +9,7 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -104,6 +105,19 @@ func (r *Runner) Reload(ctx context.Context) error {
 	return nil
 }
 
+// ErrAlreadyRunning is what a second start gets while the first is still
+// going. It is its own error so the API can answer 409 rather than 500: this is
+// not a failure, it is a refusal.
+var ErrAlreadyRunning = errors.New("this scheduler is already running")
+
+// Running reports whether a run is in flight. The UI asks so the button can be
+// dark before it is pressed, instead of explaining afterwards.
+func (r *Runner) Running(id uuid.UUID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.busy[id]
+}
+
 // Next reports when each scheduler runs next, for the UI.
 func (r *Runner) Next(id uuid.UUID) *time.Time {
 	r.mu.Lock()
@@ -129,11 +143,13 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 		return nil, err
 	}
 
-	// One run at a time per scheduler.
+	// One run at a time per scheduler. Two runs writing the same files, with
+	// one credential between them, is how a pull half-overwrites itself and a
+	// password gets spent twice.
 	r.mu.Lock()
 	if r.busy[schedulerID] {
 		r.mu.Unlock()
-		return nil, fmt.Errorf("this scheduler is already running")
+		return nil, ErrAlreadyRunning
 	}
 	r.busy[schedulerID] = true
 	r.mu.Unlock()
@@ -209,6 +225,7 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 		Scheduler: sched,
 		Project:   project,
 		Options:   options,
+		Trigger:   trigger,
 		Log:       logf,
 	}
 

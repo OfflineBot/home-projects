@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/capability"
 	"github.com/offlinebot/home-projects/backend/internal/httpx"
 	"github.com/offlinebot/home-projects/backend/internal/model"
+	"github.com/offlinebot/home-projects/backend/internal/scheduler"
 	"github.com/offlinebot/home-projects/backend/internal/store"
 )
 
@@ -195,7 +197,11 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		}
 		list := make([]schedulerView, 0, len(schedulers))
 		for _, sc := range schedulers {
-			list = append(list, schedulerView{Scheduler: sc, NextRun: s.Sched.Next(sc.ID)})
+			list = append(list, schedulerView{
+				Scheduler: sc,
+				NextRun:   s.Sched.Next(sc.ID),
+				Running:   s.Sched.Running(sc.ID),
+			})
 		}
 		return c.JSON(fiber.Map{"schedulers": list, "kinds": capability.SchedulerKinds()})
 	})
@@ -325,7 +331,23 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		if err != nil {
 			return httpx.BadRequest("That is not a scheduler id.")
 		}
-		run, runErr := s.Sched.Run(c.UserContext(), id, "manual")
+		// A second start while the first is still going is refused, not queued
+		// and not run alongside: two runs write the same files, and between
+		// them they would spend one single-use credential twice.
+		if s.Sched.Running(id) {
+			return httpx.Conflict("This scheduler is already running. Wait for it to finish.")
+		}
+		// A rebuild is the same run with a different question: not "what is
+		// new?" but "make this match the source". It fetches everything again
+		// and removes what the source no longer has.
+		trigger := "manual"
+		if c.QueryBool("fresh", false) {
+			trigger = "rebuild"
+		}
+		run, runErr := s.Sched.Run(c.UserContext(), id, trigger)
+		if errors.Is(runErr, scheduler.ErrAlreadyRunning) {
+			return httpx.Conflict("This scheduler is already running. Wait for it to finish.")
+		}
 		if run == nil && runErr != nil {
 			return httpx.Internal("%v", runErr)
 		}
@@ -363,6 +385,9 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 type schedulerView struct {
 	model.Scheduler
 	NextRun *time.Time `json:"nextRun,omitempty"`
+	// Running is true while a run is in flight. It is what lets the button be
+	// dark before it is pressed rather than apologetic afterwards.
+	Running bool `json:"running"`
 }
 
 func contains(list []string, v string) bool {
