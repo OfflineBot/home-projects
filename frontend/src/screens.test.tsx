@@ -209,6 +209,33 @@ describe("every screen draws something", () => {
     }
   });
 
+  // A tile under a heading of its own, and the dialog that puts it there.
+  it("the dashboard sorts tiles into sections", async () => {
+    const tile = await api<{ id: string }>("/api/dashboard/tiles", {
+      body: { kind: "project", projectId: project.id, title: "in a section" },
+    });
+    try {
+      await api(`/api/dashboard/tiles/${tile.id}`, {
+        method: "PATCH",
+        body: { section: "Everyday", visibility: "public" },
+      });
+      const c = await draw(<Dashboard />, /in a section/i);
+      await waitFor(() => expect(c.querySelector(".board-heading")?.textContent).toBe("Everyday"));
+      // The arranging dialog opens from the tile itself.
+      const arrange = [...c.querySelectorAll("button")].find(
+        (b) => b.getAttribute("aria-label") === "Arrange this tile",
+      );
+      expect(arrange).toBeTruthy();
+      fireEvent.click(arrange!);
+      const dialog = await waitFor(() => screen.getByRole("dialog"));
+      expect(dialog.textContent).toMatch(/Who may see it/i);
+      expect(dialog.textContent).toMatch(/stays private/i);
+      cleanup();
+    } finally {
+      await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
+    }
+  });
+
   // A calendar that gathers another calendar draws both, each switchable.
   it("a calendar gathers other calendars", async () => {
     const main = await api<Project>("/api/projects", {

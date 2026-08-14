@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -47,6 +48,23 @@ func (s *Server) mountDashboard(r fiber.Router) {
 
 		tiles := []model.DashboardTile{}
 		hidden := []store.Hidden{}
+		if !actor.IsUser() {
+			// A visitor sees the tiles their owner made public — and only as
+			// far as the thing behind them is public too. A tile is a window,
+			// and a window cannot show more than the room behind it.
+			owner, oerr := s.Store.OwnerID(ctx)
+			if oerr == nil {
+				all, terr := s.Store.ListTiles(ctx, owner)
+				if terr != nil {
+					return httpx.Internal("the tiles could not be read").WithCause(terr)
+				}
+				for _, t := range all {
+					if s.tileIsVisible(c, t, visible) {
+						tiles = append(tiles, t)
+					}
+				}
+			}
+		}
 		if actor.IsUser() {
 			tiles, err = s.Store.ListTiles(ctx, actor.User.ID)
 			if err != nil {
@@ -127,20 +145,30 @@ func (s *Server) mountDashboard(r fiber.Router) {
 			return httpx.BadRequest("That is not a tile id.")
 		}
 		var in struct {
-			Variable *string          `json:"variable"`
-			Title    *string          `json:"title"`
-			Kind     *string          `json:"kind"`
-			Options  *json.RawMessage `json:"options"`
-			X        *int             `json:"x"`
-			Y        *int             `json:"y"`
-			W        *int             `json:"w"`
-			H        *int             `json:"h"`
+			Variable   *string          `json:"variable"`
+			Title      *string          `json:"title"`
+			Kind       *string          `json:"kind"`
+			Options    *json.RawMessage `json:"options"`
+			Section    *string          `json:"section"`
+			Visibility *string          `json:"visibility"`
+			X          *int             `json:"x"`
+			Y          *int             `json:"y"`
+			W          *int             `json:"w"`
+			H          *int             `json:"h"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
 		}
+		if in.Visibility != nil {
+			switch *in.Visibility {
+			case "private", "public", "password":
+			default:
+				return httpx.BadRequest("A tile is private, public or password.")
+			}
+		}
 		patch := store.TilePatch{
 			Variable: in.Variable, Title: in.Title, Kind: in.Kind, Options: in.Options,
+			Section: in.Section, Visibility: in.Visibility,
 			X: in.X, Y: in.Y, W: in.W, H: in.H,
 		}
 		if err := s.Store.UpdateTile(c.UserContext(), auth.From(c).User.ID, id, patch); err != nil {
@@ -205,4 +233,54 @@ func (s *Server) visibilityFilter(c *fiber.Ctx) func(uuid.UUID) bool {
 		cache[id] = allowed
 		return allowed
 	}
+}
+
+// tileIsVisible answers whether somebody without an account may see this tile.
+// Two things have to agree: what the tile says about itself, and what the
+// project behind it allows. The stricter of the two wins, always — otherwise a
+// public tile would be a way to read a private project.
+func (s *Server) tileIsVisible(c *fiber.Ctx, t model.DashboardTile, readable func(uuid.UUID) bool) bool {
+	if t.Visibility == "private" || t.Visibility == "" {
+		return false
+	}
+	ctx := c.UserContext()
+	actor := auth.From(c)
+	if t.ProjectID != nil {
+		p, err := s.Store.ProjectByID(ctx, *t.ProjectID)
+		if err != nil {
+			return false
+		}
+		if t.Visibility == "password" {
+			// Behind a password means: once that project has been unlocked in
+			// this session, and not before.
+			return access.CanReadProject(actor, p) || actor.HasUnlocked(p.ID)
+		}
+		return access.CanReadProject(actor, p)
+	}
+	// A tile that shows a number shows one project's number. Which project that
+	// is comes from the variable's own name, and the same filter the variables
+	// went through answers for it.
+	project, ok := s.projectOfVariable(ctx, t)
+	if !ok {
+		return false
+	}
+	if t.Visibility == "password" && actor.HasUnlocked(project.ID) {
+		return true
+	}
+	return readable(project.ID)
+}
+
+// projectOfVariable finds the project a tile's variable comes from. The name is
+// written project-slug.variable inside a group.
+func (s *Server) projectOfVariable(ctx context.Context, t model.DashboardTile) (*model.Project, bool) {
+	slug, _, found := strings.Cut(t.Variable, ".")
+	if !found || t.GroupID == uuid.Nil {
+		// A number the group itself worked out: it is as open as the group.
+		return nil, false
+	}
+	p, err := s.Store.ProjectBySlug(ctx, &t.GroupID, slug)
+	if err != nil {
+		return nil, false
+	}
+	return p, true
 }

@@ -891,6 +891,42 @@ def main() -> int:
         check(bool(row) and row["state"] != "needs_password", "and the account is still ready")
         c.call("DELETE", f"/api/accounts/{dead['id']}")
 
+    # ------------------------------------------------- sections, and who sees a tile
+    # A dashboard is the first page anybody lands on, so a tile says for itself
+    # whether a visitor may see it — and the project behind it has the last
+    # word. A public tile on a private project shows nobody anything.
+    board_tile = c.call("POST", "/api/dashboard/tiles",
+                        {"groupId": group["id"], "variable": f"data-{stamp}.eins",
+                         "title": "average", "kind": "number"}, expect=201)
+    if board_tile:
+        c.call("PATCH", f"/api/dashboard/tiles/{board_tile['id']}",
+               {"section": "Studies", "visibility": "public"})
+        mine = c.call("GET", "/api/dashboard") or {}
+        placed = next((t for t in mine.get("tiles", []) if t["id"] == board_tile["id"]), None)
+        check(bool(placed) and placed.get("section") == "Studies", "a tile can be put under a heading")
+        check(bool(placed) and placed.get("visibility") == "public", "and told who may see it")
+        c.call("PATCH", f"/api/dashboard/tiles/{board_tile['id']}", {"visibility": "sideways"}, expect=400)
+
+        # The project behind it is private, so a visitor still sees nothing.
+        c.call("PATCH", f"/api/projects/{data}", {"visibility": "private"})
+        visitor = anon.call("GET", "/api/dashboard") or {}
+        check(not any(t["id"] == board_tile["id"] for t in visitor.get("tiles", [])),
+              "a public tile on a private project stays private")
+
+        # Public project, public tile: now it is there.
+        c.call("PATCH", f"/api/projects/{data}", {"visibility": "public"})
+        seen = anon.call("GET", "/api/dashboard") or {}
+        check(any(t["id"] == board_tile["id"] for t in seen.get("tiles", [])),
+              "a public tile on a public project is seen without an account")
+
+        # And private again means gone again, whatever the project says.
+        c.call("PATCH", f"/api/dashboard/tiles/{board_tile['id']}", {"visibility": "private"})
+        gone = anon.call("GET", "/api/dashboard") or {}
+        check(not any(t["id"] == board_tile["id"] for t in gone.get("tiles", [])),
+              "and private means private")
+        c.call("PATCH", f"/api/projects/{data}", {"visibility": "private"})
+        c.call("DELETE", f"/api/dashboard/tiles/{board_tile['id']}")
+
     # ------------------------------------------------- one project gathering others
     # A main calendar is not a kind of calendar: it is a project that gathers
     # the others, and a view that draws them beside its own.

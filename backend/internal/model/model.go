@@ -214,9 +214,15 @@ type Account struct {
 }
 
 type Scheduler struct {
-	ID          uuid.UUID  `json:"id"`
-	ProjectID   uuid.UUID  `json:"projectId"`
-	ProjectSlug string     `json:"projectSlug,omitempty"`
+	ID          uuid.UUID `json:"id"`
+	ProjectID   uuid.UUID `json:"projectId"`
+	ProjectSlug string    `json:"projectSlug,omitempty"`
+	// Section is the heading this tile sits under — a person's own word, empty
+	// for the ones that sit above all headings.
+	Section string `json:"section"`
+	// Visibility is who may see this tile: private, public, or password — the
+	// same three words a project uses, and never wider than what it shows.
+	Visibility  string     `json:"visibility"`
 	AccountID   *uuid.UUID `json:"accountId,omitempty"`
 	AccountName string     `json:"accountName,omitempty"`
 	// FilterIDs names the filters this scheduler's results are run through, in
@@ -286,16 +292,22 @@ type DashboardTile struct {
 	GroupSlug string    `json:"groupSlug,omitempty"`
 	// ProjectID is set when the tile is a project rather than a number: a way
 	// straight into the thing itself, which is half of what a dashboard is for.
-	ProjectID   *uuid.UUID      `json:"projectId,omitempty"`
-	ProjectSlug string          `json:"projectSlug,omitempty"`
-	Variable    string          `json:"variable"`
-	Title       string          `json:"title"`
-	Kind        string          `json:"kind"`
-	Options     json.RawMessage `json:"options"`
-	X           int             `json:"x"`
-	Y           int             `json:"y"`
-	W           int             `json:"w"`
-	H           int             `json:"h"`
+	ProjectID   *uuid.UUID `json:"projectId,omitempty"`
+	ProjectSlug string     `json:"projectSlug,omitempty"`
+	// Section is the heading this tile sits under — a person's own word, empty
+	// for the ones above all headings.
+	Section string `json:"section"`
+	// Visibility is who may see it: private, public, or password. Never wider
+	// than what it shows.
+	Visibility string          `json:"visibility"`
+	Variable   string          `json:"variable"`
+	Title      string          `json:"title"`
+	Kind       string          `json:"kind"`
+	Options    json.RawMessage `json:"options"`
+	X          int             `json:"x"`
+	Y          int             `json:"y"`
+	W          int             `json:"w"`
+	H          int             `json:"h"`
 }
 
 // AuditEntry is what the security page lists.

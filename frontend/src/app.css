@@ -712,3 +712,10 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .tmux-type { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .tmux-type input { flex: 1; }
+
+/* The dashboard's own headings: a person's words, not the app's. */
+.board-section { margin-bottom: 6px; }
+.board-heading {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ctp-overlay1); margin: 4px 0 10px;
+}

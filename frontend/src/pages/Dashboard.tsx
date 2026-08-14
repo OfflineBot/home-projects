@@ -12,6 +12,8 @@ interface Tile {
   groupSlug?: string;
   projectId?: string;
   projectSlug?: string;
+  section?: string;
+  visibility?: "private" | "public" | "password";
   variable: string;
   title: string;
   kind: string;
@@ -74,6 +76,7 @@ export default function Dashboard() {
     reload();
   };
   const [showHidden, setShowHidden] = useState(false);
+  const [arranging, setArranging] = useState<Tile | null>(null);
 
   // Tiles are kept in the order they are shown, so moving one is a swap of the
   // two positions and nothing else.
@@ -130,8 +133,12 @@ export default function Dashboard() {
 
       {data?.tiles?.length ? (
         <>
-          <div className="tiles" style={{ marginBottom: 30 }}>
-            {data.tiles.map((tile, index) => {
+          {sections(data.tiles).map(([heading, group]) => (
+          <section key={heading || "—"} className="board-section">
+            {heading ? <h2 className="board-heading">{heading}</h2> : null}
+          <div className="tiles" style={{ marginBottom: 24 }}>
+            {group.map((tile) => {
+              const index = data.tiles.indexOf(tile);
               const block = data.groups.find((b) => b.group.id === tile.groupId);
               const variable = block ? value(block, tile.variable) : undefined;
               if (tile.kind === "project") {
@@ -147,6 +154,7 @@ export default function Dashboard() {
                     project={project}
                     numbers={numbers}
                     editable={Boolean(session.user)}
+                    onArrange={() => setArranging(tile)}
                     onMove={(by) => move(index, by)}
                     onRemove={async () => {
                       await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
@@ -173,6 +181,13 @@ export default function Dashboard() {
                     </div>
                     {session.user ? (
                       <div className="tile-tools">
+                        <button
+                          className="btn ghost icon"
+                          aria-label="Arrange this tile"
+                          onClick={() => setArranging(tile)}
+                        >
+                          <Icon name="settings" size={14} />
+                        </button>
                         <button className="btn ghost icon" aria-label="Move left" onClick={() => move(index, -1)}>
                           <Icon name="chevronLeft" size={14} />
                         </button>
@@ -197,6 +212,8 @@ export default function Dashboard() {
               );
             })}
           </div>
+          </section>
+          ))}
         </>
       ) : null}
 
@@ -363,6 +380,18 @@ export default function Dashboard() {
         </div>
       ) : null}
 
+      {arranging ? (
+        <ArrangeTile
+          tile={arranging}
+          sections={[...new Set((data?.tiles ?? []).map((t) => t.section ?? "").filter(Boolean))]}
+          onClose={() => setArranging(null)}
+          onSaved={() => {
+            setArranging(null);
+            reload();
+          }}
+        />
+      ) : null}
+
       {adding && data ? (
         <AddTile
           blocks={data.groups}
@@ -387,6 +416,7 @@ function ProjectTile({
   project,
   numbers,
   editable,
+  onArrange,
   onMove,
   onRemove,
 }: {
@@ -394,6 +424,7 @@ function ProjectTile({
   project?: Project;
   numbers: Variable[];
   editable: boolean;
+  onArrange: () => void;
   onMove: (by: number) => void;
   onRemove: () => void;
 }) {
@@ -411,6 +442,9 @@ function ProjectTile({
         </div>
         {editable ? (
           <div className="tile-tools">
+            <button className="btn ghost icon" aria-label="Arrange this tile" onClick={onArrange}>
+              <Icon name="settings" size={14} />
+            </button>
             <button className="btn ghost icon" aria-label="Move left" onClick={() => onMove(-1)}>
               <Icon name="chevronLeft" size={14} />
             </button>
@@ -454,6 +488,111 @@ function ProjectTile({
         <div className="sub">That project is gone.</div>
       )}
     </div>
+  );
+}
+
+/** The tiles, under the headings they were given. Unnamed ones come first. */
+function sections(tiles: Tile[]): [string, Tile[]][] {
+  const out = new Map<string, Tile[]>();
+  for (const t of tiles) {
+    const key = t.section ?? "";
+    out.set(key, [...(out.get(key) ?? []), t]);
+  }
+  return [...out.entries()].sort(([a], [b]) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
+}
+
+/**
+ * Where a tile sits, and who may see it.
+ *
+ * The visibility is the tile's own answer; the project behind it has the last
+ * word, and the server enforces that — a public tile on a private project shows
+ * nobody anything. Saying so here is better than letting someone believe they
+ * published something.
+ */
+function ArrangeTile({
+  tile,
+  sections,
+  onClose,
+  onSaved,
+}: {
+  tile: Tile;
+  sections: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [section, setSection] = useState(tile.section ?? "");
+  const [visibility, setVisibility] = useState(tile.visibility ?? "private");
+  const [title, setTitle] = useState(tile.title ?? "");
+  const [error, setError] = useState<Error | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Modal
+      title={tile.title || tile.variable || "This tile"}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await api(`/api/dashboard/tiles/${tile.id}`, {
+                  method: "PATCH",
+                  body: { section, visibility, title },
+                });
+                onSaved();
+              } catch (err) {
+                setError(err as Error);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save
+          </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+      <Field label="Title" hint="Empty keeps what it is called by itself.">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </Field>
+      <Field label="Section" hint="A heading of your own. Empty means above all headings.">
+        <input
+          value={section}
+          list="board-sections"
+          placeholder="e.g. Studies"
+          onChange={(e) => setSection(e.target.value)}
+        />
+        <datalist id="board-sections">
+          {sections.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </Field>
+      {/* This one is said out loud rather than hidden in a tooltip: somebody
+          marking a tile public should not have to hover to learn that it may
+          still show nobody anything. */}
+      <Field
+        label="Who may see it"
+        hint={
+          <>Never more than the project behind it allows — a public tile on a private project stays private.</>
+        }
+      >
+        <select
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value as "private" | "public" | "password")}
+        >
+          <option value="private">Private — only signed in</option>
+          <option value="public">Public — anyone who opens the page</option>
+          <option value="password">Password — once its project has been unlocked</option>
+        </select>
+      </Field>
+    </Modal>
   );
 }
 

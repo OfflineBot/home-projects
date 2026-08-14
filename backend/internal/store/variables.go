@@ -225,12 +225,12 @@ func (s *Store) DeleteGroupVariable(ctx context.Context, id uuid.UUID) error {
 // ---------------------------------------------------------------- dashboard
 
 const tileCols = `t.id, COALESCE(t.group_id, '00000000-0000-0000-0000-000000000000'::uuid), t.project_id,
-	t.variable, t.title, t.kind, t.options, t.x, t.y, t.w, t.h`
+	t.variable, t.title, t.kind, t.options, t.section, t.visibility, t.x, t.y, t.w, t.h`
 
 func scanTile(r scanner) (*model.DashboardTile, error) {
 	var t model.DashboardTile
 	if err := r.Scan(&t.ID, &t.GroupID, &t.ProjectID, &t.Variable, &t.Title, &t.Kind, &t.Options,
-		&t.X, &t.Y, &t.W, &t.H, &t.GroupSlug, &t.ProjectSlug); err != nil {
+		&t.Section, &t.Visibility, &t.X, &t.Y, &t.W, &t.H, &t.GroupSlug, &t.ProjectSlug); err != nil {
 		return nil, norm(err)
 	}
 	return &t, nil
@@ -241,7 +241,7 @@ func (s *Store) ListTiles(ctx context.Context, ownerID uuid.UUID) ([]model.Dashb
 		FROM dashboard_tiles t
 		LEFT JOIN groups g ON g.id=t.group_id
 		LEFT JOIN projects p ON p.id=t.project_id
-		WHERE t.owner_id=$1 ORDER BY t.y, t.x`, ownerID)
+		WHERE t.owner_id=$1 ORDER BY t.section, t.y, t.x`, ownerID)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -273,11 +273,15 @@ func (s *Store) CreateTile(ctx context.Context, ownerID uuid.UUID, t model.Dashb
 		group = nil
 	}
 	var id uuid.UUID
+	if t.Visibility == "" {
+		t.Visibility = "private"
+	}
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO dashboard_tiles (owner_id, group_id, project_id, variable, title, kind, options, x, y, w, h)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+		INSERT INTO dashboard_tiles (owner_id, group_id, project_id, variable, title, kind, options,
+			section, visibility, x, y, w, h)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
 		ownerID, group, t.ProjectID, t.Variable, t.Title, t.Kind, t.Options,
-		t.X, t.Y, t.W, t.H).Scan(&id)
+		t.Section, t.Visibility, t.X, t.Y, t.W, t.H).Scan(&id)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -288,12 +292,14 @@ func (s *Store) CreateTile(ctx context.Context, ownerID uuid.UUID, t model.Dashb
 }
 
 type TilePatch struct {
-	Variable *string
-	Title    *string
-	Kind     *string
-	Options  *json.RawMessage
-	X, Y     *int
-	W, H     *int
+	Variable   *string
+	Title      *string
+	Kind       *string
+	Options    *json.RawMessage
+	Section    *string
+	Visibility *string
+	X, Y       *int
+	W, H       *int
 }
 
 func (s *Store) UpdateTile(ctx context.Context, ownerID, id uuid.UUID, p TilePatch) error {
@@ -314,6 +320,12 @@ func (s *Store) UpdateTile(ctx context.Context, ownerID, id uuid.UUID, p TilePat
 	}
 	if p.Kind != nil {
 		add("kind", *p.Kind)
+	}
+	if p.Section != nil {
+		add("section", *p.Section)
+	}
+	if p.Visibility != nil {
+		add("visibility", *p.Visibility)
 	}
 	if p.Options != nil {
 		add("options", *p.Options)
