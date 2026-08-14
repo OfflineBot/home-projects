@@ -390,11 +390,10 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		if run == nil && runErr != nil {
 			return httpx.Internal("%v", runErr)
 		}
-		status := fiber.StatusOK
-		if runErr != nil {
-			status = fiber.StatusBadGateway // the run happened, and it failed
-		}
-		return c.Status(status).JSON(fiber.Map{"run": run})
+		// A failed run is an answer, not a broken connection: it comes back as
+		// the run it was, with the reason in it. Reporting 502 here turned
+		// "the message list could not be read" into "Something went wrong".
+		return c.JSON(fiber.Map{"run": run})
 	})
 
 	g.Get("/:id/runs", func(c *fiber.Ctx) error {

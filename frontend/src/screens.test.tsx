@@ -11,7 +11,7 @@
  * nothing added to the server for testing's sake. Point it at a throwaway
  * instance with HP_URL and HP_PASSWORD.
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import GroupSettings from "./components/GroupSettings";
@@ -137,6 +137,33 @@ describe("every screen draws something", () => {
     await draw(<Accounts />, /New account/i);
   });
 
+  // Every mailbox, not one of them. The dialog is drawn from the server's own
+  // answer, so this fails if a provider goes missing or the picker stops
+  // filling the fields in.
+  it("a mail account can be any provider", async () => {
+    const c = await draw(<Accounts />, /New account/i);
+    fireEvent.click([...c.querySelectorAll("button")].find((b) => /New account/i.test(b.textContent ?? ""))!);
+    const dialog = await waitFor(() => screen.getByRole("dialog"));
+    const selects = [...dialog.querySelectorAll("select")];
+    const kind = selects[0];
+    fireEvent.change(kind, { target: { value: "mail" } });
+
+    const picker = [...dialog.querySelectorAll("select")][1];
+    const offered = [...picker.querySelectorAll("option")].map((o) => o.textContent);
+    for (const name of ["Gmail", "Outlook / Microsoft 365", "GMX", "WEB.DE", "Posteo", "iCloud", "DHBW Ravensburg"]) {
+      expect(offered.join("|")).toContain(name);
+    }
+    expect(offered.length).toBeGreaterThan(7);
+
+    // Picking one has to fill the servers in — that is the whole point of it.
+    fireEvent.change(picker, { target: { value: "gmail" } });
+    await waitFor(() =>
+      expect([...dialog.querySelectorAll("input")].some((i) => i.value === "imap.gmail.com")).toBe(true),
+    );
+    // A dialog left standing would be found by the next test looking for one.
+    cleanup();
+  });
+
   // The people page is drawn from the server's own list, so it fails if the
   // owner is not really the owner or the list comes back as null.
   it("people, with the owner in it", async () => {
@@ -165,6 +192,22 @@ describe("every screen draws something", () => {
 
   it("schedulers", async () => {
     await draw(<Schedulers />, /New scheduler/i);
+  });
+
+  // The account for a scheduler can be made where the need for it comes up.
+  // Before this, a mail scheduler could only pick what already existed, which
+  // read as "only this one mailbox is possible".
+  it("a scheduler can make its own account", async () => {
+    const c = await draw(<Schedulers />, /New scheduler/i);
+    fireEvent.click([...c.querySelectorAll("button")].find((b) => /New scheduler/i.test(b.textContent ?? ""))!);
+    const dialog = await waitFor(() => screen.getByRole("dialog"));
+    const account = [...dialog.querySelectorAll("select")].find((sel) =>
+      [...sel.querySelectorAll("option")].some((o) => /a new account/i.test(o.textContent ?? "")),
+    );
+    expect(account).toBeTruthy();
+    fireEvent.change(account!, { target: { value: "__new" } });
+    await waitFor(() => expect(screen.getAllByRole("dialog").length).toBeGreaterThan(1));
+    cleanup();
   });
 
   // Including one with no rules at all — the shape that broke the page, because

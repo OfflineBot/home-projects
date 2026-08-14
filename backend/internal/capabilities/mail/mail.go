@@ -130,7 +130,8 @@ func (Capability) SchedulerKinds() []capability.SchedulerKind {
 		AccountRequired: true,
 		Options: []capability.AccountField{
 			{Name: "mailbox", Label: "Which folder", Type: "text", Placeholder: "INBOX"},
-			{Name: "count", Label: "How many of the newest", Type: "number", Placeholder: "50"},
+			{Name: "count", Label: "How many of the newest", Type: "number", Placeholder: "all of them",
+				Hint: "Empty fetches the whole folder. A number keeps it to that many."},
 		},
 		Run: runFetch,
 	}}
@@ -235,11 +236,33 @@ func precheckMail(ctx context.Context, env *capability.Env, a *model.Account) er
 	address := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.imapPort()))
 	conn, err := net.DialTimeout("tcp", address, 12*time.Second)
 	if err != nil {
+		// Before guessing, ask the same machine whether it speaks Exchange. If
+		// it does, the answer is not "try something" but "switch this one
+		// setting", which is a different sentence.
+		if speaksEWS(ctx, cfg) {
+			return fmt.Errorf("%s does not answer, but %s does — set \"How\" to Exchange (EWS)",
+				address, cfg.ewsURL())
+		}
 		return fmt.Errorf("%s does not answer — if this is a university or company mailbox, "+
 			"it may have no IMAP at all; try Exchange (EWS) instead", address)
 	}
 	conn.Close()
 	return nil
+}
+
+// speaksEWS is the same host asked over HTTPS. A 401 means the service is
+// there and wants a sign-in, which is exactly what we are looking for.
+func speaksEWS(ctx context.Context, cfg config) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.ewsURL(), nil)
+	if err != nil {
+		return false
+	}
+	resp, err := (&http.Client{Timeout: 12 * time.Second}).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusOK
 }
 
 func testMailAccount(ctx context.Context, env *capability.Env, a *model.Account, secret []byte) error {
@@ -274,17 +297,16 @@ func runFetch(ctx context.Context, env *capability.Env, job capability.Job) (cap
 	if mailbox == "" {
 		mailbox = "INBOX"
 	}
+	// Empty means the whole folder. Fifty was a number nobody chose; a mailbox
+	// that has been running for years is not fifty messages.
 	count := toInt(job.Options["count"])
-	if count <= 0 {
-		count = 50
-	}
 
 	var messages []Message
 	if cfg.isEWS() {
 		// Exchange without IMAP: the same single attempt, over its own web
 		// services. Everything after this point is identical.
 		job.Log("connecting to %s", cfg.ewsURL())
-		found, err := ewsFetchLatest(ctx, cfg, cfg.User, string(job.Secret), mailbox, count)
+		found, err := ewsFetchLatest(ctx, cfg, cfg.User, string(job.Secret), mailbox, count, job.Log)
 		if err != nil {
 			return capability.Report{}, err
 		}
@@ -308,6 +330,10 @@ func runFetch(ctx context.Context, env *capability.Env, job capability.Job) (cap
 		if err != nil {
 			return capability.Report{Authenticated: true}, err
 		}
+		if count <= 0 || count > exists {
+			count = exists
+		}
+		job.Log("%s holds %d message(s)", mailbox, exists)
 		messages, err = client.FetchLatest(exists, count)
 		if err != nil {
 			return capability.Report{Authenticated: true}, err

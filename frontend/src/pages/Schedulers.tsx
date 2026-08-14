@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Section, Spinner, formatDate } from "../components/ui";
+import NewAccount from "../components/NewAccount";
 import {
   api,
   type Account,
+  type AccountKind,
   type Filter,
   type Project,
   type Scheduler,
@@ -260,7 +262,8 @@ function SchedulerDialog({
   onSaved: () => void;
 }) {
   const projects = useQuery<{ projects: Project[] }>("/api/projects");
-  const accounts = useQuery<{ accounts: Account[] }>("/api/accounts");
+  const accounts = useQuery<{ accounts: Account[]; kinds: AccountKind[] }>("/api/accounts");
+  const [makingAccount, setMakingAccount] = useState(false);
   const filters = useQuery<{ filters: Filter[] }>("/api/filters");
   const [form, setForm] = useState({
     kind: existing?.kind ?? kinds[0]?.name ?? "",
@@ -410,11 +413,33 @@ function SchedulerDialog({
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       </Field>
 
+      {makingAccount ? (
+        <NewAccount
+          kinds={accounts.data?.kinds ?? []}
+          only={kind?.accountKinds ?? undefined}
+          onClose={() => setMakingAccount(false)}
+          onCreated={(id) => {
+            setMakingAccount(false);
+            setForm({ ...form, accountId: id });
+            accounts.reload();
+          }}
+        />
+      ) : null}
+
       {kind?.accountKinds?.length ? (
         <Field
           label={kind.accountRequired ? "Account (required)" : "Account (only if the source asks for a login)"}
         >
-          <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })}>
+          <select
+            value={form.accountId}
+            onChange={(e) => {
+              if (e.target.value === "__new") {
+                setMakingAccount(true);
+                return;
+              }
+              setForm({ ...form, accountId: e.target.value });
+            }}
+          >
             <option value="">— none —</option>
             {usable.map((a) => (
               <option key={a.id} value={a.id}>
@@ -422,6 +447,7 @@ function SchedulerDialog({
                 {a.needsSecret ? " (needs its password again)" : ""}
               </option>
             ))}
+            <option value="__new">＋ a new account…</option>
           </select>
         </Field>
       ) : null}

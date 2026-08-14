@@ -16,6 +16,7 @@ require (
 require (
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/OfflineBot/nicht-libs/dualis v0.0.0-20260505080944-a5314085cd3a // indirect
+	github.com/OfflineBot/nicht-libs/email v0.0.0-20260505080944-a5314085cd3a // indirect
 	github.com/OfflineBot/nicht-libs/moodle v0.0.0-20260505080944-a5314085cd3a // indirect
 	github.com/PuerkitoBio/goquery v1.12.0 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect

@@ -33,7 +33,7 @@ func TestEWSAgainstARealServer(t *testing.T) {
 		t.Fatalf("sign-in: %v", err)
 	}
 
-	messages, err := ewsFetchLatest(ctx, cfg, user, password, "INBOX", 3)
+	messages, err := ewsFetchLatest(ctx, cfg, user, password, "INBOX", 3, t.Logf)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
