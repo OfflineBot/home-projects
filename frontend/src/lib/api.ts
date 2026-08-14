@@ -184,7 +184,7 @@ setInterval(() => {
 
 // ------------------------------------------------------------------- types
 
-export type Visibility = "private" | "public" | "password";
+export type Visibility = "group" | "private" | "public" | "password";
 
 export interface User {
   id: string;
@@ -228,6 +228,10 @@ export interface Project {
   gitTracked: boolean;
   siteRoot?: string;
   visibility: Visibility;
+  /** Who may see it once "as the group" is worked out. */
+  effectiveVisibility?: Visibility;
+  /** Listed, but not opened: the name is there, the contents need the password. */
+  locked?: boolean;
   hasPassword: boolean;
   readOnly: boolean;
   anonWrite: boolean;

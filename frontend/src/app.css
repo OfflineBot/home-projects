@@ -78,7 +78,7 @@
 :root {
   --radius: 14px;
   --radius-sm: 9px;
-  --gap: 16px;
+  --gap: 18px;
   --sidebar: 236px;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.18), 0 8px 24px -12px rgb(0 0 0 / 0.35);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -147,11 +147,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-section { margin-top: 14px; padding: 0 11px 4px; font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--ctp-overlay0); }
 
-.main { padding: 26px 30px 80px; max-width: 1500px; width: 100%; }
+.main { padding: 32px 36px 96px; max-width: 1500px; width: 100%; }
 
 .page-head {
+  margin-bottom: 26px;
   display: flex; align-items: flex-start; justify-content: space-between;
-  gap: var(--gap); flex-wrap: wrap; margin-bottom: 22px;
+  gap: var(--gap); flex-wrap: wrap;
 }
 .page-head h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
 .page-head p { margin: 4px 0 0; color: var(--ctp-subtext0); }
@@ -161,7 +162,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   gap: var(--gap);
 }
 
@@ -169,7 +170,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--ctp-mantle);
   border: 1px solid var(--ctp-surface0);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 18px;
   display: flex; flex-direction: column; gap: 10px;
   position: relative;
   color: inherit; text-decoration: none;
@@ -224,8 +225,8 @@ a.tile:hover { text-decoration: none; border-color: var(--tile-color, var(--acce
 
 /* ------------------------------------------------------------------ inputs */
 
-.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.field > label { font-size: 13px; color: var(--ctp-subtext0); }
+.field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 22px; }
+.field > label { font-size: 13px; color: var(--ctp-subtext1); font-weight: 500; }
 .field .hint { font-size: 12.5px; color: var(--ctp-overlay1); }
 
 input[type="text"], input[type="password"], input[type="number"], input[type="url"],
@@ -240,7 +241,7 @@ input[type="email"], input[type="datetime-local"], input[type="date"], select, t
 textarea { resize: vertical; min-height: 90px; font-family: var(--mono); font-size: 13.5px; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 
-.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
 .row > * { flex: 1 1 180px; }
 .check { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
@@ -255,11 +256,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
   background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
   border-radius: var(--radius); width: min(620px, 100%);
   max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow);
+  scrollbar-gutter: stable;
 }
-.modal header { padding: 18px 20px 6px; }
+.modal header { padding: 22px 26px 8px; }
 .modal header h2 { margin: 0; font-size: 19px; }
-.modal .body { padding: 12px 20px 18px; }
-.modal footer { padding: 14px 20px 18px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.modal .body { padding: 16px 26px 26px; }
+.modal footer { padding: 18px 26px 22px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* ------------------------------------------------------------------- menus */
 
@@ -295,7 +297,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .list { display: flex; flex-direction: column; border: 1px solid var(--ctp-surface0);
   border-radius: var(--radius); overflow: hidden; background: var(--ctp-mantle); }
 .list-row {
-  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
   border-bottom: 1px solid var(--ctp-surface0); color: inherit; text-decoration: none;
 }
 .list-row:last-child { border-bottom: none; }

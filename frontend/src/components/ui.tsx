@@ -379,7 +379,10 @@ export function formatDate(value?: string | null, withTime = true) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
+  // Always the 24-hour clock: half past one is 13:30, wherever the browser
+  // thinks it is.
   return d.toLocaleString(undefined, {
+    hour12: false,
     day: "2-digit",
     month: "short",
     year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric",

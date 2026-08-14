@@ -138,16 +138,14 @@ func (s *Server) mountProjects(r fiber.Router) {
 
 		visibility := model.Visibility(in.Visibility)
 		if visibility == "" {
-			// A project takes its group's visibility. A password-protected group
-			// whose projects are all private would clone empty, which is not
-			// what anyone means by putting a password on a group.
-			visibility = model.VisibilityPrivate
-			if grp != nil {
-				visibility = grp.Visibility
-			}
+			// Deferring to the group is the default, and it stays deferred: a
+			// group that becomes public later takes its projects with it, which
+			// is what "as the group" is for. Copying the answer once would go
+			// quietly out of date.
+			visibility = model.VisibilityGroup
 		}
 		if !visibility.Valid() {
-			return httpx.BadRequest("Visibility has to be private, public or password.")
+			return httpx.BadRequest("Visibility is as the group, private, public or password.")
 		}
 		if in.Color != "" && !validColor(in.Color) {
 			return httpx.BadRequest("That colour is not in the palette.")
@@ -244,7 +242,15 @@ func (s *Server) mountProjects(r fiber.Router) {
 
 	one.Post("/unlock", func(c *fiber.Ctx) error {
 		p := project(c)
-		return s.unlock(c, p.ID, p.PasswordHash, "project-password", p.Slug)
+		// A project without a password of its own is opened by its group's,
+		// which is what makes a password-protected group behave as one thing.
+		id, hash, scope := p.ID, p.PasswordHash, "project-password"
+		if hash == "" && p.GroupID != nil {
+			if grp, err := s.Store.GroupByID(c.UserContext(), *p.GroupID); err == nil && grp.PasswordHash != "" {
+				id, hash, scope = grp.ID, grp.PasswordHash, "group-password"
+			}
+		}
+		return s.unlock(c, id, hash, scope, p.Slug)
 	})
 
 	one.Patch("/", requireOwner, func(c *fiber.Ctx) error {

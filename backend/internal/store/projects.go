@@ -14,7 +14,8 @@ const projectCols = `p.id, p.owner_id, p.group_id, p.slug, p.title, p.descriptio
 
 // projectSelect always joins the group so a project carries its group's slug
 // without a second query.
-const projectSelect = `SELECT ` + projectCols + `, COALESCE(g.slug,''), COALESCE(g.title,'')
+const projectSelect = `SELECT ` + projectCols + `, COALESCE(g.slug,''), COALESCE(g.title,''),
+	COALESCE(g.visibility,'')
 	FROM projects p LEFT JOIN groups g ON g.id = p.group_id`
 
 func scanProject(r scanner) (*model.Project, error) {
@@ -23,12 +24,21 @@ func scanProject(r scanner) (*model.Project, error) {
 	err := r.Scan(&p.ID, &p.OwnerID, &p.GroupID, &p.Slug, &p.Title, &p.Description, &p.Capabilities,
 		&p.Preset, &p.DefaultTab, &p.GitTracked, &p.SiteRoot, &p.SiteSourceID, &p.Visibility, &pw,
 		&p.ReadOnly, &p.AnonWrite, &p.Color, &p.Icon, &p.Archived, &p.Position,
-		&p.CreatedAt, &p.UpdatedAt, &p.GroupSlug, &p.GroupTitle)
+		&p.CreatedAt, &p.UpdatedAt, &p.GroupSlug, &p.GroupTitle, &p.GroupVisibility)
 	if err != nil {
 		return nil, norm(err)
 	}
 	p.PasswordHash = strp(pw)
 	p.HasPassword = p.PasswordHash != ""
+	// Who may see it, worked out once here so nothing downstream has to fetch
+	// the group to find out.
+	p.Effective = p.Visibility
+	if p.Visibility == model.VisibilityGroup || p.Visibility == "" {
+		p.Effective = model.VisibilityPrivate
+		if p.GroupVisibility != "" {
+			p.Effective = p.GroupVisibility
+		}
+	}
 	if p.Capabilities == nil {
 		p.Capabilities = []string{}
 	}

@@ -338,6 +338,7 @@ export default function ProjectSettings({
             value={form.visibility}
             onChange={(e) => setForm({ ...form, visibility: e.target.value as Project["visibility"] })}
           >
+            <option value="group">As the group</option>
             <option value="private">Private — only you</option>
             <option value="public">Public — anyone may look</option>
             <option value="password">Password — anyone who knows it</option>

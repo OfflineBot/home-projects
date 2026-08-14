@@ -44,13 +44,35 @@ func CanReadProject(a *auth.Actor, p *model.Project) bool {
 	if a.Token != nil && a.Token.ProjectID != nil && *a.Token.ProjectID == p.ID {
 		return true
 	}
-	switch p.Visibility {
+	switch effective(p) {
 	case model.VisibilityPublic:
 		return true
 	case model.VisibilityPassword:
 		return unlockedFor(a, p)
 	}
 	return false
+}
+
+// effective is who may see this project: its own answer, or its group's when it
+// defers. The store works this out when the project is read.
+func effective(p *model.Project) model.Visibility {
+	if p.Effective != "" {
+		return p.Effective
+	}
+	if p.Visibility == model.VisibilityGroup || p.Visibility == "" {
+		return model.VisibilityPrivate
+	}
+	return p.Visibility
+}
+
+// CanSeeProject is the weaker question: may it be *named*? A password-protected
+// project is listed with a lock on it — hiding it entirely would mean nobody
+// could ever find the door to knock on.
+func CanSeeProject(a *auth.Actor, p *model.Project) bool {
+	if CanReadProject(a, p) {
+		return true
+	}
+	return effective(p) == model.VisibilityPassword
 }
 
 // unlockedFor answers whether a password-protected project is open. A project
@@ -68,7 +90,7 @@ func unlockedFor(a *auth.Actor, p *model.Project) bool {
 }
 
 func NeedsProjectPassword(a *auth.Actor, p *model.Project) bool {
-	return !a.IsUser() && p.Visibility == model.VisibilityPassword && !unlockedFor(a, p)
+	return !a.IsUser() && effective(p) == model.VisibilityPassword && !unlockedFor(a, p)
 }
 
 // RequireReadProject returns the error the API answers with, so "locked",
@@ -151,11 +173,24 @@ func FilterGroups(a *auth.Actor, in []model.Group) []model.Group {
 	return out
 }
 
+// FilterProjects keeps what may be shown. A password-protected project stays in
+// the list with a lock and nothing else: its name is the door to knock on, and
+// everything behind it — the description, what it can do, its files — is left
+// out until the password is given.
 func FilterProjects(a *auth.Actor, in []model.Project) []model.Project {
 	out := make([]model.Project, 0, len(in))
 	for _, p := range in {
-		if CanReadProject(a, &p) {
+		switch {
+		case CanReadProject(a, &p):
 			out = append(out, p)
+		case CanSeeProject(a, &p):
+			out = append(out, model.Project{
+				ID: p.ID, Slug: p.Slug, Title: p.Title, GroupID: p.GroupID,
+				GroupSlug: p.GroupSlug, GroupTitle: p.GroupTitle,
+				Color: p.Color, Icon: p.Icon, Visibility: p.Visibility,
+				Effective: model.VisibilityPassword, Locked: true,
+				Capabilities: []string{},
+			})
 		}
 	}
 	return out

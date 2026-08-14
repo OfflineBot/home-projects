@@ -185,6 +185,11 @@ func within(root, p string) bool {
 func (f *FS) EnsureRoot() error { return os.MkdirAll(f.root, 0o755) }
 
 // List returns the direct children of a folder, folders first, then by name.
+// bookkeeping is the folder this server keeps its own notes in — what a
+// scheduler fetched, and where. It travels with the project (git carries it,
+// the zip contains it) but it is not content, so the listing leaves it out.
+const bookkeeping = ".home-projects"
+
 func (f *FS) List(dir string) ([]Entry, error) {
 	full, err := f.abs(dir)
 	if err != nil {
@@ -211,6 +216,9 @@ func (f *FS) List(dir string) ([]Entry, error) {
 	clean, _ := Clean(dir)
 	out := make([]Entry, 0, len(items))
 	for _, it := range items {
+		if clean == "" && it.Name() == bookkeeping {
+			continue // the server's own notes, not the project's contents
+		}
 		fi, err := it.Info()
 		if err != nil {
 			continue

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -34,8 +35,14 @@ func (s *Server) resolveProject(extra ...fiber.Handler) fiber.Handler {
 				return httpx.Internal("the group could not be read").WithCause(err)
 			}
 		}
-		if err := access.RequireReadProject(auth.From(c), project); err != nil {
-			return err
+		// The door to a locked project is the one thing that has to be
+		// reachable while it is locked: refusing the unlock because it is
+		// locked leaves nobody a way in.
+		unlocking := c.Method() == fiber.MethodPost && strings.HasSuffix(c.Path(), "/unlock")
+		if !unlocking {
+			if err := access.RequireReadProject(auth.From(c), project); err != nil {
+				return err
+			}
 		}
 		capability.SetProject(c, project, group)
 		for _, h := range extra {

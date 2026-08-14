@@ -13,6 +13,10 @@ import (
 type Visibility string
 
 const (
+	// VisibilityGroup means "whatever the group says". It is the default for a
+	// new project, because a project in a private group being public by
+	// accident is the mistake worth preventing.
+	VisibilityGroup    Visibility = "group"
 	VisibilityPrivate  Visibility = "private"
 	VisibilityPublic   Visibility = "public"
 	VisibilityPassword Visibility = "password"
@@ -20,7 +24,7 @@ const (
 
 func (v Visibility) Valid() bool {
 	switch v {
-	case VisibilityPrivate, VisibilityPublic, VisibilityPassword:
+	case VisibilityGroup, VisibilityPrivate, VisibilityPublic, VisibilityPassword:
 		return true
 	}
 	return false
@@ -105,7 +109,14 @@ type Project struct {
 	Preset       string     `json:"preset"`
 	DefaultTab   string     `json:"defaultTab"`
 	GitTracked   bool       `json:"gitTracked"`
-	SiteRoot     *string    `json:"siteRoot,omitempty"`
+	// GroupVisibility and Effective are filled in when a project is read: what
+	// its group says, and therefore who may see this project.
+	GroupVisibility Visibility `json:"-"`
+	Effective       Visibility `json:"effectiveVisibility,omitempty"`
+	// Locked marks a project that is listed but not opened: the name is there,
+	// the contents are behind the password.
+	Locked   bool    `json:"locked,omitempty"`
+	SiteRoot *string `json:"siteRoot,omitempty"`
 	// SiteSourceID names the project whose files are served, when that is not
 	// this one. A site is an address and a folder; the material can live
 	// wherever it is written, pulled or linked into.
@@ -303,4 +314,17 @@ type Filter struct {
 	UsedBy    int       `json:"usedBy"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// EffectiveVisibility is who may see this project: its own answer, or the
+// group's when it defers. A project without a group that defers is private —
+// deferring to nobody cannot mean "public".
+func (p *Project) EffectiveVisibility(g *Group) Visibility {
+	if p.Visibility != VisibilityGroup && p.Visibility != "" {
+		return p.Visibility
+	}
+	if g == nil {
+		return VisibilityPrivate
+	}
+	return g.Visibility
 }

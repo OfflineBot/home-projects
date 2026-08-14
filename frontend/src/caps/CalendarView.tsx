@@ -1499,7 +1499,7 @@ function overlapsDay(e: Occurrence, day: Date) {
 }
 
 function shortTime(d: Date) {
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function toLocalInput(iso?: string) {

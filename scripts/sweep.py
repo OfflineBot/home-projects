@@ -495,6 +495,37 @@ def main() -> int:
     if formula:
         c.call("DELETE", f"/api/groups/{gslug}/variables/{formula['id']}")
 
+    # ------------------------------------------- a project may defer, or lock
+    # "As the group" is the default, and it stays deferred: a group that opens
+    # later takes its projects with it.
+    deferring = c.call("POST", "/api/projects",
+                       {"title": f"sweep-defer-{stamp}", "groupId": gslug, "preset": "data"}, expect=201)
+    check(bool(deferring) and deferring["visibility"] == "group",
+          "a new project defers to its group")
+    c.call("PATCH", f"/api/groups/{gslug}", {"visibility": "public"})
+    seen = c.call("GET", f"/api/projects?group={gslug}")
+    mine = next((p for p in (seen or {}).get("projects", []) if p["id"] == deferring["id"]), None)
+    check(bool(mine) and mine["effectiveVisibility"] == "public",
+          "and follows it when the group opens")
+
+    # A password-protected project is listed with a lock and nothing else.
+    c.call("PATCH", f"/api/projects/{deferring['id']}",
+           {"visibility": "password", "password": "knock-knock"})
+    anon = Client(args.url)
+    listed = anon.call("GET", f"/api/projects?group={gslug}")
+    locked = next((p for p in (listed or {}).get("projects", []) if p["id"] == deferring["id"]), None)
+    check(bool(locked) and locked.get("locked") is True and locked["title"] == deferring["title"],
+          "a locked project is still named, so there is a door to knock on")
+    check(bool(locked) and not locked.get("description") and not locked.get("capabilities"),
+          "and nothing behind the door is handed out with it")
+    anon.call("GET", f"/api/projects/{deferring['id']}/files", expect=401)
+    opened = anon.call("POST", f"/api/projects/{deferring['id']}/unlock", {"password": "knock-knock"})
+    check(opened is not None, "the password opens it")
+    after = anon.call("GET", f"/api/projects/{deferring['id']}/files")
+    check(after is not None, "and then the contents are there")
+    c.call("PATCH", f"/api/groups/{gslug}", {"visibility": "private"})
+    c.call("DELETE", f"/api/projects/{deferring['id']}?confirm={deferring['slug']}")
+
     # --------------------------------------------- who may clone, on its own
     # A group can be public while its repository is not, and the other way
     # round: two different questions.

@@ -87,11 +87,17 @@ export default function GroupPage() {
                 <div className="sub">{p.capabilities.join(" · ") || "files"}</div>
               </div>
             </div>
+            {p.locked ? <div className="sub">Locked — open it to enter the password</div> : null}
             {p.description ? <div className="sub">{p.description}</div> : null}
             <div className="tile-foot">
-              {p.visibility !== "private" ? (
+              {p.locked ? (
+                <span className="badge warn">
+                  <Icon name="lock" size={12} /> locked
+                </span>
+              ) : (p.effectiveVisibility ?? p.visibility) !== "private" ? (
                 <span className="badge">
-                  <Icon name={p.visibility === "public" ? "eye" : "lock"} size={12} /> {p.visibility}
+                  <Icon name={(p.effectiveVisibility ?? p.visibility) === "public" ? "eye" : "lock"} size={12} />{" "}
+                  {p.effectiveVisibility ?? p.visibility}
                 </span>
               ) : null}
               {p.readOnly ? <span className="badge warn">read-only</span> : null}
