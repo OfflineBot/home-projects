@@ -232,6 +232,12 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
             This step needs it: <strong>{request.action}</strong>. Asked for is the password you sign in to
             home-projects with — not the password of the service the account belongs to.
           </p>
+          {/* Which server this is. Two instances of the same thing can have
+              two different owner passwords, and without this the dialog looks
+              identical on both. */}
+          <p className="hint" style={{ marginTop: -6 }}>
+            on <code className="mono">{window.location.host}</code>
+          </p>
           {error ? <div className="error">{error}</div> : null}
           <Field label="Your home-projects password">
             <input

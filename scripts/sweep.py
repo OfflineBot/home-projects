@@ -369,6 +369,19 @@ def main() -> int:
     if sched:
         sid = sched["id"]
         c.call("GET", "/api/schedulers")
+        # A scheduler is not carved in stone: what it is told, when it runs and
+        # where it writes can all be changed afterwards.
+        c.call("PATCH", f"/api/schedulers/{sid}", {
+            "title": "renamed", "schedule": "0 5 * * 1", "targetPath": "elsewhere",
+            "options": {"url": "https://example.com/other.ics", "name": "other"},
+        })
+        after = c.call("GET", "/api/schedulers")
+        mine = [x for x in (after or {}).get("schedulers", []) if x["id"] == sid]
+        check(bool(mine) and mine[0]["title"] == "renamed"
+              and mine[0]["schedule"] == "0 5 * * 1"
+              and mine[0]["targetPath"] == "elsewhere"
+              and mine[0]["options"].get("name") == "other",
+              "a scheduler can be edited after the fact")
         c.call("POST", f"/api/schedulers/{sid}/run", expect=(200, 502))
         runs = c.call("GET", f"/api/schedulers/{sid}/runs")
         check(bool(runs) and len(runs["runs"]) >= 1, "the run is in the log")
