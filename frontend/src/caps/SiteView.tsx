@@ -1,21 +1,76 @@
-import { Copyable, ErrorBox, Spinner } from "../components/ui";
+import { useState } from "react";
+import { Copyable, ErrorBox, Field, Spinner, useGuarded } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { type Project } from "../lib/api";
+import { api, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 
-/** The published folder, and whether it actually holds a site. */
-export default function SiteView({ project }: { project: Project; reload: () => void }) {
-  const { data, error, loading, reload } = useQuery<{
-    siteRoot: string;
-    url: string;
-    hasIndex: boolean;
-    published: boolean;
-    note?: string;
-  }>(`/api/projects/${project.id}/site/status`);
+interface Status {
+  siteRoot: string;
+  url: string;
+  hasIndex: boolean;
+  published: boolean;
+  note?: string;
+  sourceId?: string;
+  sourceTitle?: string;
+  sourceSlug?: string;
+  protected: boolean;
+}
+
+/**
+ * A site is three decisions and no files: the address it answers at, the
+ * project that holds the material, and the folder inside it. Whether a password
+ * stands in front is the fourth.
+ *
+ * Keeping them apart is the point. What gets written, pulled and linked into is
+ * a project; what is published is an address pointing at one of its folders.
+ * The same folder can be published twice, and a project can be rearranged
+ * without the address moving.
+ */
+export default function SiteView({ project, reload: reloadProject }: { project: Project; reload: () => void }) {
+  const guarded = useGuarded();
+  const { data, error, loading, reload } = useQuery<Status>(`/api/projects/${project.id}/site/status`);
+  const projects = useQuery<{ projects: Project[] }>("/api/projects");
+
+  const [source, setSource] = useState<string | null>(null);
+  const [root, setRoot] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<Error | null>(null);
+
+  const sourceValue = source ?? data?.sourceId ?? "";
+  const rootValue = root ?? data?.siteRoot ?? "";
+
+  const candidates = useQuery<{ candidates: string[] }>(
+    `/api/projects/${project.id}/site/candidates${sourceValue ? `?source=${sourceValue}` : ""}`,
+    [sourceValue],
+  );
+
+  const save = async () => {
+    setBusy(true);
+    setSaveError(null);
+    try {
+      await guarded("changing what is published", () =>
+        api(`/api/projects/${project.id}`, {
+          method: "PATCH",
+          body: { siteSource: sourceValue, siteRoot: rootValue },
+        }),
+      );
+      setSource(null);
+      setRoot(null);
+      reload();
+      candidates.reload();
+      reloadProject();
+    } catch (err) {
+      setSaveError(err as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changed = (source !== null && source !== (data?.sourceId ?? "")) || (root !== null && root !== data?.siteRoot);
 
   return (
     <div>
-      <ErrorBox error={error} onRetry={reload} />
+      <ErrorBox error={saveError ?? error} onRetry={reload} />
       {loading && !data ? <Spinner /> : null}
       {data ? (
         <>
@@ -25,6 +80,12 @@ export default function SiteView({ project }: { project: Project; reload: () => 
                 <Icon name="globe" size={16} /> Address
               </h3>
               <Copyable value={data.url} />
+              <div className="sub">
+                {data.protected
+                  ? "A password stands in front of it — visitors get one field and nothing else."
+                  : "Open to anyone who has the address."}{" "}
+                Change that under the project's visibility.
+              </div>
               {data.published && data.hasIndex ? (
                 <a className="btn primary" href={data.url} target="_blank" rel="noreferrer">
                   Open
@@ -32,17 +93,66 @@ export default function SiteView({ project }: { project: Project; reload: () => 
               ) : null}
               {data.note ? <div className="warning">{data.note}</div> : null}
             </div>
+
             <div className="tile">
-              <h3>Served folder</h3>
-              <div className="stat">{data.siteRoot || "—"}</div>
-              <div className="sub">
-                Publishing does not make the project public: only this folder is served, the rest stays as
-                configured. Pick the folder in the project's settings.
-              </div>
+              <h3>What it serves</h3>
+
+              <Field
+                label="The project that holds the files"
+                hint="This one, or any other. The material stays where it is written."
+              >
+                <select value={sourceValue} onChange={(e) => setSource(e.target.value)}>
+                  <option value="">{project.title} (this project)</option>
+                  {(projects.data?.projects ?? [])
+                    .filter((p) => p.id !== project.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.groupSlug ? `${p.groupSlug} / ` : ""}
+                        {p.title}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+
+              <Field
+                label="The folder inside it"
+                hint={
+                  candidates.data?.candidates.length
+                    ? "The folders that hold an index.html are offered; anything else can be typed."
+                    : "No folder there holds an index.html yet."
+                }
+              >
+                <input
+                  list="site-candidates"
+                  value={rootValue}
+                  onChange={(e) => setRoot(e.target.value)}
+                  placeholder="public"
+                />
+                <datalist id="site-candidates">
+                  {(candidates.data?.candidates ?? []).map((c) => (
+                    <option key={c} value={c}>
+                      {c === "" ? "the project's root" : c}
+                    </option>
+                  ))}
+                </datalist>
+              </Field>
+
+              {changed ? (
+                <button className="btn primary" disabled={busy} onClick={save}>
+                  {busy ? "saving…" : "Save"}
+                </button>
+              ) : null}
+
+              {data.sourceTitle ? (
+                <div className="sub">
+                  Serving <strong>{data.sourceTitle}</strong>
+                  {data.siteRoot ? ` / ${data.siteRoot}` : ""} — this project holds no files of its own.
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {data.published ? (
+          {data.published && data.hasIndex ? (
             <div style={{ marginTop: 18 }}>
               <h3>Preview</h3>
               <iframe

@@ -103,6 +103,10 @@ type Project struct {
 	DefaultTab   string     `json:"defaultTab"`
 	GitTracked   bool       `json:"gitTracked"`
 	SiteRoot     *string    `json:"siteRoot,omitempty"`
+	// SiteSourceID names the project whose files are served, when that is not
+	// this one. A site is an address and a folder; the material can live
+	// wherever it is written, pulled or linked into.
+	SiteSourceID *uuid.UUID `json:"siteSourceId,omitempty"`
 	Visibility   Visibility `json:"visibility"`
 	HasPassword  bool       `json:"hasPassword"`
 	ReadOnly     bool       `json:"readOnly"`

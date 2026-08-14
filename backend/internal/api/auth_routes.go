@@ -285,7 +285,9 @@ func (s *Server) mountAuth(r fiber.Router) {
 // like every other authentication step.
 func (s *Server) unlock(c *fiber.Ctx, id uuid.UUID, hash string, scope, subject string) error {
 	var in struct {
-		Password string `json:"password"`
+		// The form tag is for the one caller that is not the app: the password
+		// page in front of a protected site, which posts an ordinary form.
+		Password string `json:"password" form:"password"`
 	}
 	if err := c.BodyParser(&in); err != nil {
 		return httpx.BadRequest("The password could not be read.")

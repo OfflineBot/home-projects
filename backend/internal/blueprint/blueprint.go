@@ -63,21 +63,24 @@ type Group struct {
 }
 
 type Project struct {
-	Slug          string   `json:"slug"`
-	Title         string   `json:"title"`
-	Description   string   `json:"description,omitempty"`
-	Preset        string   `json:"preset,omitempty"`
-	Capabilities  []string `json:"capabilities"`
-	DefaultTab    string   `json:"defaultTab,omitempty"`
-	GitTracked    bool     `json:"gitTracked,omitempty"`
-	SiteRoot      string   `json:"siteRoot,omitempty"`
-	Visibility    string   `json:"visibility"`
-	NeedsPassword bool     `json:"needsPassword,omitempty"`
-	ReadOnly      bool     `json:"readOnly,omitempty"`
-	AnonWrite     bool     `json:"anonWrite,omitempty"`
-	Archived      bool     `json:"archived,omitempty"`
-	Color         string   `json:"color,omitempty"`
-	Icon          string   `json:"icon,omitempty"`
+	Slug         string   `json:"slug"`
+	Title        string   `json:"title"`
+	Description  string   `json:"description,omitempty"`
+	Preset       string   `json:"preset,omitempty"`
+	Capabilities []string `json:"capabilities"`
+	DefaultTab   string   `json:"defaultTab,omitempty"`
+	GitTracked   bool     `json:"gitTracked,omitempty"`
+	SiteRoot     string   `json:"siteRoot,omitempty"`
+	// SiteSource is the project whose files this address serves, written as
+	// group/project so a document stays readable and portable.
+	SiteSource    string `json:"siteSource,omitempty"`
+	Visibility    string `json:"visibility"`
+	NeedsPassword bool   `json:"needsPassword,omitempty"`
+	ReadOnly      bool   `json:"readOnly,omitempty"`
+	AnonWrite     bool   `json:"anonWrite,omitempty"`
+	Archived      bool   `json:"archived,omitempty"`
+	Color         string `json:"color,omitempty"`
+	Icon          string `json:"icon,omitempty"`
 
 	Schedulers []Scheduler `json:"schedulers,omitempty"`
 }
@@ -221,6 +224,14 @@ func exportProject(ctx context.Context, st *store.Store, p *model.Project) (Proj
 	}
 	if p.SiteRoot != nil {
 		out.SiteRoot = *p.SiteRoot
+	}
+	if p.SiteSourceID != nil {
+		if src, err := st.ProjectByID(ctx, *p.SiteSourceID); err == nil {
+			out.SiteSource = src.Slug
+			if src.GroupSlug != "" {
+				out.SiteSource = src.GroupSlug + "/" + src.Slug
+			}
+		}
 	}
 	if out.Capabilities == nil {
 		out.Capabilities = []string{}

@@ -9,7 +9,7 @@ import (
 )
 
 const projectCols = `p.id, p.owner_id, p.group_id, p.slug, p.title, p.description, p.capabilities,
-	p.preset, p.default_tab, p.git_tracked, p.site_root, p.visibility, p.password_hash,
+	p.preset, p.default_tab, p.git_tracked, p.site_root, p.site_source_project_id, p.visibility, p.password_hash,
 	p.read_only, p.anon_write, p.color, p.icon, p.archived, p.position, p.created_at, p.updated_at`
 
 // projectSelect always joins the group so a project carries its group's slug
@@ -21,7 +21,7 @@ func scanProject(r scanner) (*model.Project, error) {
 	var p model.Project
 	var pw *string
 	err := r.Scan(&p.ID, &p.OwnerID, &p.GroupID, &p.Slug, &p.Title, &p.Description, &p.Capabilities,
-		&p.Preset, &p.DefaultTab, &p.GitTracked, &p.SiteRoot, &p.Visibility, &pw,
+		&p.Preset, &p.DefaultTab, &p.GitTracked, &p.SiteRoot, &p.SiteSourceID, &p.Visibility, &pw,
 		&p.ReadOnly, &p.AnonWrite, &p.Color, &p.Icon, &p.Archived, &p.Position,
 		&p.CreatedAt, &p.UpdatedAt, &p.GroupSlug, &p.GroupTitle)
 	if err != nil {
@@ -200,6 +200,7 @@ type ProjectPatch struct {
 	DefaultTab   *string
 	GitTracked   *bool
 	SiteRoot     **string
+	SiteSourceID **uuid.UUID
 	Visibility   *model.Visibility
 	PasswordHash **string
 	ReadOnly     *bool
@@ -243,6 +244,9 @@ func (s *Store) UpdateProject(ctx context.Context, id uuid.UUID, p ProjectPatch)
 	}
 	if p.GitTracked != nil {
 		add("git_tracked", *p.GitTracked)
+	}
+	if p.SiteSourceID != nil {
+		add("site_source_project_id", *p.SiteSourceID)
 	}
 	if p.SiteRoot != nil {
 		add("site_root", *p.SiteRoot)

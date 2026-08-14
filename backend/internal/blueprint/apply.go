@@ -173,7 +173,7 @@ func (a *Applier) applyProject(ctx context.Context, p Project, grp *model.Group,
 			result.add("update", "project", label, "already here — its settings are brought in line")
 			return existing, nil
 		}
-		updated, err := a.Store.UpdateProject(ctx, existing.ID, a.patchFor(p, existing))
+		updated, err := a.Store.UpdateProject(ctx, existing.ID, a.patchFor(ctx, p, existing))
 		if err != nil {
 			return nil, err
 		}
@@ -210,7 +210,7 @@ func (a *Applier) applyProject(ctx context.Context, p Project, grp *model.Group,
 		}
 	}
 	if p.SiteRoot != "" || p.ReadOnly || p.AnonWrite || p.Archived {
-		created, err = a.Store.UpdateProject(ctx, created.ID, a.patchFor(p, created))
+		created, err = a.Store.UpdateProject(ctx, created.ID, a.patchFor(ctx, p, created))
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +222,7 @@ func (a *Applier) applyProject(ctx context.Context, p Project, grp *model.Group,
 	return created, nil
 }
 
-func (a *Applier) patchFor(p Project, existing *model.Project) store.ProjectPatch {
+func (a *Applier) patchFor(ctx context.Context, p Project, existing *model.Project) store.ProjectPatch {
 	visibility := model.Visibility(p.Visibility)
 	patch := store.ProjectPatch{
 		Title: &p.Title, Description: &p.Description, Capabilities: &p.Capabilities,
@@ -247,6 +247,15 @@ func (a *Applier) patchFor(p Project, existing *model.Project) store.ProjectPatc
 	} else {
 		ref := &root
 		patch.SiteRoot = &ref
+	}
+	// The project whose files this address serves. It is named, not numbered,
+	// so a document written on one server means the same thing on another.
+	if p.SiteSource == "" {
+		var none *uuid.UUID
+		patch.SiteSourceID = &none
+	} else if src, err := a.findProject(ctx, p.SiteSource); err == nil && src != nil {
+		ref := &src.ID
+		patch.SiteSourceID = &ref
 	}
 	// Visitors may only write in a public project, and a password that does not
 	// travel cannot be assumed.

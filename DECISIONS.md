@@ -211,7 +211,34 @@ been a `kind` column and a private format. It is neither.
   `X-HOME-LINK` and `X-HOME-ATTACHED-TO` are the only two additions, and both
   are decoration: losing them loses a jump to a folder, never an appointment.
 
-## 14. What is not built
+## 14. A site is an address, not a folder that happens to be published
+
+Publishing used to be a property of the project holding the files: set
+`site_root`, and that project serves that folder. It works, and it conflates two
+different things. The material is what gets written, pulled and linked into; the
+site is *where it is reachable*, *which folder of it*, and *whether a password
+stands in front*. Those change for different reasons and at different times.
+
+So a project can now name another project as the source of its site. The address
+stays the site project's own — that is what a reader types — while the files
+come from wherever they are written. One folder can be published twice under two
+addresses, a folder can be rearranged without the address moving, and a Moodle
+project that a scheduler overwrites nightly can have a curated page in front of
+it. `siteSource` is written into the arrangement document by name, not by id, so
+the same document means the same thing on another server.
+
+Two rules keep it from becoming a puzzle:
+
+- **One hop.** A site may not point at another site. Chains would turn an
+  address into a riddle and make a loop possible.
+- **Publishing stays explicit.** Naming a folder publishes *that folder*,
+  whatever the project's visibility says about the rest of it — that was already
+  true and stays true. Visibility decides one thing here: whether a password
+  page stands in front. That page is thirty lines of HTML served by the site
+  route itself, with no app and no account behind it, and it hands out the same
+  unlock cookie the rest of the server uses.
+
+## 15. What is not built
 
 - **The Android app.** Everything it needs exists on the server side.
 - **WebAuthn / passkeys.** TOTP is in; the brief lists passkeys as optional.

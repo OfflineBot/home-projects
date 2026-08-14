@@ -259,6 +259,7 @@ func (s *Server) mountProjects(r fiber.Router) {
 			DefaultTab   *string   `json:"defaultTab"`
 			GitTracked   *bool     `json:"gitTracked"`
 			SiteRoot     *string   `json:"siteRoot"`
+			SiteSource   *string   `json:"siteSource"`
 			Visibility   *string   `json:"visibility"`
 			Password     *string   `json:"password"`
 			ReadOnly     *bool     `json:"readOnly"`
@@ -289,6 +290,32 @@ func (s *Server) mountProjects(r fiber.Router) {
 				}
 			}
 			patch.Capabilities = in.Capabilities
+		}
+		// Which project holds the files this site serves. Empty means its own.
+		if in.SiteSource != nil {
+			if strings.TrimSpace(*in.SiteSource) == "" {
+				var none *uuid.UUID
+				patch.SiteSourceID = &none
+			} else {
+				src, err := s.resolveProjectRef(c, *in.SiteSource)
+				if err != nil {
+					return err
+				}
+				if src.ID == p.ID {
+					var none *uuid.UUID
+					patch.SiteSourceID = &none
+				} else {
+					// One hop only. A site that points at a site would make the
+					// address a riddle and the loop a real possibility.
+					if src.SiteSourceID != nil {
+						return httpx.BadRequest(
+							"%s already shows another project's files. Point at the project that holds them.",
+							src.Title)
+					}
+					ref := &src.ID
+					patch.SiteSourceID = &ref
+				}
+			}
 		}
 		if in.SiteRoot != nil {
 			if *in.SiteRoot == "" {
@@ -598,4 +625,54 @@ func (s *Server) findGroup(ctx context.Context, ref string) (*model.Group, error
 		return nil, httpx.BadRequest("There is no such group.")
 	}
 	return g, nil
+}
+
+// resolveProjectRef takes what a person or a JSON document would write for a
+// project — its id, or its slug, optionally as group/project — and returns it
+// only if the caller may write into it. A pointer to something you cannot see
+// is not a pointer worth having.
+func (s *Server) resolveProjectRef(c *fiber.Ctx, ref string) (*model.Project, error) {
+	ctx := c.UserContext()
+	ref = strings.Trim(strings.TrimSpace(ref), "/")
+
+	var found *model.Project
+	if id, err := uuid.Parse(ref); err == nil {
+		found, err = s.Store.ProjectByID(ctx, id)
+		if err != nil {
+			return nil, httpx.NotFound("There is no project with that id.")
+		}
+	} else {
+		groupSlug, projectSlug := "", ref
+		if a, b, ok := strings.Cut(ref, "/"); ok {
+			groupSlug, projectSlug = a, b
+		}
+		all, err := s.Store.ListProjects(ctx, nil, false, true)
+		if err != nil {
+			return nil, httpx.Internal("the projects could not be read").WithCause(err)
+		}
+		for i := range all {
+			p := all[i]
+			if !strings.EqualFold(p.Slug, projectSlug) && !strings.EqualFold(p.Title, projectSlug) {
+				continue
+			}
+			if groupSlug != "" && !strings.EqualFold(p.GroupSlug, groupSlug) {
+				continue
+			}
+			found = &p
+			break
+		}
+		if found == nil {
+			return nil, httpx.NotFound("There is no project called %q.", ref)
+		}
+	}
+
+	var group *model.Group
+	if found.GroupID != nil {
+		group, _ = s.Store.GroupByID(ctx, *found.GroupID)
+	}
+	if err := access.RequireReadProject(auth.From(c), found); err != nil {
+		return nil, err
+	}
+	_ = group
+	return found, nil
 }

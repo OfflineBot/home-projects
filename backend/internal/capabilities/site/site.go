@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/capability"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/store"
@@ -70,6 +71,16 @@ func (Capability) Presets() []capability.Preset {
 				return []byte(strings.ReplaceAll(defaultIndex, "%TITLE%", p.Title))
 			},
 		}},
+	}, {
+		// The same capability, the other way round: no files of its own. What
+		// it holds is the address, the folder and whether a password stands in
+		// front of it; the material stays in the project that is written into.
+		Key:          "address",
+		Title:        "Published address",
+		Description:  "An address that serves a folder out of another project — nothing of its own.",
+		Icon:         "globe",
+		DefaultTab:   "site",
+		Capabilities: []string{"site"},
 	}}
 }
 
@@ -80,17 +91,30 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			return err
 		}
 		p := capability.Project(c)
-		return c.JSON(status(env, p))
+		return c.JSON(status(c.UserContext(), env, p))
 	})
 
-	// Which folders below the project could be served — the settings dialog
-	// offers them instead of asking for a path to be typed.
+	// Which folders could be served — the dialog offers them instead of asking
+	// for a path to be typed. They are looked for in the project that holds the
+	// files, which is not necessarily this one.
 	r.Get("/candidates", func(c *fiber.Ctx) error {
 		if err := capability.RequireRead(c); err != nil {
 			return err
 		}
 		p := capability.Project(c)
-		fs := env.Files.Workspace().Open(p.ID)
+		holder := p
+		if id := c.Query("source"); id != "" {
+			if pid, err := uuid.Parse(id); err == nil {
+				if src, err := env.Store.ProjectByID(c.UserContext(), pid); err == nil {
+					holder = src
+				}
+			}
+		} else if p.SiteSourceID != nil {
+			if src, err := env.Store.ProjectByID(c.UserContext(), *p.SiteSourceID); err == nil {
+				holder = src
+			}
+		}
+		fs := env.Files.Workspace().Open(holder.ID)
 		found := []string{}
 		_ = fs.Walk("", func(e workspace.Entry) error {
 			if e.IsDir {
@@ -115,10 +139,16 @@ type Status struct {
 	HasIndex  bool   `json:"hasIndex"`
 	Published bool   `json:"published"`
 	Note      string `json:"note,omitempty"`
+	// Where the files come from. Empty means this project's own.
+	SourceID    string `json:"sourceId,omitempty"`
+	SourceTitle string `json:"sourceTitle,omitempty"`
+	SourceSlug  string `json:"sourceSlug,omitempty"`
+	// Whether a password stands in front of the address.
+	Protected bool `json:"protected"`
 }
 
-func status(env *capability.Env, p *model.Project) Status {
-	s := Status{}
+func status(ctx context.Context, env *capability.Env, p *model.Project) Status {
+	s := Status{Protected: p.Visibility == model.VisibilityPassword}
 	if p.SiteRoot != nil {
 		s.SiteRoot = *p.SiteRoot
 		s.Published = true
@@ -128,20 +158,39 @@ func status(env *capability.Env, p *model.Project) Status {
 		group = "ungrouped"
 	}
 	s.URL = env.Cfg.PublicURL + "/s/" + group + "/" + p.Slug + "/"
+
+	// A site is an address plus a folder; the material may live in another
+	// project entirely, and then that is where the index.html is looked for.
+	holder := p
+	if p.SiteSourceID != nil && *p.SiteSourceID != p.ID {
+		src, err := env.Store.ProjectByID(ctx, *p.SiteSourceID)
+		if err != nil {
+			s.Note = "The project this site shows no longer exists — pick another one."
+			return s
+		}
+		holder = src
+		s.SourceID, s.SourceTitle, s.SourceSlug = src.ID.String(), src.Title, src.Slug
+	}
+
 	if s.Published {
 		index := path.Join(s.SiteRoot, "index.html")
-		s.HasIndex = env.Files.Exists(p, index)
+		s.HasIndex = env.Files.Exists(holder, index)
 		if !s.HasIndex {
-			s.Note = "There is no index.html in " + s.SiteRoot + " yet, so the address shows nothing."
+			where := "this project"
+			if s.SourceTitle != "" {
+				where = s.SourceTitle
+			}
+			s.Note = "There is no index.html in " + s.SiteRoot + " of " + where +
+				" yet, so the address shows nothing."
 		}
 	} else {
-		s.Note = "Pick a folder in the project's settings to publish it."
+		s.Note = "Pick the project that holds the files and the folder to serve."
 	}
 	return s
 }
 
 func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Project) ([]store.VariableInput, error) {
-	st := status(env, p)
+	st := status(ctx, env, p)
 	return []store.VariableInput{
 		{Name: "published", Type: "bool", Value: st.Published && st.HasIndex, Source: "capability:site"},
 		{Name: "site_url", Type: "text", Value: st.URL, Source: "capability:site"},
