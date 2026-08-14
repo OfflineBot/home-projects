@@ -28,6 +28,7 @@ import Groups from "./pages/Groups";
 import Schedulers from "./pages/Schedulers";
 import Structure from "./pages/Structure";
 import Users from "./pages/Users";
+import MailView from "./caps/MailView";
 import Login from "./pages/Login";
 
 declare const process: { env: Record<string, string | undefined> };
@@ -162,6 +163,46 @@ describe("every screen draws something", () => {
     );
     // A dialog left standing would be found by the next test looking for one.
     cleanup();
+  });
+
+  // A real message, read the way the page reads it: the umlauts decoded, the
+  // HTML shown in its frame, the attachment offered. Every one of those three
+  // was broken at once, and none of it shows up in a type check.
+  it("a mail is readable", async () => {
+    const mail = await api<Project>("/api/projects", {
+      body: { title: "ui mail " + Date.now(), groupId: group.slug, preset: "mail" },
+    });
+    const eml = [
+      "From: Studienbuero <buero@dhbw-ravensburg.de>",
+      "To: someone@example.com",
+      "Subject: =?UTF-8?Q?Pr=C3=BCfungsanmeldung?=",
+      "Date: Mon, 4 Aug 2025 09:12:00 +0200",
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset=UTF-8',
+      "Content-Transfer-Encoding: quoted-printable",
+      "",
+      "<p>Die Pr=C3=BCfung f=C3=A4llt aus.</p>",
+      "",
+    ].join("\r\n");
+    try {
+      await api(`/api/projects/${mail.id}/files/content`, {
+        method: "PUT",
+        body: { path: "inbox/2025-08-04-pruefung.eml", content: eml },
+      });
+      const c = await draw(<MailView project={mail} reload={() => {}} />, /Studienbuero/i);
+      // The list shows the sender's name and the decoded subject.
+      expect(c.textContent).toContain("Prüfungsanmeldung");
+      expect(c.textContent).not.toMatch(/=C3|=BC/);
+
+      fireEvent.click(c.querySelector(".mail-row")!);
+      await waitFor(() => expect(c.querySelector(".mail-body-frame")).not.toBeNull());
+      const frame = c.querySelector("iframe") as HTMLIFrameElement;
+      expect(frame.getAttribute("sandbox") ?? "").not.toContain("allow-scripts");
+      expect(frame.getAttribute("srcdoc") ?? "").toContain("Die Prüfung fällt aus.");
+    } finally {
+      await api(`/api/projects/${mail.id}?confirm=${mail.slug}`, { method: "DELETE" });
+      cleanup();
+    }
   });
 
   // The people page is drawn from the server's own list, so it fails if the

@@ -540,18 +540,50 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			return c.JSON(fiber.Map{"path": rel, "raw": string(body),
 				"error": "This .eml could not be parsed: " + perr.Error()})
 		}
-		text, html := extractBodies(parsed)
+		text, html, files := readMessage(parsed)
 		date, _ := parsed.Header.Date()
 		return c.JSON(fiber.Map{
-			"path":    rel,
-			"from":    decodeHeader(parsed.Header.Get("From")),
-			"to":      decodeHeader(parsed.Header.Get("To")),
-			"cc":      decodeHeader(parsed.Header.Get("Cc")),
-			"subject": decodeHeader(parsed.Header.Get("Subject")),
-			"date":    date,
-			"text":    text,
-			"html":    html,
+			"path":        rel,
+			"from":        decodeHeader(parsed.Header.Get("From")),
+			"to":          decodeHeader(parsed.Header.Get("To")),
+			"cc":          decodeHeader(parsed.Header.Get("Cc")),
+			"replyTo":     decodeHeader(parsed.Header.Get("Reply-To")),
+			"subject":     decodeHeader(parsed.Header.Get("Subject")),
+			"date":        date,
+			"text":        text,
+			"html":        html,
+			"attachments": files,
 		})
+	})
+
+	// One file out of a message. It is served from the .eml itself rather than
+	// unpacked to disk: what is in the project stays the message, whole.
+	r.Get("/attachment", func(c *fiber.Ctx) error {
+		if err := capability.RequireRead(c); err != nil {
+			return err
+		}
+		p := capability.Project(c)
+		body, _, err := env.Files.Read(c.UserContext(), p, c.Query("path"))
+		if err != nil {
+			return err
+		}
+		parsed, perr := mail.ReadMessage(strings.NewReader(string(body)))
+		if perr != nil {
+			return httpx.BadRequest("This .eml could not be read.")
+		}
+		_, _, files := readMessage(parsed)
+		want := c.QueryInt("i", -1)
+		for _, f := range files {
+			if f.Index != want {
+				continue
+			}
+			c.Set("Content-Type", f.Type)
+			c.Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(f.Filename, `"`, "")+`"`)
+			// The message it came from does not change, so this may be kept.
+			c.Set("Cache-Control", "private, max-age=3600")
+			return c.Send(f.data)
+		}
+		return httpx.NotFound("That message has no such part.")
 	})
 
 	// Classifying is moving a message into another folder — the folders are

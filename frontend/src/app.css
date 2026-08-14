@@ -604,3 +604,87 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   padding: 8px 12px; align-items: center; gap: 10px;
 }
 @media (max-width: 860px) { .mobile-bar { display: flex; } }
+
+/* ------------------------------------------------------------------ mail
+   A list beside the message, the way a mail program has always been laid out.
+   The list scrolls on its own so the message stays where it was. */
+.mail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.mail-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mail-find {
+  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 180px; max-width: 420px;
+  background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0);
+  border-radius: 9px; padding: 4px 8px; color: var(--ctp-overlay1);
+}
+.mail-find input { border: none; background: none; padding: 4px 0; flex: 1; color: var(--ctp-text); }
+.mail-find input:focus { outline: none; }
+
+.mail-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--ctp-surface0); color: var(--ctp-subtext0);
+  border: 1px solid transparent; border-radius: 999px;
+  padding: 3px 10px; font-size: 12.5px; cursor: pointer;
+}
+.chip:hover { border-color: var(--ctp-surface2); }
+.chip.on { background: var(--ctp-blue); color: var(--ctp-base); }
+.chip.tiny { padding: 1px 7px; font-size: 11.5px; cursor: default; }
+
+.mail-panes {
+  display: grid; grid-template-columns: minmax(260px, 360px) 1fr;
+  gap: 12px; align-items: start; min-height: 0;
+}
+.mail-list {
+  border: 1px solid var(--ctp-surface0); border-radius: 12px;
+  background: var(--ctp-mantle); overflow-y: auto; max-height: calc(100vh - 230px);
+}
+.mail-row {
+  display: flex; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; border-bottom: 1px solid var(--ctp-surface0);
+  padding: 9px 11px; color: inherit;
+}
+.mail-row:last-child { border-bottom: none; }
+.mail-row:hover { background: var(--ctp-surface0); }
+.mail-row.active { background: var(--ctp-surface0); box-shadow: inset 3px 0 0 0 var(--ctp-blue); }
+.mail-avatar {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  background: var(--ctp-surface1); color: var(--ctp-subtext1);
+}
+.mail-avatar.big { width: 40px; height: 40px; font-size: 14px; }
+.mail-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mail-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.mail-from { flex: 1; font-weight: 500; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-when { flex-shrink: 0; font-size: 11.5px; color: var(--ctp-overlay1); font-variant-numeric: tabular-nums; }
+.mail-subject { font-size: 13px; color: var(--ctp-subtext0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-row-foot { display: flex; align-items: center; gap: 6px; color: var(--ctp-overlay1); }
+
+.mail-read {
+  border: 1px solid var(--ctp-surface0); border-radius: 12px;
+  background: var(--ctp-mantle); padding: 16px 18px; min-height: 220px;
+  max-height: calc(100vh - 230px); overflow-y: auto;
+}
+.mail-head { border-bottom: 1px solid var(--ctp-surface0); padding-bottom: 12px; margin-bottom: 12px; }
+.mail-head-top { display: flex; align-items: start; gap: 10px; }
+.mail-head-top h2 { margin: 0; font-size: 18px; flex: 1; }
+.mail-head-who { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.mail-head-date { margin-left: auto; flex-shrink: 0; }
+.mail-body-frame { width: 100%; border: none; background: transparent; display: block; }
+.mail-body-text { white-space: pre-wrap; font-size: 13.5px; margin: 0; background: none; padding: 0; }
+.mail-files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.mail-file {
+  display: flex; align-items: center; gap: 8px; min-width: 180px;
+  border: 1px solid var(--ctp-surface1); border-radius: 9px; padding: 7px 10px;
+  color: var(--ctp-text); text-decoration: none; font-size: 13px;
+}
+.mail-file:hover { border-color: var(--ctp-blue); }
+.mail-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--ctp-surface0);
+}
+
+/* On a narrow screen the two panes become one: the list, or the message. */
+@media (max-width: 860px) {
+  .mail-panes { grid-template-columns: 1fr; }
+  .mail-panes.has-selection .mail-list { display: none; }
+  .mail-list, .mail-read { max-height: none; }
+}
