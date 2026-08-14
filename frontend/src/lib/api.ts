@@ -368,6 +368,8 @@ export interface Filter {
   description: string;
   /** May be absent: a filter with no rules yet. */
   rules?: FilterRule[];
+  /** Projects the editor tries it against. No effect when it runs. */
+  preview?: string[];
   usedBy: number;
 }
 

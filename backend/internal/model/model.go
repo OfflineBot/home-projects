@@ -292,6 +292,9 @@ type Filter struct {
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
 	Rules       json.RawMessage `json:"rules"`
+	// Preview names the projects this filter is tried against while it is
+	// written. It has no effect when the filter runs.
+	Preview []string `json:"preview"`
 	// UsedBy counts the schedulers pointing at it, so deleting one can say
 	// what it would affect.
 	UsedBy    int       `json:"usedBy"`

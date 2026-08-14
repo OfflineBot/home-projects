@@ -433,13 +433,20 @@ def main() -> int:
             check(bool(listed) and listed["rules"] == [], "and still does when it is listed")
             c.call("DELETE", f"/api/filters/{blank['id']}")
         tried = c.call("POST", "/api/filters/try", {
-            "text": "Grundlagen In -> semester1\n* -> rest",
+            "text": "Grundlagen In -> {%s/semester1}\n* -> {%s/rest}" % (gslug, gslug),
             "names": ["WDS125 - Grundlagen Informatik (INA)", "Etwas anderes"],
         })
         by = {r["name"]: r for r in (tried or {}).get("results", [])}
-        check(by.get("WDS125 - Grundlagen Informatik (INA)", {}).get("project") == "semester1"
-              and by.get("Etwas anderes", {}).get("project") == "rest",
-              "a filter can be tried against names before it is used")
+        check(by.get("WDS125 - Grundlagen Informatik (INA)", {}).get("project", "").endswith("semester1")
+              and by.get("Etwas anderes", {}).get("project", "").endswith("rest"),
+              "a filter can be tried before it is used")
+        # And against a real project, which is what stops a folder name being
+        # typed from memory.
+        against = c.call("POST", "/api/filters/try",
+                         {"text": "docs* ->", "projects": [f"{gslug}/{made['data']['slug']}"]})
+        names = {r["name"]: r for r in (against or {}).get("results", [])}
+        check("docs" in names and names["docs"]["matched"],
+              "a filter can be tried against what is really in a project")
         c.call("PATCH", f"/api/filters/{fid}", {"text": "* -> rest"})
         c.call("GET", "/api/filters")
         # A line that is not a rule is refused rather than silently dropped.

@@ -53,6 +53,7 @@ func (s *Server) mountFilters(r fiber.Router) {
 			Title:       in.Title,
 			Description: in.Description,
 			Rules:       encoded,
+			Preview:     in.Preview,
 		})
 		if err != nil {
 			return httpx.Conflict("A filter with that name already exists.")
@@ -75,6 +76,9 @@ func (s *Server) mountFilters(r fiber.Router) {
 		}
 		if in.Description != "" {
 			patch.Description = &in.Description
+		}
+		if in.Preview != nil {
+			patch.Preview = &in.Preview
 		}
 		if in.Text != nil || in.Rules != nil {
 			rules, bad := in.rules()
@@ -112,21 +116,54 @@ func (s *Server) mountFilters(r fiber.Router) {
 		var in struct {
 			filterInput
 			Names []string `json:"names"`
+			// Projects to try it against — their real contents beat names
+			// typed from memory.
+			Projects []string `json:"projects"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The request could not be read.")
 		}
 		rules, bad := in.rules()
-		out := make([]fiber.Map, 0, len(in.Names))
+
+		type sample struct {
+			Name  string `json:"name"`
+			Where string `json:"where,omitempty"`
+			IsDir bool   `json:"isDir,omitempty"`
+			item  filter.Item
+		}
+		samples := []sample{}
 		for _, name := range in.Names {
-			name = strings.TrimSpace(name)
-			if name == "" {
+			if name = strings.TrimSpace(name); name != "" {
+				samples = append(samples, sample{Name: name, item: filter.Item{Name: name, Path: name}})
+			}
+		}
+		for _, ref := range in.Projects {
+			p, err := s.resolveProjectRef(c, ref)
+			if err != nil {
 				continue
 			}
-			d, matched := filter.Apply(rules, filter.Item{Name: name, Path: name})
+			entries, err := s.WS.Open(p.ID).List("")
+			if err != nil {
+				continue
+			}
+			for _, e := range entries {
+				samples = append(samples, sample{
+					Name: e.Name, Where: ref, IsDir: e.IsDir,
+					item: filter.Item{Name: e.Name, Path: e.Path, IsDir: e.IsDir, Changed: e.ModifiedAt},
+				})
+			}
+		}
+
+		items := make([]filter.Item, len(samples))
+		for i, s := range samples {
+			items[i] = s.item
+		}
+		out := make([]fiber.Map, 0, len(samples))
+		for i, d := range filter.Plan(rules, items) {
 			out = append(out, fiber.Map{
-				"name": name, "matched": matched, "project": d.Project,
-				"folder": d.Folder, "skip": d.Skip, "rule": d.Rule,
+				"name": samples[i].Name, "where": samples[i].Where, "isDir": samples[i].IsDir,
+				"matched": d.Matched, "project": d.Project, "folder": d.Folder,
+				"skip": d.Skip, "rule": d.Rule,
 			})
 		}
 		return c.JSON(fiber.Map{"results": out, "unusable": bad})
@@ -140,6 +177,9 @@ type filterInput struct {
 	Rules       []filter.Rule `json:"rules"`
 	// Text is the same thing as a person types it. One of the two is enough.
 	Text *string `json:"text"`
+	// Preview names the projects the editor tries this against. It has no
+	// effect on what the filter does.
+	Preview []string `json:"preview"`
 }
 
 func (in filterInput) rules() ([]filter.Rule, []string) {

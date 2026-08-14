@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Modal, Spinner, useGuarded } from "../components/ui";
-import { api, type Filter, type FilterRule } from "../lib/api";
+import { api, type Filter, type FilterRule, type Project } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 
 /**
@@ -100,6 +100,8 @@ function ruleLine(r: FilterRule): string {
 
 interface TryResult {
   name: string;
+  where?: string;
+  isDir?: boolean;
   matched: boolean;
   project: string;
   folder: string;
@@ -121,16 +123,17 @@ function FilterDialog({
   const [text, setText] = useState(
     (existing?.rules ?? []).map(ruleLine).join("\n"),
   );
-  const [names, setNames] = useState("");
+  const [preview, setPreview] = useState<string[]>(existing?.preview ?? []);
+  const projects = useQuery<{ projects: Project[] }>("/api/projects");
   const [tried, setTried] = useState<{ results: TryResult[]; unusable?: string[] } | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const tryIt = async () => {
+  const tryIt = async (against = preview) => {
     try {
       setTried(
         await api<{ results: TryResult[]; unusable?: string[] }>("/api/filters/try", {
-          body: { text, names: names.split("\n") },
+          body: { text, projects: against },
         }),
       );
     } catch (err) {
@@ -157,8 +160,8 @@ function FilterDialog({
               try {
                 await guarded("saving a filter", () =>
                   existing
-                    ? api(`/api/filters/${existing.id}`, { method: "PATCH", body: { title, text } })
-                    : api("/api/filters", { body: { title, text } }),
+                    ? api(`/api/filters/${existing.id}`, { method: "PATCH", body: { title, text, preview } })
+                    : api("/api/filters", { body: { title, text, preview } }),
                 );
                 onSaved();
               } catch (err) {
@@ -210,18 +213,39 @@ function FilterDialog({
         </table>
       </details>
 
-      <Field label="Try it">
-        <textarea
-          value={names}
-          onChange={(e) => setNames(e.target.value)}
-          onBlur={tryIt}
-          style={{ minHeight: 70, fontFamily: "var(--mono)", fontSize: 13 }}
-          placeholder={"Grundlagen Informatik\nGrundlagen Analysis\nSkript.pdf"}
-        />
+      <Field label="Try it against" hint="Only while writing it. The filter itself stays standalone.">
+        <div className="chips">
+          {preview.map((ref) => (
+            <button key={ref} className="badge" onClick={() => setPreview(preview.filter((x) => x !== ref))}>
+              {ref} <Icon name="x" size={11} />
+            </button>
+          ))}
+          <select
+            value=""
+            onChange={(e) => {
+              if (!e.target.value || preview.includes(e.target.value)) return;
+              const next = [...preview, e.target.value];
+              setPreview(next);
+              void tryIt(next);
+            }}
+          >
+            <option value="">— add a project —</option>
+            {(projects.data?.projects ?? [])
+              .map((p) => `${p.groupSlug || "ungrouped"}/${p.slug}`)
+              .filter((ref) => !preview.includes(ref))
+              .map((ref) => (
+                <option key={ref} value={ref}>
+                  {ref}
+                </option>
+              ))}
+          </select>
+          {preview.length ? (
+            <button className="btn small" onClick={() => tryIt()}>
+              Try
+            </button>
+          ) : null}
+        </div>
       </Field>
-      <button className="btn small" onClick={tryIt} disabled={!names.trim()}>
-        Try
-      </button>
 
       {tried ? (
         <div className="list" style={{ marginTop: 12 }}>
@@ -233,7 +257,11 @@ function FilterDialog({
           ))}
           {tried.results.map((r, i) => (
             <div key={i} className="list-row">
-              <span className="grow mono">{r.name}</span>
+              <Icon name={r.isDir ? "folder" : "file"} size={13} />
+              <span className="grow mono">
+                {r.name}
+                {r.where ? <span className="meta"> · {r.where}</span> : null}
+              </span>
               <Icon name="chevronRight" size={13} />
               <span className="mono">
                 {!r.matched ? (

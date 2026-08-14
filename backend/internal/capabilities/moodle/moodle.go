@@ -294,6 +294,15 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	taken := 0
 	// Which projects were written into, so each gets one commit at the end.
 	touched := map[uuid.UUID]*model.Project{}
+	// What this scheduler fetched last time, by path. A file that is in here
+	// and not on disk was moved away deliberately.
+	fetchedBefore := map[string]bool{}
+	if job.Scheduler != nil && job.Scheduler.ID != uuid.Nil {
+		for _, rel := range readManifest(env, job.Project)[job.Scheduler.ID.String()] {
+			fetchedBefore[rel] = true
+		}
+	}
+	moved := 0
 	// The folders this run is responsible for: only inside them may anything
 	// be removed. Notes put next to a pulled course are not this run's to
 	// delete.
@@ -385,6 +394,15 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 				skipped++
 				continue
 			}
+			// It is not here — but this scheduler fetched it before, so
+			// something moved it on purpose: a filter into another project, or
+			// a hand. Fetching it again would put a second copy back where the
+			// first one was deliberately taken from. A rebuild is how you ask
+			// for it anyway.
+			if !fresh && fetchedBefore[rel] {
+				moved++
+				continue
+			}
 			body, _, err := lib.DownloadFile(token, it.Fileurl)
 			if err != nil {
 				job.Log("%s: %v", rel, err)
@@ -415,6 +433,10 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	if len(filteredOut) > 0 {
 		job.Log("%d more were left out by the course filter: %s",
 			len(filteredOut), strings.Join(filteredOut, ", "))
+	}
+	if moved > 0 {
+		job.Log("%d file(s) were fetched before and have been moved elsewhere since — left alone", moved)
+		job.Log("a rebuild fetches them again")
 	}
 	if len(unrouted) > 0 {
 		job.Log("%d courses matched no rule and were not fetched: %s",
@@ -459,6 +481,9 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 	}
 	if left > 0 {
 		message += fmt.Sprintf(" (%d courses left out)", left)
+	}
+	if moved > 0 {
+		message += fmt.Sprintf(", %d already moved elsewhere", moved)
 	}
 	if len(touched) > 1 {
 		message += fmt.Sprintf(", across %d projects", len(touched))

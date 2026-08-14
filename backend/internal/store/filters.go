@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/model"
@@ -12,18 +13,32 @@ import (
 // Filters are stored the way accounts are: centrally, by name, belonging to
 // nobody's project. What uses one only ever holds its id.
 
-const filterSelect = `SELECT f.id, f.slug, f.title, f.description, f.rules, f.created_at, f.updated_at,
+const filterSelect = `SELECT f.id, f.slug, f.title, f.description, f.rules, f.preview_projects,
+	f.created_at, f.updated_at,
 	(SELECT count(*) FROM project_filters pf WHERE pf.filter_id = f.id)
 	FROM filters f`
 
 func scanFilter(r scanner) (*model.Filter, error) {
 	var f model.Filter
-	if err := r.Scan(&f.ID, &f.Slug, &f.Title, &f.Description, &f.Rules,
+	var preview string
+	if err := r.Scan(&f.ID, &f.Slug, &f.Title, &f.Description, &f.Rules, &preview,
 		&f.CreatedAt, &f.UpdatedAt, &f.UsedBy); err != nil {
 		return nil, norm(err)
 	}
 	f.Rules = ruleList(f.Rules)
+	f.Preview = splitList(preview)
 	return &f, nil
+}
+
+// splitList reads the comma-separated addresses a filter is tried against.
+func splitList(raw string) []string {
+	out := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // ruleList is the one place that decides what "no rules" looks like on the way
@@ -67,15 +82,17 @@ type NewFilter struct {
 	Title       string
 	Description string
 	Rules       json.RawMessage
+	Preview     []string
 }
 
 func (s *Store) CreateFilter(ctx context.Context, in NewFilter) (*model.Filter, error) {
 	in.Rules = ruleList(in.Rules)
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO filters (owner_id, slug, title, description, rules)
-		VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-		in.OwnerID, in.Slug, in.Title, in.Description, in.Rules).Scan(&id)
+		INSERT INTO filters (owner_id, slug, title, description, rules, preview_projects)
+		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		in.OwnerID, in.Slug, in.Title, in.Description, in.Rules,
+		strings.Join(in.Preview, ",")).Scan(&id)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -87,6 +104,7 @@ type FilterPatch struct {
 	Title       *string
 	Description *string
 	Rules       *json.RawMessage
+	Preview     *[]string
 }
 
 func (s *Store) UpdateFilter(ctx context.Context, id uuid.UUID, p FilterPatch) (*model.Filter, error) {
@@ -110,6 +128,9 @@ func (s *Store) UpdateFilter(ctx context.Context, id uuid.UUID, p FilterPatch) (
 	}
 	if p.Rules != nil {
 		add("rules", *p.Rules)
+	}
+	if p.Preview != nil {
+		add("preview_projects", strings.Join(*p.Preview, ","))
 	}
 	if set == "" {
 		return s.FilterByID(ctx, id)
