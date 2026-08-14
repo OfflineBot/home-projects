@@ -11,7 +11,7 @@
  * nothing added to the server for testing's sake. Point it at a throwaway
  * instance with HP_URL and HP_PASSWORD.
  */
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import GroupSettings from "./components/GroupSettings";
@@ -217,6 +217,42 @@ describe("every screen draws something", () => {
         view.unmount();
       }
     }
+  });
+
+  // The rule builder writes the line, so nothing has to be typed or spelt from
+  // memory. This clicks it the way a person would.
+  it("builds a rule out of what is really there", async () => {
+    await api(`/api/projects/${project.id}/files/content`, {
+      method: "PUT",
+      body: { path: "Vorlesung/x.txt", content: "x" },
+    });
+    const c = await draw(<FiltersPage />, /New filter/i);
+    // Several earlier screens are still mounted in this document; the button is
+    // the one in the page just drawn.
+    fireEvent.click([...c.querySelectorAll("button")].find((b) => /New filter/i.test(b.textContent ?? ""))!);
+
+    const address = `${group.slug}/${project.slug}`;
+    const dialog = await waitFor(() => {
+      const found = screen.getAllByRole("dialog");
+      return found[found.length - 1];
+    });
+    const selects = () => [...dialog.querySelectorAll("select")];
+
+    // Try it against the project, so its folders become the choices. The list
+    // of projects has to have arrived first, or the change lands on nothing.
+    await waitFor(() => expect(selects()[0].textContent).toContain(address), { timeout: 8000 });
+    fireEvent.change(selects()[0], { target: { value: address } });
+    await waitFor(() => expect(selects()[1].textContent).toContain("Vorlesung"), { timeout: 8000 });
+
+    // what → how → where → Add
+    fireEvent.change(selects()[1], { target: { value: "Vorlesung" } });
+    fireEvent.change(selects()[2], { target: { value: "starts" } });
+    fireEvent.change(selects()[3], { target: { value: `{${address}}` } });
+    fireEvent.click([...dialog.querySelectorAll("button")].find((b) => b.textContent === "Add")!);
+
+    const rules = dialog.querySelector("textarea") as HTMLTextAreaElement;
+    expect(rules.value).toContain(`Vorlesung* -> {${address}}`);
+    expect(c.textContent).not.toMatch(/could not be drawn/i);
   });
 
   it("a group's settings", async () => {

@@ -124,10 +124,33 @@ function FilterDialog({
     (existing?.rules ?? []).map(ruleLine).join("\n"),
   );
   const [preview, setPreview] = useState<string[]>(existing?.preview ?? []);
+  const [what, setWhat] = useState("");
+  const [how, setHow] = useState("starts");
+  const [where, setWhere] = useState("");
+  const [folder, setFolder] = useState("");
   const projects = useQuery<{ projects: Project[] }>("/api/projects");
   const [tried, setTried] = useState<{ results: TryResult[]; unusable?: string[] } | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const addresses = (projects.data?.projects ?? []).map((p) => `${p.groupSlug || "ungrouped"}/${p.slug}`);
+  // The names that are really in the projects being tried against.
+  const found = [...new Set((tried?.results ?? []).map((r) => r.name))].sort();
+
+  /** Writes the line, so nothing has to be typed or remembered. */
+  const addRule = () => {
+    let left = what;
+    if (what !== "*") {
+      if (how === "starts") left = what + "*";
+      else if (how === "ends") left = "*" + what;
+      else if (how === "contains") left = "*" + what + "*";
+    }
+    const right = where === "folder" ? "./" + folder.replace(/^\.?\//, "") : where;
+    setText((t) => (t && !t.endsWith("\n") ? t + "\n" : t) + `${left} -> ${right}`.trimEnd() + "\n");
+    setWhat("");
+    setFolder("");
+    setTried(null);
+  };
 
   const tryIt = async (against = preview) => {
     try {
@@ -181,39 +204,7 @@ function FilterDialog({
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
 
-      <Field label="Rules" hint="One per line. Where things go is set on the project that uses this.">
-        <textarea
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setTried(null);
-          }}
-          style={{ minHeight: 150, fontFamily: "var(--mono)", fontSize: 13 }}
-          placeholder={"Grundlagen* ->\nfirst *.pdf ->\nWerbung -> skip"}
-        />
-      </Field>
-
-      <details className="syntax-help">
-        <summary>What can stand there</summary>
-        <table className="syntax">
-          <tbody>
-            <tr><td><code className="mono">Grundlagen</code></td><td>name contains</td></tr>
-            <tr><td><code className="mono">Grundlagen*</code></td><td>starts with</td></tr>
-            <tr><td><code className="mono">*.pdf</code></td><td>ends with</td></tr>
-            <tr><td><code className="mono">*Kap*</code></td><td>contains</td></tr>
-            <tr><td><code className="mono">2</code></td><td>semester</td></tr>
-            <tr><td><code className="mono">*</code></td><td>everything left</td></tr>
-            <tr><td><code className="mono">/^WDS\d+/</code></td><td>regular expression</td></tr>
-            <tr><td><code className="mono">first last newest oldest</code></td><td>in front, with an optional count</td></tr>
-            <tr><td className="head" colSpan={2}>after the arrow — only if this rule needs its own destination</td></tr>
-            <tr><td><code className="mono">{"{Studies/semester1}"}</code></td><td>that project</td></tr>
-            <tr><td><code className="mono">./skripte</code></td><td>a folder</td></tr>
-            <tr><td><code className="mono">skip</code></td><td>leave it</td></tr>
-          </tbody>
-        </table>
-      </details>
-
-      <Field label="Try it against" hint="Only while writing it. The filter itself stays standalone.">
+      <Field label="Try it against" hint="Only while writing it. The filter stays standalone.">
         <div className="chips">
           {preview.map((ref) => (
             <button key={ref} className="badge" onClick={() => setPreview(preview.filter((x) => x !== ref))}>
@@ -230,8 +221,7 @@ function FilterDialog({
             }}
           >
             <option value="">— add a project —</option>
-            {(projects.data?.projects ?? [])
-              .map((p) => `${p.groupSlug || "ungrouped"}/${p.slug}`)
+            {addresses
               .filter((ref) => !preview.includes(ref))
               .map((ref) => (
                 <option key={ref} value={ref}>
@@ -239,13 +229,83 @@ function FilterDialog({
                 </option>
               ))}
           </select>
-          {preview.length ? (
-            <button className="btn small" onClick={() => tryIt()}>
-              Try
-            </button>
-          ) : null}
         </div>
       </Field>
+
+      <Field label="Add a rule" hint="Built from what is really in those projects.">
+        <div className="builder">
+          <select value={what} onChange={(e) => setWhat(e.target.value)}>
+            <option value="">— what —</option>
+            <option value="*">everything left over</option>
+            {found.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <select value={how} onChange={(e) => setHow(e.target.value)} disabled={what === "*"}>
+            <option value="exact">exactly this</option>
+            <option value="starts">everything starting like it</option>
+            <option value="ends">everything ending like it</option>
+            <option value="contains">everything containing it</option>
+          </select>
+          <span className="meta">→</span>
+          <select value={where} onChange={(e) => setWhere(e.target.value)}>
+            <option value="">where this project says</option>
+            <option value="skip">leave it alone</option>
+            <option value="folder">a folder here…</option>
+            {addresses.map((ref) => (
+              <option key={ref} value={"{" + ref + "}"}>
+                {ref}
+              </option>
+            ))}
+          </select>
+          {where === "folder" ? (
+            <input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="folder" />
+          ) : null}
+          <button className="btn small" disabled={!what} onClick={addRule}>
+            Add
+          </button>
+        </div>
+      </Field>
+
+      <Field label="Rules">
+        <textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setTried(null);
+          }}
+          style={{ minHeight: 130, fontFamily: "var(--mono)", fontSize: 13 }}
+        />
+      </Field>
+
+      <details className="syntax-help">
+        <summary>Written by hand, it looks like this</summary>
+        <table className="syntax">
+          <tbody>
+            <tr><td><code className="mono">name</code></td><td>contains</td></tr>
+            <tr><td><code className="mono">name*</code></td><td>starts with</td></tr>
+            <tr><td><code className="mono">*.ext</code></td><td>ends with</td></tr>
+            <tr><td><code className="mono">*part*</code></td><td>contains</td></tr>
+            <tr><td><code className="mono">/regex/</code></td><td>a regular expression</td></tr>
+            <tr><td><code className="mono">2</code></td><td>a semester, where the source knows one</td></tr>
+            <tr><td><code className="mono">*</code></td><td>everything left over</td></tr>
+            <tr><td><code className="mono">first</code> <code className="mono">last</code> <code className="mono">newest</code> <code className="mono">oldest</code></td>
+                <td>in front, with an optional count</td></tr>
+            <tr><td className="head" colSpan={2}>after the arrow</td></tr>
+            <tr><td>(nothing)</td><td>where the project using this says</td></tr>
+            <tr><td><code className="mono">{"{group/project}"}</code></td><td>that project</td></tr>
+            <tr><td><code className="mono">./folder</code></td><td>a folder, here</td></tr>
+            <tr><td><code className="mono">skip</code></td><td>leave it alone</td></tr>
+          </tbody>
+        </table>
+        <p className="meta">One per line. The first that matches takes it; later lines do not see it again.</p>
+      </details>
+
+      <button className="btn small" disabled={!preview.length} onClick={() => tryIt()}>
+        What would it do?
+      </button>
 
       {tried ? (
         <div className="list" style={{ marginTop: 12 }}>

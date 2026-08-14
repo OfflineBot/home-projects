@@ -436,6 +436,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 .menu-backdrop { position: fixed; inset: 0; z-index: 30; }
 
 /* A small two-column table for a syntax the dialog has to teach once. */
+.builder { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.builder select, .builder input { width: auto; min-width: 8rem; }
+
 .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .chips .badge { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 .chips select { width: auto; }
