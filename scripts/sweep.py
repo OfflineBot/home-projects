@@ -956,6 +956,38 @@ def main() -> int:
         anon.call("POST", "/api/boards/cards", {"tabId": tab, "kind": "text"}, expect=401)
         anon.call("GET", f"/api/boards?group={gslug}", expect=404)
 
+    # What a project has to offer a board: pick the project, then the thing
+    # itself — not a kind of card and a form.
+    offers = c.call("GET", f"/api/projects/{system}/offers") or {}
+    kinds_offered = [o["card"] for o in offers.get("offers", [])]
+    check("project" in kinds_offered, "a project offers itself")
+    check("rule" in kinds_offered, "and the rules it already has, as buttons")
+    check(any(o["card"] in ("number", "status") for o in offers.get("offers", [])),
+          "and every number it reports")
+    for o in offers.get("offers", []):
+        if o["card"] == "rule":
+            check(o["options"].get("rule") and o["options"].get("projectId"),
+                  "an offer arrives ready to place, with its options filled in")
+            break
+    anon.call("GET", f"/api/projects/{system}/offers", expect=404)
+
+    # A group's board can have an address of its own.
+    c.call("PATCH", f"/api/groups/{gslug}", {"boardHost": f"{gslug}.example.com"})
+    c.call("PATCH", f"/api/groups/{gslug}", {"boardHost": "nonsense"}, expect=400)
+    here = c.call("GET", "/api/here")
+    check(bool(here) and here.get("kind") == "app", "an ordinary address is the app")
+    # The Host header decides, which is what a browser sends.
+    status, headers = c.head("/api/here")
+    check(status == 200, "and the question can be asked without an account")
+    c.call("PATCH", f"/api/groups/{gslug}", {"boardHost": ""})
+
+    # Projects can be tidied into folders inside their group.
+    c.call("PATCH", f"/api/projects/{data}", {"folder": "Semester 1"})
+    filed = c.call("GET", f"/api/projects?group={gslug}") or {}
+    check(any(p["id"] == data and p.get("folder") == "Semester 1" for p in filed.get("projects", [])),
+          "a project can be put in a folder")
+    c.call("PATCH", f"/api/projects/{data}", {"folder": ""})
+
     # ------------------------------------------------- one project gathering others
     # A main calendar is not a kind of calendar: it is a project that gathers
     # the others, and a view that draws them beside its own.

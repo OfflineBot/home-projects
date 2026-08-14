@@ -1,6 +1,6 @@
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import { Icon } from "../Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner } from "../ui";
+import { Empty, ErrorBox, Field, Modal, Spinner, useAsk } from "../ui";
 import { api, type Project, type Variable } from "../../lib/api";
 import { useQuery, useSession } from "../../lib/store";
 import { Grid, type Placed } from "./Grid";
@@ -46,10 +46,27 @@ interface CardKind {
   title: string;
   icon: string;
   description?: string;
-  options?: { name: string; label: string; type: string; placeholder?: string; hint?: string }[];
+  options?: {
+    name: string;
+    label: string;
+    type: string;
+    placeholder?: string;
+    hint?: string;
+    required?: boolean;
+  }[];
   w?: number;
   h?: number;
   from?: string;
+}
+
+interface Offer {
+  card: string;
+  title: string;
+  icon?: string;
+  detail?: string;
+  options: Record<string, any>;
+  w?: number;
+  h?: number;
 }
 
 interface Block {
@@ -58,7 +75,16 @@ interface Block {
   derived: { name: string; value: unknown; unit?: string; type: string }[];
 }
 
-export default function Board({ group, emptyNote }: { group?: string; emptyNote?: string }) {
+export default function Board({
+  group,
+  emptyNote,
+  exposed,
+}: {
+  group?: string;
+  emptyNote?: string;
+  /** Handed to somebody: read it, that is all. */
+  exposed?: boolean;
+}) {
   const session = useSession();
   const where = group ? `?group=${encodeURIComponent(group)}` : "";
   const board = useQuery<BoardData>(`/api/boards${where}`);
@@ -66,6 +92,7 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
   const projects = useQuery<{ projects: Project[] }>("/api/projects");
   const reported = useQuery<{ groups: Block[] }>("/api/dashboard");
 
+  const ask = useAsk();
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -120,7 +147,11 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
               onClick={() => setTab(i)}
               onDoubleClick={async () => {
                 if (!editing) return;
-                const title = prompt("Name for this tab:", t.title);
+                const title = await ask.text({
+                  title: "Name this tab",
+                  label: "Name",
+                  value: t.title,
+                });
                 if (!title) return;
                 await api(`/api/boards/tabs/${t.id}`, { method: "PATCH", body: { title } });
                 board.reload();
@@ -129,12 +160,16 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
               <Icon name={t.icon || "grid"} size={14} /> {t.title}
             </button>
           ))}
-          {editing && board.data ? (
+          {editing && board.data && !exposed ? (
             <button
               className="board-tab add"
               aria-label="Another tab"
               onClick={async () => {
-                const title = prompt("Name for the new tab:", "Tab");
+                const title = await ask.text({
+                  title: "A new tab",
+                  label: "Name",
+                  value: "Tab",
+                });
                 if (!title) return;
                 await api(`/api/boards/${board.data!.id}/tabs`, { body: { title } });
                 board.reload();
@@ -147,7 +182,7 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
 
         <span className="grow" />
 
-        {session.user ? (
+        {session.user && !exposed ? (
           editing ? (
             <>
               <button className="btn small" onClick={() => setAdding(true)}>
@@ -157,7 +192,13 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
                 <button
                   className="btn small ghost"
                   onClick={async () => {
-                    if (!confirm(`Remove the tab "${current.title}" and its cards?`)) return;
+                    const sure = await ask.confirm({
+                      title: `Remove the tab “${current.title}”?`,
+                      confirmLabel: "Remove",
+                      danger: true,
+                      body: <>Its cards go with it.</>,
+                    });
+                    if (!sure) return;
                     await api(`/api/boards/tabs/${current.id}`, { method: "DELETE" });
                     setTab(0);
                     board.reload();
@@ -182,8 +223,8 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
 
       {current && current.cards.length === 0 ? (
         <Empty icon="grid">
-          {emptyNote ?? "Nothing on this board yet."}
-          {session.user ? (
+          {exposed ? "Nothing here is public." : emptyNote ?? "Nothing on this board yet."}
+          {session.user && !exposed ? (
             <div style={{ marginTop: 10 }}>
               <button className="btn small" onClick={() => { setEditing(true); setAdding(true); }}>
                 <Icon name="plus" size={14} /> Put something on it
@@ -250,8 +291,8 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
           projects={projects.data?.projects ?? []}
           blocks={reported.data?.groups ?? []}
           onClose={() => setAdding(false)}
-          onAdd={async (kind, options) => {
-            const size = (kinds.data?.cards ?? []).find((k) => k.name === kind);
+          onAdd={async (kind, options, size) => {
+            const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
             const y = Math.max(0, ...current.cards.map((c) => c.y + c.h));
             await api("/api/boards/cards", {
               body: {
@@ -260,8 +301,8 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
                 options,
                 x: 0,
                 y,
-                w: size?.w ?? 3,
-                h: size?.h ?? 2,
+                w: size?.w ?? fallback?.w ?? 3,
+                h: size?.h ?? fallback?.h ?? 2,
               },
             });
             setAdding(false);
@@ -285,11 +326,20 @@ export default function Board({ group, emptyNote }: { group?: string; emptyNote?
   );
 }
 
-/** The dialog that puts something on the board. */
+/**
+ * Putting something on the board.
+ *
+ * Pick the project, then pick what of it: the button that is already in there,
+ * the average out of the grades, the machine, the terminal. Nobody should have
+ * to know that an average is a "number" card pointing at a variable.
+ *
+ * The list comes from the project itself — every capability says what it has —
+ * so a new capability turns up here on its own. Underneath sit the few cards
+ * that belong to no project: a note, some links, a heading.
+ */
 function AddCard({
   kinds,
   projects,
-  blocks,
   onClose,
   onAdd,
 }: {
@@ -297,25 +347,27 @@ function AddCard({
   projects: Project[];
   blocks: Block[];
   onClose: () => void;
-  onAdd: (kind: string, options: Record<string, any>) => Promise<void>;
+  onAdd: (kind: string, options: Record<string, any>, size?: { w: number; h: number }) => Promise<void>;
 }) {
-  const [kind, setKind] = useState("");
-  const [options, setOptions] = useState<Record<string, any>>({});
+  const [projectId, setProjectId] = useState("");
+  const [free, setFree] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const chosen = kinds.find((k) => k.name === kind);
+  const [options, setOptions] = useState<Record<string, any>>({});
+  const offers = useQuery<{ offers: Offer[] }>(projectId ? `/api/projects/${projectId}/offers` : null);
+  const chosen = kinds.find((k) => k.name === free);
 
-  const everyVariable = useMemo(
-    () =>
-      blocks.flatMap((b) =>
-        b.variables.map((v) => ({
-          groupId: b.group.id,
-          name: `${v.projectSlug}.${v.name}`,
-          label: `${b.group.title} · ${v.projectSlug}.${v.name}`,
-        })),
-      ),
-    [blocks],
-  );
+  const place = async (kind: string, opts: Record<string, any>, size?: { w: number; h: number }) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onAdd(kind, opts, size);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Modal
@@ -323,61 +375,28 @@ function AddCard({
       onClose={onClose}
       wide
       footer={
-        <>
+        free ? (
+          <>
+            <button className="btn" onClick={() => setFree("")}>Back</button>
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() => place(free, options)}
+            >
+              Put it on
+            </button>
+          </>
+        ) : (
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button
-            className="btn primary"
-            disabled={!kind || busy}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                await onAdd(kind, options);
-              } catch (err) {
-                setError(err as Error);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Put it on
-          </button>
-        </>
+        )
       }
     >
       <ErrorBox error={error} />
-      <div className="card-kinds">
-        {kinds.map((k) => (
-          <button
-            key={k.name}
-            className={k.name === kind ? "card-kind on" : "card-kind"}
-            onClick={() => {
-              setKind(k.name);
-              setOptions({});
-            }}
-          >
-            <Icon name={k.icon || "grid"} size={18} />
-            <strong>{k.title}</strong>
-            <span className="meta">{k.description}</span>
-            {k.from ? <span className="badge">{k.from}</span> : null}
-          </button>
-        ))}
-      </div>
 
-      {chosen?.options?.map((option) => (
-        <Field key={option.name} label={option.label} hint={option.hint}>
-          {option.type === "textarea" ? (
-            <textarea
-              value={options[option.name] ?? ""}
-              placeholder={option.placeholder}
-              style={{ minHeight: 90 }}
-              onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-            />
-          ) : option.type === "project" ? (
-            <select
-              value={options[option.name] ?? ""}
-              onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-            >
+      {!free ? (
+        <>
+          <Field label="From which project">
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               <option value="">— pick one —</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -385,39 +404,72 @@ function AddCard({
                 </option>
               ))}
             </select>
-          ) : option.type === "variable" ? (
-            <select
-              value={options[option.name] ?? ""}
-              onChange={(e) => {
-                const picked = everyVariable.find((v) => v.name === e.target.value);
-                setOptions({ ...options, [option.name]: e.target.value, groupId: picked?.groupId });
-              }}
-            >
-              <option value="">— pick one —</option>
-              {everyVariable.map((v) => (
-                <option key={v.groupId + v.name} value={v.name}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              value={options[option.name] ?? ""}
-              placeholder={option.placeholder}
-              onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-            />
-          )}
-        </Field>
-      ))}
+          </Field>
 
-      {chosen ? (
-        <Field label="Title" hint="Empty keeps whatever the card calls itself.">
-          <input
-            value={options.title ?? ""}
-            onChange={(e) => setOptions({ ...options, title: e.target.value })}
-          />
-        </Field>
-      ) : null}
+          {projectId ? (
+            offers.loading && !offers.data ? (
+              <Spinner />
+            ) : (
+              <div className="offers">
+                {(offers.data?.offers ?? []).map((offer, i) => (
+                  <button
+                    key={offer.card + offer.title + i}
+                    className="offer"
+                    disabled={busy}
+                    onClick={() =>
+                      place(offer.card, offer.options, offer.w ? { w: offer.w, h: offer.h ?? 2 } : undefined)
+                    }
+                  >
+                    <Icon name={offer.icon || "grid"} size={17} />
+                    <span className="grow">
+                      <strong>{offer.title}</strong>
+                      {offer.detail ? <span className="meta"> {offer.detail}</span> : null}
+                    </span>
+                    <Icon name="plus" size={14} />
+                  </button>
+                ))}
+                {offers.data && offers.data.offers.length === 0 ? (
+                  <p className="meta">This project has nothing to show yet.</p>
+                ) : null}
+              </div>
+            )
+          ) : null}
+
+          <div className="board-free">
+            <span className="meta">or something of your own:</span>
+            {kinds
+              .filter((k) => ["text", "link", "heading"].includes(k.name))
+              .map((k) => (
+                <button key={k.name} className="btn small" onClick={() => { setFree(k.name); setOptions({}); }}>
+                  <Icon name={k.icon || "grid"} size={14} /> {k.title}
+                </button>
+              ))}
+          </div>
+        </>
+      ) : (
+        <>
+          {chosen?.options?.map((option) => (
+            <Field key={option.name} label={option.label} hint={option.hint} required={option.required}>
+              {option.type === "textarea" ? (
+                <textarea
+                  value={options[option.name] ?? ""}
+                  placeholder={option.placeholder}
+                  autoFocus
+                  style={{ minHeight: 120 }}
+                  onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
+                />
+              ) : (
+                <input
+                  value={options[option.name] ?? ""}
+                  placeholder={option.placeholder}
+                  autoFocus
+                  onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
+                />
+              )}
+            </Field>
+          ))}
+        </>
+      )}
     </Modal>
   );
 }
@@ -496,7 +548,7 @@ function CardSettings({
       </Field>
       <Field
         label="Who may see it"
-        hint={<>Never more than what it shows allows — a public card on a private project stays private.</>}
+        hint="Never wider than what it shows."
       >
         <select
           value={visibility}

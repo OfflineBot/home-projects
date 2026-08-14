@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Field, Modal, Spinner } from "../../components/ui";
+import { Field, Modal, Spinner, useAsk } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { CardProps } from "../../components/board/cards";
 
@@ -31,6 +31,7 @@ export default function TerminalCard({ options }: CardProps) {
     ? `/api/projects/${project}/machines/${encodeURIComponent(machine)}`
     : "";
 
+  const ask = useAsk();
   const [password, setPassword] = useState("");
   const [asking, setAsking] = useState(false);
   const [needsPassword, setNeedsPassword] = useState(false);
@@ -144,7 +145,7 @@ export default function TerminalCard({ options }: CardProps) {
             <button
               className="btn small"
               onClick={async () => {
-                const name = prompt("A name for the new session:");
+                const name = await ask.text({ title: "New session", label: "Name", placeholder: "work" });
                 if (!name) return;
                 await call(`${base}/tmux-new`, { session: name });
                 await list();
@@ -221,8 +222,7 @@ export default function TerminalCard({ options }: CardProps) {
           }
         >
           <p className="meta" style={{ marginTop: 0 }}>
-            The SSH password of that machine — not this server's. It is kept in this card while the
-            page is open and nowhere on the server. Give the machine an account and it is never asked.
+            That machine's password, not this server's. Kept while the page is open.
           </p>
           <Field label="Password">
             <input

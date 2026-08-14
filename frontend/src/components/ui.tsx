@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -175,18 +176,27 @@ export function Menu({
 export function Field({
   label,
   hint,
+  required,
+  optional,
   children,
 }: {
   label: string;
   hint?: ReactNode;
+  /** Nothing works without it. */
+  required?: boolean;
+  /** Fine to leave empty — said out loud where that is not obvious. */
+  optional?: boolean;
   children: ReactNode;
 }) {
+  // A short hint is a tooltip on the label, which is underlined so it is
+  // findable — not a question mark, because the label is not a question.
   const explained = typeof hint === "string" ? hint : undefined;
   return (
     <div className="field">
-      <label title={explained}>
+      <label title={explained} className={explained ? "explained" : undefined}>
         {label}
-        {explained ? <span className="why" aria-hidden="true">?</span> : null}
+        {required ? <span className="needed" aria-label="required">•</span> : null}
+        {optional && !required ? <span className="spare">optional</span> : null}
       </label>
       {children}
       {hint && !explained ? <div className="hint">{hint}</div> : null}
@@ -231,6 +241,145 @@ export function Fold({
 
 export function Section({ title }: { title: string }) {
   return <div className="section-line">{title}</div>;
+}
+
+// ----------------------------------------------------------------- asking
+
+/**
+ * The three questions an app asks: "are you sure", "what should it be called",
+ * and "here is what happened".
+ *
+ * The browser has all three built in, and they look like 1998 and appear
+ * wherever the browser feels like putting them. These are the same three
+ * questions in this app's own window — one provider, one promise each, and the
+ * calling code reads the same as it did with confirm() and prompt().
+ */
+type Question =
+  | {
+      kind: "confirm";
+      title: string;
+      body?: ReactNode;
+      confirmLabel?: string;
+      danger?: boolean;
+      resolve: (ok: boolean) => void;
+    }
+  | {
+      kind: "text";
+      title: string;
+      label: string;
+      body?: ReactNode;
+      value: string;
+      placeholder?: string;
+      secret?: boolean;
+      resolve: (value: string | null) => void;
+    }
+  | { kind: "tell"; title: string; body?: ReactNode; resolve: (ok: boolean) => void };
+
+export interface Ask {
+  /** "Are you sure?" — true when they said yes. */
+  confirm(options: {
+    title: string;
+    body?: ReactNode;
+    confirmLabel?: string;
+    danger?: boolean;
+  }): Promise<boolean>;
+  /** "What should it be called?" — null when they backed out. */
+  text(options: {
+    title: string;
+    label: string;
+    body?: ReactNode;
+    value?: string;
+    placeholder?: string;
+    secret?: boolean;
+  }): Promise<string | null>;
+  /** "Here is what happened." */
+  tell(options: { title: string; body?: ReactNode }): Promise<boolean>;
+}
+
+const AskContext = createContext<Ask>({
+  confirm: async () => false,
+  text: async () => null,
+  tell: async () => true,
+});
+
+export function useAsk(): Ask {
+  return useContext(AskContext);
+}
+
+export function AskProvider({ children }: { children: ReactNode }) {
+  const [question, setQuestion] = useState<Question | null>(null);
+  const [typed, setTyped] = useState("");
+
+  const ask = useMemo<Ask>(
+    () => ({
+      confirm: (options) =>
+        new Promise<boolean>((resolve) => setQuestion({ kind: "confirm", ...options, resolve })),
+      text: (options) =>
+        new Promise<string | null>((resolve) => {
+          setTyped(options.value ?? "");
+          setQuestion({ kind: "text", value: options.value ?? "", ...options, resolve });
+        }),
+      tell: (options) => new Promise<boolean>((resolve) => setQuestion({ kind: "tell", ...options, resolve })),
+    }),
+    [],
+  );
+
+  const close = (answer: boolean | string | null) => {
+    const current = question;
+    setQuestion(null);
+    setTyped("");
+    if (!current) return;
+    if (current.kind === "text") current.resolve(answer as string | null);
+    else current.resolve(Boolean(answer));
+  };
+
+  return (
+    <AskContext.Provider value={ask}>
+      {children}
+      {question ? (
+        <Modal
+          title={question.title}
+          onClose={() => close(question.kind === "text" ? null : false)}
+          footer={
+            question.kind === "tell" ? (
+              <button className="btn primary" onClick={() => close(true)}>
+                Right
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={() => close(question.kind === "text" ? null : false)}>
+                  Cancel
+                </button>
+                <button
+                  className={question.kind === "confirm" && question.danger ? "btn danger" : "btn primary"}
+                  disabled={question.kind === "text" && !typed.trim()}
+                  onClick={() => close(question.kind === "text" ? typed : true)}
+                >
+                  {question.kind === "confirm" ? question.confirmLabel ?? "Yes" : "Save"}
+                </button>
+              </>
+            )
+          }
+        >
+          {question.body ? <div className="ask-body">{question.body}</div> : null}
+          {question.kind === "text" ? (
+            <Field label={question.label}>
+              <input
+                autoFocus
+                type={question.secret ? "password" : "text"}
+                value={typed}
+                placeholder={question.placeholder}
+                onChange={(e) => setTyped(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && typed.trim()) close(typed);
+                }}
+              />
+            </Field>
+          ) : null}
+        </Modal>
+      ) : null}
+    </AskContext.Provider>
+  );
 }
 
 // --------------------------------------------------------------- step-up

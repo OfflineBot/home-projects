@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner, useGuarded } from "../components/ui";
+import { Empty, ErrorBox, Field, Modal, Spinner, useAsk, useGuarded } from "../components/ui";
 import { api, type Filter, type FilterRule, type Project } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 
@@ -11,6 +11,7 @@ import { useQuery, useSession } from "../lib/store";
  * not know which — which is why they live here rather than inside either.
  */
 export default function Filters() {
+  const ask = useAsk();
   const session = useSession();
   const { data, error, loading, reload } = useQuery<{ filters: Filter[] }>("/api/filters");
   const [editing, setEditing] = useState<Filter | "new" | null>(null);
@@ -62,7 +63,13 @@ export default function Filters() {
               <button
                 className="btn small danger"
                 onClick={async () => {
-                  if (!confirm(`Delete “${f.title}”?`)) return;
+                  const sure = await ask.confirm({
+                    title: `Delete “${f.title}”?`,
+                    confirmLabel: "Delete",
+                    danger: true,
+                    body: <>Projects and schedulers that use it lose it.</>,
+                  });
+                  if (!sure) return;
                   try {
                     await guarded("deleting a filter", () => api(`/api/filters/${f.id}`, { method: "DELETE" }));
                     reload();

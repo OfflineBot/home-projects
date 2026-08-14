@@ -37,6 +37,7 @@ export default function GroupSettings({
     gitVisibility: group.gitVisibility ?? "",
     archived: group.archived,
     siteProjectId: group.siteProjectId ?? "",
+    boardHost: group.boardHost ?? "",
   });
   const [password, setPassword] = useState("");
   const [error, setError] = useState<Error | null>(null);
@@ -62,6 +63,7 @@ export default function GroupSettings({
         gitVisibility: form.gitVisibility,
         archived: form.archived,
         siteProjectId: form.siteProjectId,
+        boardHost: form.boardHost,
       };
       if (form.slug !== group.slug) body.slug = form.slug;
       if (form.visibility !== group.visibility) body.visibility = form.visibility;
@@ -224,12 +226,22 @@ export default function GroupSettings({
         ) : null}
       </div>
 
+      <Field
+        label="Own address"
+        hint="Whatever points here shows this group's board, read-only."
+        optional
+      >
+        <input
+          value={form.boardHost}
+          placeholder="dhbw.example.com"
+          onChange={(e) => setForm({ ...form, boardHost: e.target.value })}
+        />
+      </Field>
+
       <Section title="Take it elsewhere" />
 
       <p className="hint" style={{ marginTop: 0 }}>
-        A bundle is this group as one file: its projects and their files, the filters it uses, the
-        schedulers, and the accounts they point at — without the passwords. On the other server,
-        import it and type the passwords in once.
+        This group as one file. Passwords stay behind.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
         {([

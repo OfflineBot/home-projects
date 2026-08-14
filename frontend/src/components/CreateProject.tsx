@@ -86,7 +86,7 @@ export default function CreateProject({
     >
       <ErrorBox error={error} />
 
-      <Field label="Name">
+      <Field label="Name" required>
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="Timetable" />
       </Field>
       <Field label="Description">

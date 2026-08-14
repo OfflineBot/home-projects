@@ -3,21 +3,22 @@ package store
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 )
 
 const groupCols = `id, owner_id, slug, title, description, visibility, password_hash,
-	read_only, push_with_password, git_visibility, color, icon, site_project_id, pinned, archived,
-	position, created_at, updated_at`
+	read_only, push_with_password, git_visibility, color, icon, site_project_id, board_host,
+	pinned, archived, position, created_at, updated_at`
 
 func scanGroup(r scanner) (*model.Group, error) {
 	var g model.Group
 	var pw *string
 	err := r.Scan(&g.ID, &g.OwnerID, &g.Slug, &g.Title, &g.Description, &g.Visibility, &pw,
-		&g.ReadOnly, &g.PushWithPassword, &g.GitVisibility, &g.Color, &g.Icon, &g.SiteProjectID, &g.Pinned,
-		&g.Archived, &g.Position, &g.CreatedAt, &g.UpdatedAt)
+		&g.ReadOnly, &g.PushWithPassword, &g.GitVisibility, &g.Color, &g.Icon, &g.SiteProjectID,
+		&g.BoardHost, &g.Pinned, &g.Archived, &g.Position, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -106,9 +107,11 @@ type GroupPatch struct {
 	Color            *string
 	Icon             *string
 	SiteProjectID    **uuid.UUID
-	Pinned           *bool
-	Archived         *bool
-	Position         *int
+	// BoardHost is the address that shows this group's board on its own.
+	BoardHost *string
+	Pinned    *bool
+	Archived  *bool
+	Position  *int
 }
 
 func (s *Store) UpdateGroup(ctx context.Context, id uuid.UUID, p GroupPatch) (*model.Group, error) {
@@ -154,6 +157,9 @@ func (s *Store) UpdateGroup(ctx context.Context, id uuid.UUID, p GroupPatch) (*m
 	if p.SiteProjectID != nil {
 		add("site_project_id", *p.SiteProjectID)
 	}
+	if p.BoardHost != nil {
+		add("board_host", strings.ToLower(strings.TrimSpace(*p.BoardHost)))
+	}
 	if p.Pinned != nil {
 		add("pinned", *p.Pinned)
 	}
@@ -180,4 +186,14 @@ func (s *Store) DeleteGroup(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// GroupByBoardHost is the group whose board answers at this address.
+func (s *Store) GroupByBoardHost(ctx context.Context, host string) (*model.Group, error) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil, ErrNotFound
+	}
+	return scanGroup(s.pool.QueryRow(ctx,
+		`SELECT `+groupCols+` FROM groups WHERE lower(board_host) = $1`, host))
 }

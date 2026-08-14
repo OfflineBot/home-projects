@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Icon } from "./components/Icon";
-import { Spinner, StepUpProvider } from "./components/ui";
+import { Spinner, AskProvider, StepUpProvider } from "./components/ui";
 import { logout } from "./lib/api";
 import { loadMeta, setUser, startSession, useSession } from "./lib/store";
+import Board from "./components/board/Board";
 import Accounts from "./pages/Accounts";
 import Filters from "./pages/Filters";
 import { Component, type ErrorInfo, type ReactNode } from "react";
@@ -19,6 +20,17 @@ import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Structure from "./pages/Structure";
 import CalendarOverlay from "./pages/CalendarOverlay";
+
+/** What this address is: the app, or one group's board on its own. */
+function useWhereWeAre() {
+  const [here, setHere] = useState<{ kind: string; group?: string; title?: string } | null>(null);
+  useEffect(() => {
+    api<{ kind: string; group?: string; title?: string }>("/api/here")
+      .then(setHere)
+      .catch(() => setHere({ kind: "app" }));
+  }, []);
+  return here;
+}
 
 export default function App() {
   const session = useSession();
@@ -36,7 +48,9 @@ export default function App() {
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
-  if (!ready) {
+  const here = useWhereWeAre();
+
+  if (!ready || !here) {
     return (
       <div style={{ display: "grid", placeItems: "center", height: "100vh" }}>
         <Spinner />
@@ -44,8 +58,24 @@ export default function App() {
     );
   }
 
+  // An address of its own shows one board and nothing else. No navigation, no
+  // editing — it is meant to be handed to somebody.
+  if (here.kind === "board" && here.group) {
+    return (
+      <AskProvider>
+        <main className="main exposed">
+          <div className="page-head">
+            <h1>{here.title ?? here.group}</h1>
+          </div>
+          <Board group={here.group} exposed />
+        </main>
+      </AskProvider>
+    );
+  }
+
   return (
-    <StepUpProvider>
+    <AskProvider>
+      <StepUpProvider>
       <div className="layout">
         <aside className={menuOpen ? "sidebar open" : "sidebar"}>
           <div className="brand">
@@ -153,6 +183,7 @@ export default function App() {
         </div>
       </div>
     </StepUpProvider>
+    </AskProvider>
   );
 }
 

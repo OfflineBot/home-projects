@@ -170,7 +170,7 @@ function CreateGroup({ onClose, onCreated }: { onClose: () => void; onCreated: (
       <p style={{ marginTop: 0, color: "var(--ctp-subtext0)" }}>
         A bare git repository is created with it, automatically. Every project in the group becomes a branch.
       </p>
-      <Field label="Name">
+      <Field label="Name" required>
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="Studies" />
       </Field>
       <Field label="Description">

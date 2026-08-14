@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner, formatDate, useGuarded } from "../components/ui";
+import { Empty, ErrorBox, Field, formatDate, Modal, Spinner, useAsk, useGuarded } from "../components/ui";
 import NewAccount from "../components/NewAccount";
 import { api, type Account, type AccountKind } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
@@ -14,6 +14,7 @@ import { useQuery, useSession } from "../lib/store";
  * again on its own.
  */
 export default function Accounts() {
+  const ask = useAsk();
   const session = useSession();
   const guarded = useGuarded();
   const { data, error, loading, reload } = useQuery<{ accounts: Account[]; kinds: AccountKind[] }>("/api/accounts");
@@ -29,14 +30,12 @@ export default function Accounts() {
   const kindOf = (name: string) => data?.kinds.find((k) => k.name === name);
 
   const test = async (account: Account) => {
-    if (
-      !confirm(
-        `“Test connection” is the same attempt as a real run, with the same consequences: if it does not end ` +
-          `in a confirmed sign-in, the stored password is deleted and has to be entered again.\n\nRun it for ` +
-          `“${account.title}”?`,
-      )
-    )
-      return;
+    const sure = await ask.confirm({
+      title: `Test “${account.title}”?`,
+      confirmLabel: "Test it",
+      body: <>Same as a real run: a failed sign-in costs the stored password.</>,
+    });
+    if (!sure) return;
     setTesting(account.id);
     setResult(null);
     setActionError(null);
@@ -124,7 +123,13 @@ export default function Accounts() {
                 <button
                   className="btn small danger"
                   onClick={async () => {
-                    if (!confirm(`Delete “${a.title}”? Its schedulers are paused and named, not deleted.`)) return;
+                    const sure = await ask.confirm({
+                      title: `Delete “${a.title}”?`,
+                      confirmLabel: "Delete",
+                      danger: true,
+                      body: <>Its schedulers are paused and named, not deleted.</>,
+                    });
+                    if (!sure) return;
                     try {
                       const res = await guarded("deleting an account", () =>
                         api<{ pausedSchedulers: string[] }>(`/api/accounts/${a.id}`, { method: "DELETE" }),
@@ -331,7 +336,7 @@ function EditAccount({
       ) : null}
 
       {(kind?.fields ?? []).map((f) => (
-        <Field key={f.name} label={f.label} hint={f.hint}>
+        <Field key={f.name} label={f.label} hint={f.hint} required={f.required} optional={!f.required}>
           {f.options?.length ? (
             <select
               value={config[f.name] ?? String(f.default ?? f.options[0].value)}

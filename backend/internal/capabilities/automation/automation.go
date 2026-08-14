@@ -144,6 +144,25 @@ func (Capability) Cards() []capability.Card {
 	}}
 }
 
+// Offers: every rule with a button, ready to press from a board.
+func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Project) []capability.Offer {
+	spec, err := Read(ctx, env, p)
+	if err != nil {
+		return nil
+	}
+	out := []capability.Offer{}
+	for _, r := range spec.Rules {
+		if r.Trigger.Type != "" && r.Trigger.Type != "button" {
+			continue
+		}
+		out = append(out, capability.Offer{
+			Card: "rule", Title: r.Name, Icon: "play", Detail: "runs this rule", W: 2, H: 1,
+			Options: map[string]any{"projectId": p.ID.String(), "rule": r.Name, "title": r.Name},
+		})
+	}
+	return out
+}
+
 func (Capability) Presets() []capability.Preset {
 	return []capability.Preset{{
 		Key:          "system",

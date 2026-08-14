@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Group, type Project } from "../lib/api";
-import { useMeta } from "../lib/store";
+import { useMeta, useQuery } from "../lib/store";
 import { colorVar } from "../lib/theme";
 import { Icon } from "./Icon";
 import ProjectFilters from "./ProjectFilters";
@@ -22,6 +22,12 @@ export default function ProjectSettings({
   const meta = useMeta();
   const guarded = useGuarded();
   const [groups, setGroups] = useState<Group[]>([]);
+  const siblings = useQuery<{ projects: Project[] }>(
+    project.groupSlug ? `/api/projects?group=${project.groupSlug}` : null,
+  );
+  const folders: string[] = [
+    ...new Set((siblings.data?.projects ?? []).map((p: Project) => p.folder ?? "").filter(Boolean)),
+  ];
   const [form, setForm] = useState({
     title: project.title,
     slug: project.slug,
@@ -30,6 +36,7 @@ export default function ProjectSettings({
     anonWrite: project.anonWrite,
     color: project.color,
     icon: project.icon,
+    folder: project.folder ?? "",
     readOnly: project.readOnly,
     archived: project.archived,
     gitTracked: project.gitTracked,
@@ -86,6 +93,7 @@ export default function ProjectSettings({
         archived: form.archived,
         gitTracked: form.gitTracked,
         siteRoot: form.siteRoot,
+        folder: form.folder,
         capabilities: form.capabilities,
       };
       if (form.slug !== project.slug) body.slug = form.slug;
@@ -343,6 +351,20 @@ export default function ProjectSettings({
         </div>
       ) : null}
 
+      <Field label="Folder" hint="Tidies the group's page. Empty is the top." optional>
+        <input
+          value={form.folder ?? ""}
+          list="group-folders"
+          placeholder="e.g. Semester 1"
+          onChange={(e) => setForm({ ...form, folder: e.target.value })}
+        />
+        <datalist id="group-folders">
+          {folders.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
+      </Field>
+
       <Section title="Who may see it" />
 
       <div className="row">
@@ -514,7 +536,7 @@ export default function ProjectSettings({
 
       <Field
         label="Drop-off"
-        hint="A link for handing material over without an account here. Nothing is stored: no account, no password."
+        hint="A link for handing material over. Nothing is stored."
       >
         <div className="builder">
           <select value={onewayKind} onChange={(e) => setOnewayKind(e.target.value)}>
@@ -545,13 +567,13 @@ export default function ProjectSettings({
         {onewayLink ? <Copyable value={onewayLink} /> : null}
       </Field>
 
-      <Field label="Filters" hint="Rules that sort what lands here. Written once under Filters, picked up here.">
+      <Field label="Filters" hint="Rules that sort what lands here.">
         <ProjectFilters project={project} />
       </Field>
 
       <Field
         label="Gathers"
-        hint="Other projects shown inside this one. A calendar draws their entries beside its own, each switchable and in its own colour. What a project may not read, it does not gather."
+        hint="Other projects shown inside this one."
       >
         <Gathers project={project} onError={setError} />
       </Field>

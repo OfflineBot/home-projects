@@ -841,3 +841,26 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .fold-title { flex: 1; }
 .fold-body { padding: 0 12px 12px; }
 .fold-body .block { margin: 0; max-height: 420px; overflow: auto; }
+
+/* What a project has to offer, when putting something on a board. */
+.offers { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 14px; max-height: 46vh; overflow: auto; }
+.offer {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0); border-radius: 10px;
+  padding: 9px 12px; color: inherit; cursor: pointer;
+}
+.offer:hover { border-color: var(--ctp-blue); }
+.board-free { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--ctp-surface0); }
+
+.field label.explained { border-bottom: 1px dotted var(--ctp-overlay0); cursor: help; align-self: flex-start; }
+.field label .needed { color: var(--ctp-peach); margin-left: 5px; }
+.field label .spare { color: var(--ctp-overlay1); margin-left: 6px; font-weight: 400; font-size: 11.5px; }
+
+/* Folders inside a group. */
+.folder-head {
+  display: flex; align-items: center; gap: 7px; background: none; border: none;
+  color: var(--ctp-subtext0); cursor: pointer; padding: 4px 2px; margin-bottom: 6px; font-size: 13.5px;
+}
+.folder-head:hover { color: var(--ctp-text); }
+/* A board handed to somebody: no chrome around it. */
+.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }

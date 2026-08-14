@@ -207,12 +207,11 @@ function ImportBlueprint({ onClose, onDone }: { onClose: () => void; onDone: () 
     >
       <ErrorBox error={error} />
       <p className="meta" style={{ marginTop: 0 }}>
-        Groups, projects, links, schedulers, filters and accounts. A bundle brings the files too.
-        Passwords never travel — an account arrives asking for its own. Nothing is deleted.
+        A bundle brings the files too. Passwords never travel, and nothing is deleted.
       </p>
 
       <div className="row" style={{ alignItems: "end", marginBottom: 12 }}>
-        <Field label="A bundle (.zip)" hint="What the export button hands you: the arrangement and the files.">
+        <Field label="A bundle (.zip)" hint="What the export button hands you.">
           <input
             type="file"
             accept=".zip,application/zip"
@@ -227,8 +226,7 @@ function ImportBlueprint({ onClose, onDone }: { onClose: () => void; onDone: () 
 
       {bundle ? (
         <p className="meta">
-          {bundle.name} · {(bundle.size / 1024 / 1024).toFixed(1)} MB — the text below is ignored while a
-          bundle is picked.
+          {bundle.name} · {(bundle.size / 1024 / 1024).toFixed(1)} MB
         </p>
       ) : null}
 

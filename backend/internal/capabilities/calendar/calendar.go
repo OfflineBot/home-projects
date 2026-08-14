@@ -79,6 +79,15 @@ func (Capability) Cards() []capability.Card {
 	}}
 }
 
+// Offers: what is coming, out of this calendar.
+func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Project) []capability.Offer {
+	return []capability.Offer{{
+		Card: "agenda", Title: "What is coming", Icon: "calendar",
+		Detail: "the next entries", W: 4, H: 3,
+		Options: map[string]any{"projectId": p.ID.String(), "days": 14, "title": p.Title},
+	}}
+}
+
 func (Capability) Presets() []capability.Preset {
 	return []capability.Preset{{
 		Key:          "calendar",

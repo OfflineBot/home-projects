@@ -22,6 +22,8 @@ export default function GroupPage() {
   // Board or projects. The board comes first once there is anything on it —
   // that is the page somebody arranged, and the list is always one click away.
   const [page, setPage] = useState<"board" | "projects">("board");
+  const [shut, setShut] = useState<Record<string, boolean>>({});
+  const fold = (folder: string) => setShut((s) => ({ ...s, [folder]: !s[folder] }));
   const [groupSettings, setGroupSettings] = useState(false);
   const [projectSettings, setProjectSettings] = useState<Project | null>(null);
   // What the files in this group say is there but nobody switched on.
@@ -99,62 +101,27 @@ export default function GroupPage() {
         <Empty icon="box">No projects yet.</Empty>
       ) : null}
 
-      <div className="tiles" style={{ display: page === "projects" ? undefined : "none" }}>
-        {data?.projects.map((p) => (
-          <Link
-            key={p.id}
-            to={`/groups/${data.group.slug}/${p.slug}`}
-            className="tile"
-            style={{ ["--tile-color" as string]: colorVar(p.color || data.group.color) }}
-          >
-            <div className="tile-top">
-              <span className="tile-icon">
-                <Icon name={p.icon || "box"} />
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <h3>{p.title}</h3>
-                <div className="sub">{p.capabilities.join(" · ") || "files"}</div>
-              </div>
-            </div>
-            {p.locked ? <div className="sub">Locked — open it to enter the password</div> : null}
-            {p.description ? <div className="sub">{p.description}</div> : null}
-            <div className="tile-foot">
-              {p.locked ? (
-                <span className="badge warn">
-                  <Icon name="lock" size={12} /> locked
-                </span>
-              ) : (p.effectiveVisibility ?? p.visibility) !== "private" ? (
-                <span className="badge">
-                  <Icon name={(p.effectiveVisibility ?? p.visibility) === "public" ? "eye" : "lock"} size={12} />{" "}
-                  {p.effectiveVisibility ?? p.visibility}
-                </span>
+      {page === "projects"
+        ? folders(data?.projects ?? []).map(([folder, list]) => (
+            <div key={folder || "—"} style={{ marginBottom: 18 }}>
+              {folder ? (
+                <button className="folder-head" onClick={() => fold(folder)}>
+                  <Icon name={shut[folder] ? "chevronRight" : "chevronDown"} size={13} />
+                  <Icon name="folder" size={14} /> {folder}
+                  <span className="meta">{list.length}</span>
+                </button>
               ) : null}
-              {p.readOnly ? <span className="badge warn">read-only</span> : null}
-              {p.gitTracked ? <span className="badge">tracked</span> : null}
-              {p.siteRoot ? <span className="badge good">site</span> : null}
-              {p.anonWrite ? <span className="badge">visitors may write</span> : null}
-            </div>
-            {session.user ? (
-              <div className="tile-menu">
-                <Menu
-                  label={`Settings for ${p.title}`}
-                  items={[
-                    { label: "Settings", icon: "settings", onClick: () => setProjectSettings(p) },
-                    {
-                      label: "Download ZIP",
-                      icon: "download",
-                      onClick: () => (location.href = `/api/projects/${p.id}/download`),
-                    },
-                    ...(p.siteUrl
-                      ? [{ label: "Open site", icon: "globe" as const, onClick: () => window.open(p.siteUrl, "_blank") }]
-                      : []),
-                  ]}
+              {shut[folder] ? null : (
+                <ProjectTiles
+                  group={data!.group}
+                  projects={list}
+                  session={session}
+                  onSettings={setProjectSettings}
                 />
-              </div>
-            ) : null}
-          </Link>
-        ))}
-      </div>
+              )}
+            </div>
+          ))
+        : null}
 
       {missing.length ? (
         <div className="notice" style={{ marginTop: 18 }}>
@@ -313,4 +280,86 @@ function UnlockGroup({ slug, onUnlocked }: { slug: string; onUnlocked: () => voi
       </form>
     </div>
   );
+}
+
+/** The projects of one folder, as tiles. */
+function ProjectTiles({
+  group,
+  projects,
+  session,
+  onSettings,
+}: {
+  group: Group;
+  projects: Project[];
+  session: { user: unknown };
+  onSettings: (p: Project) => void;
+}) {
+  return (
+    <div className="tiles">
+      {projects.map((p) => (
+          <Link
+            key={p.id}
+            to={`/groups/${group.slug}/${p.slug}`}
+            className="tile"
+            style={{ ["--tile-color" as string]: colorVar(p.color || group.color) }}
+          >
+            <div className="tile-top">
+              <span className="tile-icon">
+                <Icon name={p.icon || "box"} />
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <h3>{p.title}</h3>
+                <div className="sub">{p.capabilities.join(" · ") || "files"}</div>
+              </div>
+            </div>
+            {p.locked ? <div className="sub">Locked — open it to enter the password</div> : null}
+            {p.description ? <div className="sub">{p.description}</div> : null}
+            <div className="tile-foot">
+              {p.locked ? (
+                <span className="badge warn">
+                  <Icon name="lock" size={12} /> locked
+                </span>
+              ) : (p.effectiveVisibility ?? p.visibility) !== "private" ? (
+                <span className="badge">
+                  <Icon name={(p.effectiveVisibility ?? p.visibility) === "public" ? "eye" : "lock"} size={12} />{" "}
+                  {p.effectiveVisibility ?? p.visibility}
+                </span>
+              ) : null}
+              {p.readOnly ? <span className="badge warn">read-only</span> : null}
+              {p.gitTracked ? <span className="badge">tracked</span> : null}
+              {p.siteRoot ? <span className="badge good">site</span> : null}
+              {p.anonWrite ? <span className="badge">visitors may write</span> : null}
+            </div>
+            {session.user ? (
+              <div className="tile-menu">
+                <Menu
+                  label={`Settings for ${p.title}`}
+                  items={[
+                    { label: "Settings", icon: "settings", onClick: () => onSettings(p) },
+                    {
+                      label: "Download ZIP",
+                      icon: "download",
+                      onClick: () => (location.href = `/api/projects/${p.id}/download`),
+                    },
+                    ...(p.siteUrl
+                      ? [{ label: "Open site", icon: "globe" as const, onClick: () => window.open(p.siteUrl, "_blank") }]
+                      : []),
+                  ]}
+                />
+              </div>
+            ) : null}
+          </Link>
+        ))}
+    </div>
+  );
+}
+
+/** The projects, gathered under their folders. The unfiled come first. */
+function folders(projects: Project[]): [string, Project[]][] {
+  const out = new Map<string, Project[]>();
+  for (const p of projects) {
+    const key = p.folder ?? "";
+    out.set(key, [...(out.get(key) ?? []), p]);
+  }
+  return [...out.entries()].sort(([a], [b]) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
 }

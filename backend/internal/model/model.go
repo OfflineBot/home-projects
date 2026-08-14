@@ -74,11 +74,14 @@ type Group struct {
 	Color            string     `json:"color"`
 	Icon             string     `json:"icon"`
 	SiteProjectID    *uuid.UUID `json:"siteProjectId,omitempty"`
-	Pinned           bool       `json:"pinned"`
-	Archived         bool       `json:"archived"`
-	Position         int        `json:"position"`
-	CreatedAt        time.Time  `json:"createdAt"`
-	UpdatedAt        time.Time  `json:"updatedAt"`
+	// BoardHost is an address of this group's own: whatever points at it shows
+	// the group's board and nothing else.
+	BoardHost string    `json:"boardHost,omitempty"`
+	Pinned    bool      `json:"pinned"`
+	Archived  bool      `json:"archived"`
+	Position  int       `json:"position"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 
 	// Filled in by the API when listing.
 	ProjectCount int            `json:"projectCount"`
@@ -132,10 +135,12 @@ type Project struct {
 	AnonWrite    bool       `json:"anonWrite"`
 	Color        string     `json:"color"`
 	Icon         string     `json:"icon"`
-	Archived     bool       `json:"archived"`
-	Position     int        `json:"position"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	// Folder tidies a big group: one word, empty means the top.
+	Folder    string    `json:"folder"`
+	Archived  bool      `json:"archived"`
+	Position  int       `json:"position"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 
 	SiteURL  string `json:"siteUrl,omitempty"`
 	CloneURL string `json:"cloneUrl,omitempty"`

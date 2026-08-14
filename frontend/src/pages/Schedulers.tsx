@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Fold, Modal, Section, Spinner, formatDate } from "../components/ui";
+import { Empty, ErrorBox, Field, Fold, formatDate, Modal, Section, Spinner, useAsk } from "../components/ui";
 import NewAccount from "../components/NewAccount";
 import {
   api,
@@ -16,6 +16,7 @@ import { useQuery, useSession } from "../lib/store";
 
 /** What pulls data in from outside, and what came of every run. */
 export default function Schedulers() {
+  const ask = useAsk();
   const session = useSession();
   const { data, error, loading, reload } = useQuery<{ schedulers: Scheduler[]; kinds: SchedulerKind[] }>(
     "/api/schedulers",
@@ -66,11 +67,11 @@ export default function Schedulers() {
    * window where the material is gone because the fetch failed halfway.
    */
   const rebuild = async (s: Scheduler) => {
-    const ok = confirm(
-      `Rebuild "${s.title || s.kind}"?\n\n` +
-        "Every file is fetched again, and anything the source no longer has is removed from the folders " +
-        "this scheduler writes into. Whatever you keep beside those folders stays.",
-    );
+    const ok = await ask.confirm({
+      title: `Rebuild “${s.title || s.kind}”?`,
+      confirmLabel: "Rebuild",
+      body: <>Everything is fetched again, and what the source no longer has goes.</>,
+    });
     if (ok) await run(s, true);
   };
 
@@ -157,7 +158,13 @@ export default function Schedulers() {
                 disabled={s.running}
                 title={s.running ? "It is running — wait for it to finish" : "Delete this scheduler"}
                 onClick={async () => {
-                  if (!confirm("Delete this scheduler?")) return;
+                  const sure = await ask.confirm({
+                    title: `Delete “${s.title || s.kind}”?`,
+                    confirmLabel: "Delete",
+                    danger: true,
+                    body: <>What it fetched stays.</>,
+                  });
+                  if (!sure) return;
                   await api(`/api/schedulers/${s.id}`, { method: "DELETE" });
                   reload();
                 }}
@@ -502,7 +509,7 @@ function SchedulerDialog({
 
       <Field
         label="Filters"
-        hint="Sorts what this fetches straight away, so no project is needed in between. Several run in the order below, and the first rule that matches takes the file."
+        hint="They run in order; the first matching rule takes the file."
       >
         {form.filterIds.length ? (
           <div className="list" style={{ marginBottom: 8 }}>

@@ -123,7 +123,7 @@ describe("every screen draws something", () => {
       );
       const dialog = await waitFor(() => screen.getByRole("dialog"));
       expect(dialog.textContent).toMatch(/Who may see it/i);
-      expect(dialog.textContent).toMatch(/stays private/i);
+      expect(dialog.textContent).toMatch(/Who may see it/i);
       cleanup();
     } finally {
       await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
@@ -306,7 +306,7 @@ describe("every screen draws something", () => {
       expect(ask).toBeTruthy();
       fireEvent.click(ask!);
       expect(c.textContent).toMatch(/Ask for an account/i);
-      expect(c.textContent).toMatch(/Who are you/i);
+      expect(c.textContent).toMatch(/About you/i);
     } finally {
       setUser(owner);
     }

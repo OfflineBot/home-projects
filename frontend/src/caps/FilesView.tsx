@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Menu, Modal, Spinner, formatBytes, formatDate } from "../components/ui";
+import { Empty, ErrorBox, Field, formatBytes, formatDate, Menu, Modal, Spinner, useAsk } from "../components/ui";
 import { api, authedUrl, type FileEntry, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 
@@ -10,6 +10,7 @@ import { useQuery } from "../lib/store";
  * on. The path lives in the URL, so the back button works.
  */
 export default function FilesView({ project, reload }: { project: Project; reload: () => void }) {
+  const ask = useAsk();
   const [params, setParams] = useSearchParams();
   const path = params.get("path") ?? "";
   const editing = params.get("file");
@@ -92,7 +93,7 @@ export default function FilesView({ project, reload }: { project: Project; reloa
   };
 
   const rename = async (entry: FileEntry) => {
-    const name = prompt("New name", entry.name);
+    const name = await ask.text({ title: "Rename", label: "New name", value: entry.name });
     if (!name || name === entry.name) return;
     const parent = entry.path.slice(0, entry.path.length - entry.name.length);
     setActionError(null);

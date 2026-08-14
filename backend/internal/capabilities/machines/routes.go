@@ -46,7 +46,8 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		}
 		out := make([]state, len(list.Machines))
 		for i, m := range list.Machines {
-			out[i] = state{Machine: m, Up: m.up(ctx.UserContext())}
+			filled := resolve(ctx.UserContext(), env, m)
+			out[i] = state{Machine: filled, Up: filled.Host != "" && filled.up(ctx.UserContext())}
 		}
 		return ctx.JSON(fiber.Map{"machines": out})
 	})
@@ -67,8 +68,10 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 			if in.Machines[i].Name == "" {
 				return httpx.BadRequest("A machine needs a name.")
 			}
-			if in.Machines[i].Host == "" {
-				return httpx.BadRequest("%s has no address.", in.Machines[i].Name)
+			// An address is only needed when no account carries one.
+			if in.Machines[i].Host == "" && in.Machines[i].Account == "" {
+				return httpx.BadRequest("%s needs an address, or an account that has one.",
+					in.Machines[i].Name)
 			}
 		}
 		author, email := capability.AuthorOf(ctx)
@@ -326,7 +329,7 @@ func machineOf(ctx *fiber.Ctx, env *capability.Env) (Machine, error) {
 	if !ok {
 		return Machine{}, httpx.NotFound("There is no machine called %q here.", name)
 	}
-	return m, nil
+	return resolve(ctx.UserContext(), env, m), nil
 }
 
 // shellQuote makes one argument out of whatever was typed. Everything that goes

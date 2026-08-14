@@ -173,6 +173,7 @@ func (s *Server) mountGroups(r fiber.Router) {
 			Pinned           *bool   `json:"pinned"`
 			Archived         *bool   `json:"archived"`
 			SiteProjectID    *string `json:"siteProjectId"`
+			BoardHost        *string `json:"boardHost"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
@@ -245,6 +246,16 @@ func (s *Server) mountGroups(r fiber.Router) {
 			}
 		}
 
+		if in.BoardHost != nil {
+			host := strings.ToLower(strings.TrimSpace(*in.BoardHost))
+			// An address, not a URL: somebody will paste one anyway.
+			host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
+			host = strings.TrimSuffix(strings.SplitN(host, "/", 2)[0], ".")
+			if host != "" && !strings.Contains(host, ".") {
+				return httpx.BadRequest("%q is not an address — something like dhbw.example.com.", host)
+			}
+			patch.BoardHost = &host
+		}
 		if in.SiteProjectID != nil {
 			if *in.SiteProjectID == "" {
 				var none *uuid.UUID

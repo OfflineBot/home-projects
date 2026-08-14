@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Modal, Spinner } from "../components/ui";
+import { Empty, ErrorBox, Field, Modal, Spinner, useAsk } from "../components/ui";
 import { api, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 
@@ -267,6 +267,7 @@ function Tmux({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<Error | null>(null);
   const [live, setLive] = useState(true);
+  const ask = useAsk();
   const secret = useRef("");
   const base = `/api/projects/${project.id}/machines/${encodeURIComponent(machine.name)}`;
 
@@ -353,8 +354,12 @@ function Tmux({
             </button>
             <button
               className="btn small"
-              onClick={() => {
-                const name = prompt("A name for the new session:");
+              onClick={async () => {
+                const name = await ask.text({
+                  title: "A new session",
+                  label: "Name",
+                  placeholder: "work",
+                });
                 if (!name) return;
                 withPassword(`a new session on ${machine.name}`, async (password) => {
                   setBusy(true);
@@ -395,8 +400,14 @@ function Tmux({
             </button>
             <button
               className="btn small ghost"
-              onClick={() => {
-                if (!confirm(`Close the session "${inside}"? Whatever runs in it stops.`)) return;
+              onClick={async () => {
+                const sure = await ask.confirm({
+                  title: `Close “${inside}”?`,
+                  confirmLabel: "Close it",
+                  danger: true,
+                  body: <>Whatever runs in that session stops.</>,
+                });
+                if (!sure) return;
                 withPassword(`closing ${inside}`, async (password) => {
                   await api(`${base}/tmux/${encodeURIComponent(inside)}/kill`, { body: { password } });
                   setInside(null);
@@ -494,8 +505,7 @@ function AskPassword({
       }
     >
       <p className="meta" style={{ marginTop: 0 }}>
-        For {why}. This is the SSH password of that machine — not this server's. It is used for one
-        connection and kept nowhere on the server.
+        For {why}. That machine's password, not this server's.
       </p>
       <Field label="Password">
         <input
@@ -580,19 +590,21 @@ function EditMachines({
       }
     >
       <ErrorBox error={error} />
-      <p className="meta" style={{ marginTop: 0 }}>
-        This is machines.json — a file in the project, so it travels with it. No password is in it.
-      </p>
+      <p className="meta" style={{ marginTop: 0 }}>machines.json — no password is in it.</p>
       {rows.map((m, i) => (
         <div key={i} className="machine-row">
           <div className="row">
-            <Field label="Name">
+            <Field label="Name" required>
               <input value={m.name} onChange={(e) => set(i, { name: e.target.value })} />
             </Field>
-            <Field label="Address" hint="A name or an IP.">
-              <input value={m.host} onChange={(e) => set(i, { host: e.target.value })} />
+            <Field label="Address" hint="From the account when empty." optional={Boolean(m.account)}>
+              <input
+                value={m.host}
+                placeholder={m.account ? "from the account" : "192.168.178.50"}
+                onChange={(e) => set(i, { host: e.target.value })}
+              />
             </Field>
-            <Field label="Port">
+            <Field label="Port" optional>
               <input
                 type="number"
                 value={m.port ?? ""}
@@ -602,17 +614,21 @@ function EditMachines({
             </Field>
           </div>
           <div className="row">
-            <Field label="User" hint="Who to sign in as over SSH.">
-              <input value={m.user ?? ""} onChange={(e) => set(i, { user: e.target.value })} />
+            <Field label="User" hint="From the account when empty." optional={Boolean(m.account)}>
+              <input
+                value={m.user ?? ""}
+                placeholder={m.account ? "from the account" : ""}
+                onChange={(e) => set(i, { user: e.target.value })}
+              />
             </Field>
-            <Field label="MAC" hint="Needed to wake it, and only for that.">
+            <Field label="MAC" hint="Only needed to wake it." optional>
               <input
                 value={m.mac ?? ""}
                 placeholder="aa:bb:cc:dd:ee:ff"
                 onChange={(e) => set(i, { mac: e.target.value })}
               />
             </Field>
-            <Field label="Broadcast" hint="Empty is the network's own.">
+            <Field label="Broadcast" hint="Empty is the network's own." optional>
               <input
                 value={m.broadcast ?? ""}
                 placeholder="192.168.178.255"
@@ -621,10 +637,7 @@ function EditMachines({
             </Field>
           </div>
           <div className="row">
-            <Field
-              label="Account"
-              hint="Add the machine once under Accounts and it is never asked for a password here."
-            >
+            <Field label="Account" hint="With an account, nothing is asked here — and it brings the address.">
               <select value={m.account ?? ""} onChange={(e) => set(i, { account: e.target.value })}>
                 <option value="">— type the password each time —</option>
                 {accounts.map((a) => (
@@ -637,7 +650,7 @@ function EditMachines({
             </Field>
           </div>
           <div className="row" style={{ alignItems: "end" }}>
-            <Field label="Note">
+            <Field label="Note" optional>
               <input value={m.note ?? ""} onChange={(e) => set(i, { note: e.target.value })} />
             </Field>
             <button className="btn small ghost" onClick={() => setRows(rows.filter((_, j) => j !== i))}>

@@ -84,10 +84,10 @@ export default function Login() {
           </div>
         ) : null}
 
-        <Field label="Username">
+        <Field label="Username" required>
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />
         </Field>
-        <Field label="Password">
+        <Field label="Password" required>
           <input
             type="password"
             value={password}
@@ -96,7 +96,7 @@ export default function Login() {
           />
         </Field>
         {asking ? (
-          <Field label="Who are you?" hint="The owner sees this when deciding.">
+          <Field label="About you" hint="The owner sees this when deciding." optional>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" />
           </Field>
         ) : null}

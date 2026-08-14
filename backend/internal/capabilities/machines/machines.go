@@ -145,6 +145,24 @@ func (Capability) Cards() []capability.Card {
 	}}
 }
 
+// Offers: this project's machines, each with its buttons and its terminal.
+func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Project) []capability.Offer {
+	out := []capability.Offer{}
+	for _, m := range read(ctx, env, p).Machines {
+		out = append(out,
+			capability.Offer{
+				Card: "machine", Title: m.Name, Icon: "server", Detail: m.Host, W: 3, H: 2,
+				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name, "title": m.Name},
+			},
+			capability.Offer{
+				Card: "terminal", Title: m.Name + " · terminal", Icon: "code",
+				Detail: "tmux sessions", W: 6, H: 4,
+				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name},
+			})
+	}
+	return out
+}
+
 // ------------------------------------------------------------------- reading
 
 func read(ctx context.Context, env *capability.Env, p *model.Project) List {
@@ -169,6 +187,39 @@ func write(ctx context.Context, env *capability.Env, p *model.Project, l List, a
 		Author: author, Email: email, Message: "Change the machines", Commit: true,
 	})
 	return err
+}
+
+// resolve fills in what the account already knows. Somebody who adds their PC
+// under Accounts has typed the address and the user once; typing them again
+// beside the machine is the sort of thing that makes a person close the page.
+func resolve(ctx context.Context, env *capability.Env, m Machine) Machine {
+	if m.Account == "" || (m.Host != "" && m.User != "" && m.Port != 0) {
+		return m
+	}
+	accounts, err := env.Store.ListAccounts(ctx)
+	if err != nil {
+		return m
+	}
+	for _, a := range accounts {
+		if a.Title != m.Account && a.ID.String() != m.Account {
+			continue
+		}
+		var settings map[string]string
+		_ = json.Unmarshal(a.Config, &settings)
+		if m.Host == "" {
+			m.Host = settings["host"]
+		}
+		if m.User == "" {
+			m.User = settings["user"]
+		}
+		if m.Port == 0 {
+			if n, err := strconv.Atoi(settings["port"]); err == nil {
+				m.Port = n
+			}
+		}
+		break
+	}
+	return m
 }
 
 func find(l List, name string) (Machine, bool) {

@@ -346,3 +346,77 @@ func (s *Server) cardIsVisible(c *fiber.Ctx, card model.BoardCard, readable func
 }
 
 var _ = context.Background
+
+// What one project can put on a board.
+//
+// This is the answer to "I know what I want": pick the project, see what it
+// has — its buttons, its machines, its numbers — and place it. Nobody has to
+// know that the average is a "number" card pointing at a variable.
+//
+// The core contributes two things: the project itself, and one entry per
+// number it reports. Everything else comes from the capabilities, which is why
+// a new one shows up here without this function changing.
+func (s *Server) mountOffers(one fiber.Router) {
+	one.Get("/offers", requireOwner, func(c *fiber.Ctx) error {
+		ctx := c.UserContext()
+		p := project(c)
+
+		offers := []capability.Offer{{
+			Card: "project", Title: p.Title, Icon: p.Icon, Detail: "the project itself",
+			W: 3, H: 2, Options: map[string]any{"projectId": p.ID.String()},
+		}}
+
+		// Every number this project reports, as the card that suits it.
+		if list, err := s.Store.VariablesForProject(ctx, p.ID); err == nil {
+			for _, v := range list {
+				card := "number"
+				switch v.Type {
+				case "bool":
+					card = "status"
+				case "list", "table":
+					card = "list"
+				}
+				name := p.Slug + "." + v.Name
+				offer := capability.Offer{
+					Card: card, Title: v.Name, Icon: "grid", Detail: "a number this project reports",
+					Options: map[string]any{"variable": name, "title": v.Name},
+				}
+				if p.GroupID != nil {
+					offer.Options["groupId"] = p.GroupID.String()
+				}
+				offers = append(offers, offer)
+			}
+		}
+
+		for _, cap := range capability.All() {
+			if !p.Has(cap.Name()) {
+				continue
+			}
+			offers = append(offers, cap.Offers(ctx, s.Env, p)...)
+		}
+		return c.JSON(fiber.Map{"offers": offers})
+	})
+}
+
+// What this address is.
+//
+// A group can have an address of its own — dhbw.example.com — and whatever
+// points there shows that group's board and nothing else: no navigation, no
+// editing, only the cards that are public. The page asks this once at startup;
+// everything else follows from the answer.
+func (s *Server) mountHere(r fiber.Router) {
+	r.Get("/here", func(c *fiber.Ctx) error {
+		host := strings.ToLower(c.Hostname())
+		if i := strings.IndexByte(host, ':'); i > 0 {
+			host = host[:i]
+		}
+		g, err := s.Store.GroupByBoardHost(c.UserContext(), host)
+		if err != nil {
+			return c.JSON(fiber.Map{"kind": "app"})
+		}
+		return c.JSON(fiber.Map{
+			"kind": "board", "group": g.Slug, "title": g.Title,
+			"icon": g.Icon, "color": g.Color,
+		})
+	})
+}

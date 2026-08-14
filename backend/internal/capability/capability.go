@@ -165,6 +165,23 @@ type Card struct {
 	From string `json:"from,omitempty"`
 }
 
+// Offer is one thing a project can put on a board, ready to place: the card
+// kind, what to call it, and the options already filled in.
+//
+// This is what makes adding something to a board a matter of "which project,
+// and what of it" instead of "which kind of card, and now fill in a form". A
+// person knows they want the average out of their grades project; they should
+// not have to know that the average is a "number" card pointing at a variable.
+type Offer struct {
+	Card    string         `json:"card"`
+	Title   string         `json:"title"`
+	Icon    string         `json:"icon,omitempty"`
+	Detail  string         `json:"detail,omitempty"`
+	Options map[string]any `json:"options"`
+	W       int            `json:"w,omitempty"`
+	H       int            `json:"h,omitempty"`
+}
+
 // coreCards are the ones that belong to nothing in particular: they show what
 // any project reports, or nothing at all.
 var coreCards = []Card{
@@ -305,6 +322,10 @@ type Capability interface {
 	Presets() []Preset
 	// Cards the capability offers to a board.
 	Cards() []Card
+	// Offers is what *this* project can put on a board — one entry per machine,
+	// per rule, per anything the capability holds. Nothing generic: the
+	// person picks the thing itself.
+	Offers(ctx context.Context, env *Env, p *model.Project) []Offer
 	// Migrations are applied under the capability's own namespace. nil is fine.
 	Migrations() fs.FS
 }
@@ -469,10 +490,13 @@ func Catalog() []Info {
 // have. A capability that brings no schedulers writes no empty method.
 type Base struct{}
 
-func (Base) Owns() []string                        { return nil }
-func (Base) SchedulerKinds() []SchedulerKind       { return nil }
-func (Base) AccountKinds() []AccountKind           { return nil }
-func (Base) Cards() []Card                         { return nil }
+func (Base) Owns() []string                  { return nil }
+func (Base) SchedulerKinds() []SchedulerKind { return nil }
+func (Base) AccountKinds() []AccountKind     { return nil }
+func (Base) Cards() []Card                   { return nil }
+func (Base) Offers(context.Context, *Env, *model.Project) []Offer {
+	return nil
+}
 func (Base) Actions() []Action                     { return nil }
 func (Base) Presets() []Preset                     { return nil }
 func (Base) Migrations() fs.FS                     { return nil }

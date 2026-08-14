@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Spinner, formatDate, useGuarded } from "../components/ui";
+import { Empty, ErrorBox, formatDate, Spinner, useAsk, useGuarded } from "../components/ui";
 import { api } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 
@@ -25,6 +25,7 @@ interface Account {
 }
 
 export default function Users() {
+  const ask = useAsk();
   const session = useSession();
   const guarded = useGuarded();
   const { data, error, loading, reload } = useQuery<{ users: Account[] }>("/api/users");
@@ -114,10 +115,19 @@ export default function Users() {
                 <button
                   className="btn small danger"
                   disabled={busy === u.id}
-                  onClick={() =>
-                    confirm(`Remove ${u.username} and everything they made?`) &&
-                    act(u.id, "removing an account", () => api(`/api/users/${u.id}`, { method: "DELETE" }))
-                  }
+                  onClick={async () => {
+                    const sure = await ask.confirm({
+                      title: `Remove ${u.username}?`,
+                      confirmLabel: "Remove",
+                      danger: true,
+                      body: <>Everything it made goes with it.</>,
+                    });
+                    if (sure) {
+                      void act(u.id, "removing an account", () =>
+                        api(`/api/users/${u.id}`, { method: "DELETE" }),
+                      );
+                    }
+                  }}
                 >
                   Remove
                 </button>

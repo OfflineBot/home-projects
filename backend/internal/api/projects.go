@@ -272,6 +272,7 @@ func (s *Server) mountProjects(r fiber.Router) {
 			AnonWrite    *bool     `json:"anonWrite"`
 			Color        *string   `json:"color"`
 			Icon         *string   `json:"icon"`
+			Folder       *string   `json:"folder"`
 			Archived     *bool     `json:"archived"`
 		}
 		if err := c.BodyParser(&in); err != nil {
@@ -281,7 +282,7 @@ func (s *Server) mountProjects(r fiber.Router) {
 		patch := store.ProjectPatch{
 			Title: in.Title, Description: in.Description, GitTracked: in.GitTracked,
 			ReadOnly: in.ReadOnly, Icon: in.Icon, Archived: in.Archived,
-			DefaultTab: in.DefaultTab, Preset: in.Preset,
+			DefaultTab: in.DefaultTab, Preset: in.Preset, Folder: in.Folder,
 		}
 		if in.Color != nil {
 			if !validColor(*in.Color) {
@@ -669,6 +670,7 @@ func (s *Server) mountProjects(r fiber.Router) {
 	s.mountOneway(one)
 	s.mountDetect(one)
 	s.mountSources(one)
+	s.mountOffers(one)
 	s.mountProjectGit(one)
 }
 

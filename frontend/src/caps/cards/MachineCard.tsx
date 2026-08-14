@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Spinner } from "../../components/ui";
+import { Spinner, useAsk } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useQuery } from "../../lib/store";
 import type { CardProps } from "../../components/board/cards";
@@ -14,6 +14,7 @@ import type { CardProps } from "../../components/board/cards";
  * asked for one.
  */
 export default function MachineCard({ options }: CardProps) {
+  const ask = useAsk();
   const project = String(options.projectId ?? "");
   const name = String(options.machine ?? "");
   const { data, loading, reload } = useQuery<{
@@ -30,7 +31,9 @@ export default function MachineCard({ options }: CardProps) {
   const base = `/api/projects/${project}/machines/${encodeURIComponent(machine.name)}`;
 
   const power = async (what: "shutdown" | "reboot") => {
-    const password = machine.account ? "" : prompt(`SSH password for ${machine.name}:`) ?? "";
+    const password = machine.account
+      ? ""
+      : (await ask.text({ title: machine.name, label: "SSH password", secret: true })) ?? "";
     if (!machine.account && !password) return;
     setBusy(what);
     setNote("");

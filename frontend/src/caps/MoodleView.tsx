@@ -98,7 +98,7 @@ export default function MoodleView({ project }: { project: Project; reload: () =
 
       <Field
         label="Which course goes into which project"
-        hint="One rule per line, first match wins. A bare number is the semester Moodle derives; anything else matches the course name — a piece of it is enough; * catches the rest. Empty puts everything in this project."
+        hint="One rule per line, first match wins. A number is the semester; * catches the rest."
       >
         <textarea
           style={{ minHeight: 92, fontFamily: "var(--mono)", fontSize: 13 }}

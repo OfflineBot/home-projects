@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/model"
@@ -10,7 +11,8 @@ import (
 
 const projectCols = `p.id, p.owner_id, p.group_id, p.slug, p.title, p.description, p.capabilities,
 	p.preset, p.default_tab, p.git_tracked, p.site_root, p.site_source_project_id, p.visibility, p.password_hash,
-	p.read_only, p.anon_write, p.color, p.icon, p.archived, p.position, p.created_at, p.updated_at`
+	p.read_only, p.anon_write, p.color, p.icon, p.folder, p.archived, p.position,
+	p.created_at, p.updated_at`
 
 // projectSelect always joins the group so a project carries its group's slug
 // without a second query.
@@ -23,7 +25,7 @@ func scanProject(r scanner) (*model.Project, error) {
 	var pw *string
 	err := r.Scan(&p.ID, &p.OwnerID, &p.GroupID, &p.Slug, &p.Title, &p.Description, &p.Capabilities,
 		&p.Preset, &p.DefaultTab, &p.GitTracked, &p.SiteRoot, &p.SiteSourceID, &p.Visibility, &pw,
-		&p.ReadOnly, &p.AnonWrite, &p.Color, &p.Icon, &p.Archived, &p.Position,
+		&p.ReadOnly, &p.AnonWrite, &p.Color, &p.Icon, &p.Folder, &p.Archived, &p.Position,
 		&p.CreatedAt, &p.UpdatedAt, &p.GroupSlug, &p.GroupTitle, &p.GroupVisibility)
 	if err != nil {
 		return nil, norm(err)
@@ -217,6 +219,7 @@ type ProjectPatch struct {
 	AnonWrite    *bool
 	Color        *string
 	Icon         *string
+	Folder       *string
 	Archived     *bool
 	Position     *int
 }
@@ -278,6 +281,9 @@ func (s *Store) UpdateProject(ctx context.Context, id uuid.UUID, p ProjectPatch)
 	}
 	if p.Icon != nil {
 		add("icon", *p.Icon)
+	}
+	if p.Folder != nil {
+		add("folder", strings.TrimSpace(*p.Folder))
 	}
 	if p.Archived != nil {
 		add("archived", *p.Archived)

@@ -210,6 +210,8 @@ export interface Group {
   gitVisibility?: string;
   color: string;
   icon: string;
+  /** An address of this group's own that shows its board. */
+  boardHost?: string;
   siteProjectId?: string;
   pinned: boolean;
   archived: boolean;
@@ -240,6 +242,8 @@ export interface Project {
   anonWrite: boolean;
   color: string;
   icon: string;
+  /** A folder inside the group, for tidying. Empty is the top. */
+  folder?: string;
   archived: boolean;
   siteUrl?: string;
   cloneUrl?: string;

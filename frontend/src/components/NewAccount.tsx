@@ -98,7 +98,7 @@ export default function NewAccount({
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind?.title} />
       </Field>
       {kind?.fields.map((f) => (
-        <Field key={f.name} label={f.label} hint={f.hint}>
+        <Field key={f.name} label={f.label} hint={f.hint} required={f.required} optional={!f.required}>
           {f.options?.length ? (
             <select
               value={config[f.name] ?? String(f.default ?? f.options[0].value)}
