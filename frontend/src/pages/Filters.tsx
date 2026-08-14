@@ -46,13 +46,13 @@ export default function Filters() {
               <div style={{ minWidth: 0 }}>
                 <h3>{f.title}</h3>
                 <div className="sub">
-                  {f.rules.length} rule{f.rules.length === 1 ? "" : "s"}
+                  {(f.rules ?? []).length} rule{(f.rules ?? []).length === 1 ? "" : "s"}
                   {f.usedBy ? ` · used by ${f.usedBy} scheduler${f.usedBy === 1 ? "" : "s"}` : ""}
                 </div>
               </div>
             </div>
             <pre className="block" style={{ margin: 0, maxHeight: 140 }}>
-              {f.rules.map(ruleLine).join("\n") || "(empty)"}
+              {(f.rules ?? []).map(ruleLine).join("\n") || "(empty)"}
             </pre>
             <div className="tile-foot">
               <div style={{ flex: 1 }} />

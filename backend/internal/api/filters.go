@@ -43,6 +43,9 @@ func (s *Server) mountFilters(r fiber.Router) {
 			return httpx.BadRequest("These lines are not rules: %s. Write them as \"match -> project\".",
 				strings.Join(bad, "; "))
 		}
+		if rules == nil {
+			rules = []filter.Rule{}
+		}
 		encoded, _ := json.Marshal(rules)
 		created, err := s.Store.CreateFilter(c.UserContext(), store.NewFilter{
 			OwnerID:     auth.From(c).User.ID,
@@ -77,6 +80,9 @@ func (s *Server) mountFilters(r fiber.Router) {
 			rules, bad := in.rules()
 			if len(bad) > 0 {
 				return httpx.BadRequest("These lines are not rules: %s.", strings.Join(bad, "; "))
+			}
+			if rules == nil {
+				rules = []filter.Rule{}
 			}
 			encoded, _ := json.Marshal(rules)
 			raw := json.RawMessage(encoded)

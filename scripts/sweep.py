@@ -424,6 +424,14 @@ def main() -> int:
     if f:
         fid = f["id"]
         check(len(f["rules"]) == 4, "a filter keeps its rules in order")
+        # A filter with nothing in it is an empty list, never null: null is what
+        # takes a page down on the other side.
+        blank = c.call("POST", "/api/filters", {"title": f"sweep-blank-{stamp}", "text": ""}, expect=201)
+        check(bool(blank) and blank["rules"] == [], "a filter with no rules says so with a list, not with null")
+        if blank:
+            listed = next((x for x in c.call("GET", "/api/filters")["filters"] if x["id"] == blank["id"]), None)
+            check(bool(listed) and listed["rules"] == [], "and still does when it is listed")
+            c.call("DELETE", f"/api/filters/{blank['id']}")
         tried = c.call("POST", "/api/filters/try", {
             "text": "Grundlagen In -> semester1\n* -> rest",
             "names": ["WDS125 - Grundlagen Informatik (INA)", "Etwas anderes"],

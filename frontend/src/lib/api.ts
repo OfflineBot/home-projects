@@ -366,7 +366,8 @@ export interface Filter {
   slug: string;
   title: string;
   description: string;
-  rules: FilterRule[];
+  /** May be absent: a filter with no rules yet. */
+  rules?: FilterRule[];
   usedBy: number;
 }
 

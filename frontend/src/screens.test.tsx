@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import GroupSettings from "./components/GroupSettings";
 import ProjectSettings from "./components/ProjectSettings";
 import { api, login, type Group, type Project } from "./lib/api";
-import { loadMeta } from "./lib/store";
+import { loadMeta, setUser } from "./lib/store";
 import { Route, Routes } from "react-router-dom";
 import FilesView from "./caps/FilesView";
 import ProjectPage from "./pages/ProjectPage";
@@ -59,7 +59,10 @@ beforeAll(async () => {
     return response;
   }) as typeof fetch;
 
-  await login("offlinebot", password);
+  // Signed in *in the store*, not only in the client: half the pages have a
+  // "sign in first" branch, and a test that renders that branch tests nothing.
+  // "Sign in to see the filters." matched /filters/i for four runs.
+  setUser(await login("offlinebot", password));
   // The app loads this once at startup, and half the dialogs are drawn from
   // it. Without it the test renders the empty half of every branch — which is
   // how a capability list that crashes on real data passed nine times.
@@ -94,15 +97,27 @@ describe("every screen draws something", () => {
   });
 
   it("accounts", async () => {
-    await draw(<Accounts />, /Accounts/i);
+    await draw(<Accounts />, /New account/i);
   });
 
   it("schedulers", async () => {
-    await draw(<Schedulers />, /Schedulers|Nothing scheduled/i);
+    await draw(<Schedulers />, /New scheduler/i);
   });
 
-  it("filters", async () => {
-    await draw(<FiltersPage />, /Filters|No filters/i);
+  // Including one with no rules at all — the shape that broke the page, because
+  // an empty list marshals to null unless something stops it.
+  it("filters, including an empty one", async () => {
+    const title = "ui-test-empty-" + Date.now();
+    const made = await api<{ id: string }>("/api/filters", { body: { title, text: "" } });
+    try {
+      // Wait for the filter itself, not merely the heading: the heading is
+      // there before the list arrives, and asserting against that tests nothing.
+      const c = await draw(<FiltersPage />, new RegExp(title));
+      expect(c.textContent).toContain("(empty)");
+      expect(c.textContent).not.toMatch(/could not be drawn/i);
+    } finally {
+      await api(`/api/filters/${made.id}`, { method: "DELETE" });
+    }
   });
 
   // The one that was reported blank. A settings dialog is a modal, so it has to
@@ -115,7 +130,7 @@ describe("every screen draws something", () => {
     );
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 8000 });
     const dialog = screen.getByRole("dialog");
-    for (const label of ["Name", "Address", "Group", "Visibility", "Capabilities"]) {
+    for (const label of ["Name", "Address", "Group", "Visibility", "Capabilities", "Filters"]) {
       expect(dialog.textContent).toContain(label);
     }
     // The capability list has to be *drawn*, not merely present as an empty

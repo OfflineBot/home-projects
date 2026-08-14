@@ -22,10 +22,18 @@ func scanFilter(r scanner) (*model.Filter, error) {
 		&f.CreatedAt, &f.UpdatedAt, &f.UsedBy); err != nil {
 		return nil, norm(err)
 	}
-	if len(f.Rules) == 0 {
-		f.Rules = json.RawMessage(`[]`)
-	}
+	f.Rules = ruleList(f.Rules)
 	return &f, nil
+}
+
+// ruleList is the one place that decides what "no rules" looks like on the way
+// out: an empty list, never null. A nil slice marshals to null, and null is
+// what takes a page down on the other side.
+func ruleList(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 || string(raw) == "null" {
+		return json.RawMessage(`[]`)
+	}
+	return raw
 }
 
 func (s *Store) ListFilters(ctx context.Context) ([]model.Filter, error) {
@@ -62,9 +70,7 @@ type NewFilter struct {
 }
 
 func (s *Store) CreateFilter(ctx context.Context, in NewFilter) (*model.Filter, error) {
-	if len(in.Rules) == 0 {
-		in.Rules = json.RawMessage(`[]`)
-	}
+	in.Rules = ruleList(in.Rules)
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO filters (owner_id, slug, title, description, rules)
@@ -161,9 +167,7 @@ func (s *Store) FiltersForProject(ctx context.Context, projectID uuid.UUID) ([]P
 			&pf.TargetProjectID, &pf.TargetFolder, &pf.TargetProject); err != nil {
 			return nil, norm(err)
 		}
-		if len(pf.Rules) == 0 {
-			pf.Rules = json.RawMessage(`[]`)
-		}
+		pf.Rules = ruleList(pf.Rules)
 		out = append(out, pf)
 	}
 	return out, norm(rows.Err())
