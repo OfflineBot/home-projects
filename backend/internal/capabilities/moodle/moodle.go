@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -241,10 +242,23 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			}
 		}
 	}
-	routeText, _ := job.Options["routes"].(string)
-	routes, badLines := parseRoutes(routeText)
-	for _, line := range badLines {
-		job.Log("this line is not a rule and was ignored: %q — write it as \"2 -> semester-2\"", line)
+	// Where each course goes. A filter picked in the scheduler answers it; the
+	// lines typed into the one-off pull answer it the same way.
+	route := job.Route
+	if route == nil {
+		routeText, _ := job.Options["routes"].(string)
+		rules, badLines := parseRoutes(routeText)
+		for _, line := range badLines {
+			job.Log("this line is not a rule and was ignored: %q — write it as \"2 -> semester-2\"", line)
+		}
+		if len(rules) > 0 {
+			route = func(item capability.RouteItem) (capability.RouteTo, bool) {
+				name, ok := pick(rules, lib.Course{
+					Shortname: item.Name, SemesterNumber: item.Semester,
+				})
+				return capability.RouteTo{Project: name}, ok
+			}
+		}
 	}
 
 	base := job.Scheduler.TargetPath
@@ -261,8 +275,8 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		job.Log("%d courses found — one folder per course under %s, sections and folders as they are in Moodle",
 			len(courses), where)
 	}
-	if len(routes) > 0 {
-		job.Log("%d routing rule(s): courses go into the projects they name", len(routes))
+	if route != nil {
+		job.Log("a filter decides where each course goes")
 	}
 
 	// A course that is left out has to say so. Silence about skipped work reads
@@ -300,26 +314,32 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 			continue
 		}
 
-		// Where this course belongs. Without rules that is the scheduler's own
-		// project; with them, whichever project the matching rule names.
+		// Where this course belongs. Without a filter that is the scheduler's
+		// own project; with one, whatever it answers.
 		target := job.Project
-		if len(routes) > 0 {
-			slugName, matched := pick(routes, course)
-			if !matched {
+		into := ""
+		if route != nil {
+			to, matched := route(capability.RouteItem{
+				Name: name, Path: courseFolder(course), Semester: course.SemesterNumber,
+			})
+			if !matched || to.Skip {
 				unrouted = append(unrouted, fmt.Sprintf("%s (semester %d)", name, course.SemesterNumber))
 				continue
 			}
-			target, err = projectBySlug(ctx, env, slugName)
-			if err != nil {
-				job.Log("%s → %s: %v", name, slugName, err)
-				continue
+			into = to.Folder
+			if to.Project != "" {
+				target, err = projectBySlug(ctx, env, to.Project)
+				if err != nil {
+					job.Log("%s → %s: %v", name, to.Project, err)
+					continue
+				}
 			}
 		}
 
 		taken++
-		folder := path.Join(base, courseFolder(course))
+		folder := path.Join(base, into, courseFolder(course))
 		if flat {
-			folder = base
+			folder = path.Join(base, into)
 		}
 		claim(target, folder)
 
@@ -399,10 +419,15 @@ func pull(ctx context.Context, env *capability.Env, job capability.Job, cfg conf
 		job.Log("add a \"* -> some-project\" line to catch the rest")
 	}
 
+	// What this scheduler wrote, so the next run can tell its own leftovers from
+	// everything else. Without it, changing the layout — a folder per course
+	// where there used to be none — leaves the old shape lying next to the new
+	// one, and no rule can safely guess which files were ours.
 	removed := 0
 	if prune {
 		removed = pruneStrays(ctx, env, job, owned, seen)
 	}
+	writeManifests(ctx, env, job, owned, seen)
 
 	for _, p := range owned {
 		for _, target := range p {
@@ -509,6 +534,7 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 			Target      string `json:"target"`
 			Courses     string `json:"courses"`
 			Routes      string `json:"routes"`
+			Filter      string `json:"filter"`
 			OnlyCurrent *bool  `json:"onlyCurrent"`
 			Flat        bool   `json:"flat"`
 			Prune       bool   `json:"prune"`
@@ -552,6 +578,7 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 				"prune":       in.Prune,
 			},
 			Trigger: map[bool]string{true: "rebuild", false: "manual"}[in.Rebuild],
+			Route:   env.Router(ctx.UserContext(), in.Filter),
 			Log: func(format string, args ...any) {
 				lines = append(lines, fmt.Sprintf(format, args...))
 			},
@@ -608,11 +635,32 @@ func pruneStrays(ctx context.Context, env *capability.Env, job capability.Job,
 
 	removed := 0
 	for projectID, folders := range owned {
+		// What this scheduler itself wrote last time and did not write now —
+		// wherever it ended up. A layout change lands here.
+		if len(folders) > 0 {
+			var any *model.Project
+			for _, p := range folders {
+				any = p
+				break
+			}
+			for _, rel := range strayFromLastTime(env, job, any, seen) {
+				if err := env.Files.Remove(ctx, any, rel, false, files.Op{
+					Author: "the Moodle scheduler", Email: "scheduler@home-projects", Commit: false,
+				}); err != nil {
+					continue
+				}
+				job.Log("removed, left over from the previous layout: %s", rel)
+				removed++
+			}
+		}
 		for folder, target := range folders {
 			fs := env.Files.Workspace().Open(projectID)
 			var strays []string
 			_ = fs.Walk(folder, func(e workspace.Entry) error {
 				if e.IsDir {
+					return nil
+				}
+				if e.Path == manifestPath {
 					return nil
 				}
 				if _, mine := seen[projectID.String()+"|"+e.Path]; !mine {
@@ -633,4 +681,81 @@ func pruneStrays(ctx context.Context, env *capability.Env, job capability.Job,
 		}
 	}
 	return removed
+}
+
+// manifestPath is where a scheduler writes down what it put in a project. One
+// file per project, keyed by scheduler, so two schedulers writing into the same
+// project stay out of each other's way.
+const manifestPath = ".home-projects/moodle.json"
+
+type manifest map[string][]string
+
+func readManifest(env *capability.Env, p *model.Project) manifest {
+	m := manifest{}
+	if !env.Files.Exists(p, manifestPath) {
+		return m
+	}
+	body, _, err := env.Files.Read(context.Background(), p, manifestPath)
+	if err != nil {
+		return m
+	}
+	_ = json.Unmarshal(body, &m)
+	return m
+}
+
+// writeManifests records this run's files, per project it wrote into.
+func writeManifests(ctx context.Context, env *capability.Env, job capability.Job,
+	owned map[uuid.UUID]map[string]*model.Project, seen map[string]string) {
+
+	if job.Scheduler == nil || job.Scheduler.ID == uuid.Nil {
+		return // a one-off pull owns nothing later
+	}
+	key := job.Scheduler.ID.String()
+	for projectID, folders := range owned {
+		var target *model.Project
+		for _, p := range folders {
+			target = p
+			break
+		}
+		if target == nil {
+			continue
+		}
+		mine := []string{}
+		prefix := projectID.String() + "|"
+		for k := range seen {
+			if strings.HasPrefix(k, prefix) {
+				mine = append(mine, strings.TrimPrefix(k, prefix))
+			}
+		}
+		sort.Strings(mine)
+		m := readManifest(env, target)
+		m[key] = mine
+		body, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			continue
+		}
+		if _, err := env.Files.Write(ctx, target, manifestPath, body, files.Op{
+			Author: "the Moodle scheduler", Email: "scheduler@home-projects", Commit: false,
+		}); err != nil {
+			job.Log("the list of what was written could not be stored: %v", err)
+		}
+	}
+}
+
+// strayFromLastTime returns the files this scheduler wrote last time and did
+// not write now — wherever they are. This is what makes changing the layout
+// clean up after itself: the old flat files were ours, so they may go, while
+// anything else in the project was never ours to touch.
+func strayFromLastTime(env *capability.Env, job capability.Job, p *model.Project, seen map[string]string) []string {
+	if job.Scheduler == nil || job.Scheduler.ID == uuid.Nil {
+		return nil
+	}
+	previous := readManifest(env, p)[job.Scheduler.ID.String()]
+	var out []string
+	for _, rel := range previous {
+		if _, still := seen[p.ID.String()+"|"+rel]; !still {
+			out = append(out, rel)
+		}
+	}
+	return out
 }

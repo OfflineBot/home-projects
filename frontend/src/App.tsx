@@ -5,6 +5,7 @@ import { Spinner, StepUpProvider } from "./components/ui";
 import { logout } from "./lib/api";
 import { loadMeta, setUser, startSession, useSession } from "./lib/store";
 import Accounts from "./pages/Accounts";
+import Filters from "./pages/Filters";
 import Dashboard from "./pages/Dashboard";
 import GroupPage from "./pages/GroupPage";
 import Groups from "./pages/Groups";
@@ -70,6 +71,9 @@ export default function App() {
               <NavLink to="/schedulers" className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}>
                 <Icon name="clock" size={17} /> Schedulers
               </NavLink>
+              <NavLink to="/filters" className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}>
+                <Icon name="search" size={17} /> Filters
+              </NavLink>
               <div className="nav-section">You</div>
               <NavLink to="/security" className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}>
                 <Icon name="lock" size={17} /> Security
@@ -118,6 +122,7 @@ export default function App() {
               <Route path="/calendar" element={<CalendarOverlay />} />
               <Route path="/structure" element={<Structure />} />
               <Route path="/accounts" element={<Accounts />} />
+              <Route path="/filters" element={<Filters />} />
               <Route path="/schedulers" element={<Schedulers />} />
               <Route path="/security" element={<Security />} />
               <Route path="/settings" element={<Settings />} />

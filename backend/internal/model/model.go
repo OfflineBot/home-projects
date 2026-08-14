@@ -195,22 +195,25 @@ type Account struct {
 }
 
 type Scheduler struct {
-	ID          uuid.UUID       `json:"id"`
-	ProjectID   uuid.UUID       `json:"projectId"`
-	ProjectSlug string          `json:"projectSlug,omitempty"`
-	AccountID   *uuid.UUID      `json:"accountId,omitempty"`
-	AccountName string          `json:"accountName,omitempty"`
-	Title       string          `json:"title"`
-	Kind        string          `json:"kind"`
-	Schedule    string          `json:"schedule"`
-	TargetPath  string          `json:"targetPath"`
-	Options     json.RawMessage `json:"options"`
-	Enabled     bool            `json:"enabled"`
-	PausedFor   string          `json:"pausedReason"`
-	LastRunAt   *time.Time      `json:"lastRunAt,omitempty"`
-	LastStatus  string          `json:"lastStatus"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"projectId"`
+	ProjectSlug string     `json:"projectSlug,omitempty"`
+	AccountID   *uuid.UUID `json:"accountId,omitempty"`
+	AccountName string     `json:"accountName,omitempty"`
+	// FilterID names the rules this scheduler's results are run through.
+	FilterID   *uuid.UUID      `json:"filterId,omitempty"`
+	FilterName string          `json:"filterName,omitempty"`
+	Title      string          `json:"title"`
+	Kind       string          `json:"kind"`
+	Schedule   string          `json:"schedule"`
+	TargetPath string          `json:"targetPath"`
+	Options    json.RawMessage `json:"options"`
+	Enabled    bool            `json:"enabled"`
+	PausedFor  string          `json:"pausedReason"`
+	LastRunAt  *time.Time      `json:"lastRunAt,omitempty"`
+	LastStatus string          `json:"lastStatus"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
 }
 
 type SchedulerRun struct {
@@ -278,4 +281,20 @@ type AuditEntry struct {
 	Detail    json.RawMessage `json:"detail"`
 	IP        string          `json:"ip"`
 	CreatedAt time.Time       `json:"createdAt"`
+}
+
+// Filter is a named set of rules that answers "where does this belong?". It
+// lives in a menu of its own, like an account, because the same rules serve a
+// scheduler and a folder of files alike.
+type Filter struct {
+	ID          uuid.UUID       `json:"id"`
+	Slug        string          `json:"slug"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Rules       json.RawMessage `json:"rules"`
+	// UsedBy counts the schedulers pointing at it, so deleting one can say
+	// what it would affect.
+	UsedBy    int       `json:"usedBy"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

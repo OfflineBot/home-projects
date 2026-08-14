@@ -33,6 +33,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/db"
 	"github.com/offlinebot/home-projects/backend/internal/events"
 	"github.com/offlinebot/home-projects/backend/internal/files"
+	"github.com/offlinebot/home-projects/backend/internal/filter"
 	"github.com/offlinebot/home-projects/backend/internal/gitsrv"
 	"github.com/offlinebot/home-projects/backend/internal/httpx"
 	"github.com/offlinebot/home-projects/backend/internal/model"
@@ -125,6 +126,18 @@ func run() error {
 	}
 	env.UseAccount = func(ctx context.Context, id uuid.UUID, fn func(secret []byte) error) error {
 		return accounts.Attempt(ctx, env, id, 2*time.Minute, fn)
+	}
+	env.Router = func(ctx context.Context, ref string) func(capability.RouteItem) (capability.RouteTo, bool) {
+		rules, err := filter.RulesFor(ctx, st, ref)
+		if err != nil || len(rules) == 0 {
+			return nil
+		}
+		return func(item capability.RouteItem) (capability.RouteTo, bool) {
+			d, ok := filter.Apply(rules, filter.Item{
+				Name: item.Name, Path: item.Path, Semester: item.Semester,
+			})
+			return capability.RouteTo{Project: d.Project, Folder: d.Folder, Skip: d.Skip, Rule: d.Rule}, ok
+		}
 	}
 
 	if err := bootstrap(ctx, cfg, st, git, fileSvc); err != nil {

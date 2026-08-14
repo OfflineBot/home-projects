@@ -336,6 +336,23 @@ export interface Scheduler {
   nextRun?: string;
   /** True while a run is in flight — a second start is refused, not queued. */
   running?: boolean;
+  filterId?: string;
+  filterName?: string;
+}
+
+export interface FilterRule {
+  match: string;
+  field?: string;
+  to: string;
+}
+
+export interface Filter {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  rules: FilterRule[];
+  usedBy: number;
 }
 
 export interface SchedulerRun {

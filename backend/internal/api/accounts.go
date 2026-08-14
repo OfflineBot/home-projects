@@ -216,6 +216,7 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 			TargetPath string          `json:"targetPath"`
 			Options    json.RawMessage `json:"options"`
 			Enabled    *bool           `json:"enabled"`
+			FilterID   string          `json:"filterId"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The scheduler could not be read.")
@@ -252,9 +253,17 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		if in.Enabled != nil {
 			enabled = *in.Enabled
 		}
+		var filterID *uuid.UUID
+		if in.FilterID != "" {
+			id, err := uuid.Parse(in.FilterID)
+			if err != nil {
+				return httpx.BadRequest("That is not a filter id.")
+			}
+			filterID = &id
+		}
 		actor := auth.From(c)
 		created, err := s.Store.CreateScheduler(c.UserContext(), store.NewScheduler{
-			OwnerID: actor.User.ID, ProjectID: p.ID, AccountID: accountID, Title: in.Title,
+			OwnerID: actor.User.ID, ProjectID: p.ID, AccountID: accountID, FilterID: filterID, Title: in.Title,
 			Kind: in.Kind, Schedule: in.Schedule, TargetPath: in.TargetPath,
 			Options: in.Options, Enabled: enabled,
 		})
@@ -279,6 +288,7 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 			Options    *json.RawMessage `json:"options"`
 			Enabled    *bool            `json:"enabled"`
 			AccountID  *string          `json:"accountId"`
+			FilterID   *string          `json:"filterId"`
 		}
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
@@ -289,6 +299,19 @@ func (s *Server) mountSchedulers(r fiber.Router) {
 		}
 		if in.Enabled != nil && *in.Enabled {
 			patch.PausedFor = ptrString("")
+		}
+		if in.FilterID != nil {
+			if *in.FilterID == "" {
+				var none *uuid.UUID
+				patch.FilterID = &none
+			} else {
+				fid, err := uuid.Parse(*in.FilterID)
+				if err != nil {
+					return httpx.BadRequest("That is not a filter id.")
+				}
+				ref := &fid
+				patch.FilterID = &ref
+			}
 		}
 		if in.AccountID != nil {
 			if *in.AccountID == "" {

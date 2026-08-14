@@ -435,6 +435,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 
 .menu-backdrop { position: fixed; inset: 0; z-index: 30; }
 
+/* A small two-column table for a syntax the dialog has to teach once. */
+.syntax { border-collapse: collapse; margin: 4px 0 14px; font-size: 12.5px; }
+.syntax td { padding: 2px 12px 2px 0; color: var(--ctp-subtext0); vertical-align: top; }
+.syntax td:first-child { white-space: nowrap; }
+
 /* -------------------------------------------------------------------- tree */
 
 /* The arrangement the way `tree` prints it: one root per group, monospace, no

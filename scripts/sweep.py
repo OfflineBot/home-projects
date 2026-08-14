@@ -414,6 +414,36 @@ def main() -> int:
         c.call("POST", f"/api/accounts/{aid}/test", expect=409)
         c.call("DELETE", f"/api/accounts/{aid}")
 
+    # --------------------------------------------------------------- filters
+    # Rules that answer "where does this belong?" — a menu of their own, asked
+    # by a scheduler about a course and by a project about a file.
+    f = c.call("POST", "/api/filters", {
+        "title": f"sweep-filter-{stamp}",
+        "text": "2 -> semester2\nGrundlagen In -> semester1\nAlt -> archiv/2024\n* -> rest",
+    }, expect=201)
+    if f:
+        fid = f["id"]
+        check(len(f["rules"]) == 4, "a filter keeps its rules in order")
+        tried = c.call("POST", "/api/filters/try", {
+            "text": "Grundlagen In -> semester1\n* -> rest",
+            "names": ["WDS125 - Grundlagen Informatik (INA)", "Etwas anderes"],
+        })
+        by = {r["name"]: r for r in (tried or {}).get("results", [])}
+        check(by.get("WDS125 - Grundlagen Informatik (INA)", {}).get("project") == "semester1"
+              and by.get("Etwas anderes", {}).get("project") == "rest",
+              "a filter can be tried against names before it is used")
+        c.call("PATCH", f"/api/filters/{fid}", {"text": "* -> rest"})
+        c.call("GET", "/api/filters")
+        # A line that is not a rule is refused rather than silently dropped.
+        c.call("POST", "/api/filters", {"title": "broken", "text": "this is not a rule"}, expect=400)
+
+        # And a project can be run through one, saying what it would do first.
+        c.call("PUT", f"/api/projects/{data}/files/content",
+               {"path": "loose/Übung 3.txt", "content": "x"})
+        plan = c.call("POST", f"/api/projects/{data}/filter",
+                      {"filter": fid, "path": "loose", "apply": False})
+        check(bool(plan) and plan["applied"] is False, "applying a filter to a project asks first")
+
     # ------------------------------------------------------------ schedulers
     sched = c.call("POST", "/api/schedulers", {
         "projectId": cal,
@@ -445,6 +475,8 @@ def main() -> int:
         check(bool(runs) and len(runs["runs"]) >= 1, "the run is in the log")
         c.call("GET", "/api/runs")
         c.call("DELETE", f"/api/schedulers/{sid}")
+    if f:
+        c.call("DELETE", f"/api/filters/{f['id']}")
 
     # ------------------------------------------------------------ automation
     system = made["system"]["id"]

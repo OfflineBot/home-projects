@@ -600,6 +600,7 @@ func (s *Server) mountProjects(r fiber.Router) {
 	s.mountFiles(one)
 	s.mountZip(one)
 	s.mountSend(one)
+	s.mountProjectFilter(one)
 	s.mountProjectGit(one)
 }
 

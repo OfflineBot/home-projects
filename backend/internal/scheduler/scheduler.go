@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/offlinebot/home-projects/backend/internal/capability"
 	"github.com/offlinebot/home-projects/backend/internal/events"
+	"github.com/offlinebot/home-projects/backend/internal/filter"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/store"
 	"github.com/robfig/cron/v3"
@@ -227,6 +228,27 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 		Options:   options,
 		Trigger:   trigger,
 		Log:       logf,
+	}
+
+	// A filter, if this scheduler points at one. The capability is handed a
+	// function, not a table: it asks where something belongs and gets an
+	// answer, and never learns what a filter is.
+	if sched.FilterID != nil {
+		f, err := st.FilterByID(ctx, *sched.FilterID)
+		if err != nil {
+			return finish("error", "the filter this scheduler uses no longer exists", 0)
+		}
+		var rules []filter.Rule
+		if err := json.Unmarshal(f.Rules, &rules); err != nil {
+			return finish("error", "the filter's rules could not be read", 0)
+		}
+		logf("filter %q: %d rule(s)", f.Title, len(rules))
+		job.Route = func(item capability.RouteItem) (capability.RouteTo, bool) {
+			d, ok := filter.Apply(rules, filter.Item{
+				Name: item.Name, Path: item.Path, Semester: item.Semester,
+			})
+			return capability.RouteTo{Project: d.Project, Folder: d.Folder, Skip: d.Skip, Rule: d.Rule}, ok
+		}
 	}
 
 	// ---- the credential half -------------------------------------------

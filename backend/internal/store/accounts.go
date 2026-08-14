@@ -215,19 +215,20 @@ func (s *Store) RecoverInFlight(ctx context.Context) ([]uuid.UUID, error) {
 
 // ---------------------------------------------------------------- schedulers
 
-const schedulerCols = `s.id, s.project_id, s.account_id, s.title, s.kind, s.schedule, s.target_path,
+const schedulerCols = `s.id, s.project_id, s.account_id, s.filter_id, s.title, s.kind, s.schedule, s.target_path,
 	s.options, s.enabled, s.paused_reason, s.last_run_at, s.last_status, s.created_at, s.updated_at`
 
-const schedulerSelect = `SELECT ` + schedulerCols + `, COALESCE(p.slug,''), COALESCE(a.title,'')
+const schedulerSelect = `SELECT ` + schedulerCols + `, COALESCE(p.slug,''), COALESCE(a.title,''), COALESCE(f.title,'')
 	FROM schedulers s
 	LEFT JOIN projects p ON p.id = s.project_id
-	LEFT JOIN accounts a ON a.id = s.account_id`
+	LEFT JOIN accounts a ON a.id = s.account_id
+	LEFT JOIN filters f ON f.id = s.filter_id`
 
 func scanScheduler(r scanner) (*model.Scheduler, error) {
 	var s model.Scheduler
-	err := r.Scan(&s.ID, &s.ProjectID, &s.AccountID, &s.Title, &s.Kind, &s.Schedule, &s.TargetPath,
+	err := r.Scan(&s.ID, &s.ProjectID, &s.AccountID, &s.FilterID, &s.Title, &s.Kind, &s.Schedule, &s.TargetPath,
 		&s.Options, &s.Enabled, &s.PausedFor, &s.LastRunAt, &s.LastStatus, &s.CreatedAt, &s.UpdatedAt,
-		&s.ProjectSlug, &s.AccountName)
+		&s.ProjectSlug, &s.AccountName, &s.FilterName)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -238,6 +239,7 @@ type NewScheduler struct {
 	OwnerID    uuid.UUID
 	ProjectID  uuid.UUID
 	AccountID  *uuid.UUID
+	FilterID   *uuid.UUID
 	Title      string
 	Kind       string
 	Schedule   string
@@ -252,9 +254,10 @@ func (s *Store) CreateScheduler(ctx context.Context, in NewScheduler) (*model.Sc
 	}
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO schedulers (owner_id, project_id, account_id, title, kind, schedule, target_path, options, enabled)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-		in.OwnerID, in.ProjectID, in.AccountID, in.Title, in.Kind, in.Schedule, in.TargetPath,
+		INSERT INTO schedulers (owner_id, project_id, account_id, filter_id, title, kind, schedule,
+			target_path, options, enabled)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		in.OwnerID, in.ProjectID, in.AccountID, in.FilterID, in.Title, in.Kind, in.Schedule, in.TargetPath,
 		in.Options, in.Enabled).Scan(&id)
 	if err != nil {
 		return nil, norm(err)
@@ -316,6 +319,7 @@ func (s *Store) schedulerCountsByAccount(ctx context.Context) (map[uuid.UUID]int
 
 type SchedulerPatch struct {
 	AccountID   **uuid.UUID
+	FilterID    **uuid.UUID
 	Title       *string
 	Schedule    *string
 	TargetPath  *string
@@ -339,6 +343,9 @@ func (s *Store) UpdateScheduler(ctx context.Context, id uuid.UUID, p SchedulerPa
 	}
 	if p.AccountID != nil {
 		add("account_id", *p.AccountID)
+	}
+	if p.FilterID != nil {
+		add("filter_id", *p.FilterID)
 	}
 	if p.Title != nil {
 		add("title", *p.Title)

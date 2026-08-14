@@ -40,6 +40,10 @@ type Env struct {
 	// the consequences of the single-use rule. Capabilities never touch
 	// accounts any other way.
 	UseAccount func(ctx context.Context, accountID uuid.UUID, fn func(secret []byte) error) error
+	// Router turns a filter's name or id into the function that answers "where
+	// does this belong?". It returns nil when the name is empty or unknown —
+	// the caller then puts things where it was going to anyway.
+	Router func(ctx context.Context, nameOrID string) func(RouteItem) (RouteTo, bool)
 }
 
 // Preset is the typed way into creating a project. A preset only ever sets
@@ -96,7 +100,12 @@ type Job struct {
 	// "automation" — or "rebuild", which asks for the target to be made to
 	// match the source exactly rather than added to.
 	Trigger string
-	Log     func(format string, args ...any)
+	// Route answers "where does this belong?" when the scheduler points at a
+	// filter. It is nil when it points at none, and the run then puts
+	// everything where the scheduler itself points. A capability never learns
+	// what a filter is — only that something can answer this question.
+	Route func(RouteItem) (RouteTo, bool)
+	Log   func(format string, args ...any)
 }
 
 type Report struct {
@@ -373,4 +382,19 @@ func (Base) Index(ctx context.Context, env *Env, p *model.Project, path string) 
 }
 func (Base) Exports(ctx context.Context, env *Env, p *model.Project) ([]store.VariableInput, error) {
 	return nil, nil
+}
+
+// RouteItem is what a capability knows about the thing it is placing.
+type RouteItem struct {
+	Name     string
+	Path     string
+	Semester int
+}
+
+// RouteTo is the answer. Project empty means "where you were going anyway".
+type RouteTo struct {
+	Project string
+	Folder  string
+	Skip    bool
+	Rule    string
 }
