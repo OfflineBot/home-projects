@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
-import { Empty, ErrorBox, Field, Modal, Section, Spinner, formatDate } from "../components/ui";
+import { Empty, ErrorBox, Field, Fold, Modal, Section, Spinner, formatDate } from "../components/ui";
 import NewAccount from "../components/NewAccount";
 import {
   api,
@@ -197,7 +197,13 @@ export default function Schedulers() {
           <div className="sub">
             {formatDate(showLog.startedAt)} · {showLog.filesChanged} file(s) changed
           </div>
-          <pre className="block" style={{ whiteSpace: "pre-wrap" }}>{showLog.log || "(no log)"}</pre>
+          <Fold
+            title="The log"
+            hint={`${(showLog.log ?? "").split("\n").filter(Boolean).length} lines`}
+            open={showLog.status !== "ok"}
+          >
+            <pre className="block" style={{ whiteSpace: "pre-wrap" }}>{showLog.log || "(no log)"}</pre>
+          </Fold>
         </Modal>
       ) : null}
 

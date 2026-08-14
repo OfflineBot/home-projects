@@ -824,3 +824,20 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .page-tab:hover { color: var(--ctp-text); }
 .page-tab.on { color: var(--ctp-text); border-bottom-color: var(--ctp-blue); }
+
+/* Something long that does not have to be on screen. Closed until it is
+   wanted, and the summary says what is inside. */
+.fold { border: 1px solid var(--ctp-surface0); border-radius: 10px; margin: 10px 0; }
+.fold > summary {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 8px 12px; list-style: none; font-size: 13.5px; color: var(--ctp-subtext1);
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+  content: "▸"; color: var(--ctp-overlay1); transition: transform .12s ease; display: inline-block;
+}
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold > summary:hover { background: var(--ctp-surface0); border-radius: 9px; }
+.fold-title { flex: 1; }
+.fold-body { padding: 0 12px 12px; }
+.fold-body .block { margin: 0; max-height: 420px; overflow: auto; }

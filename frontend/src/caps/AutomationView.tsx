@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
-import { Copyable, Empty, ErrorBox, Field, Modal, Spinner, formatDate } from "../components/ui";
+import { Copyable, Empty, ErrorBox, Field, Fold, Modal, Spinner, formatDate } from "../components/ui";
 import { api, type Project } from "../lib/api";
 import { useMeta, useQuery } from "../lib/store";
 
@@ -154,7 +154,9 @@ export default function AutomationView({ project }: { project: Project; reload: 
 
       {showLog !== null ? (
         <Modal title="Run log" onClose={() => setShowLog(null)}>
-          <pre className="block" style={{ whiteSpace: "pre-wrap" }}>{showLog || "(empty)"}</pre>
+          <Fold title="The log" hint={`${showLog.split("\n").filter(Boolean).length} lines`} open>
+            <pre className="block" style={{ whiteSpace: "pre-wrap" }}>{showLog || "(empty)"}</pre>
+          </Fold>
         </Modal>
       ) : null}
 

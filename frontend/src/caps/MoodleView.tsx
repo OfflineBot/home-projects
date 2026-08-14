@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
-import { ErrorBox, Field } from "../components/ui";
+import { ErrorBox, Field, Fold } from "../components/ui";
 import { api, type Project } from "../lib/api";
 
 /**
@@ -149,7 +149,11 @@ export default function MoodleView({ project }: { project: Project; reload: () =
           <div className="notice">
             {result.message} — {result.files} file(s) written.
           </div>
-          {result.log.length ? <pre className="block">{result.log.join("\n")}</pre> : null}
+          {result.log.length ? (
+            <Fold title="What it did" hint={`${result.log.length} lines`}>
+              <pre className="block">{result.log.join("\n")}</pre>
+            </Fold>
+          ) : null}
         </div>
       ) : null}
     </div>

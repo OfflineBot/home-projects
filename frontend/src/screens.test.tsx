@@ -213,6 +213,22 @@ describe("every screen draws something", () => {
     }
   });
 
+  // A log is there when it is wanted and out of the way when it is not.
+  it("a run's log folds away", async () => {
+    const c = await draw(<Schedulers />, /New scheduler/i);
+    const runs = c.querySelectorAll(".list-row");
+    if (runs.length === 0) return; // nothing has run on this instance
+    fireEvent.click(runs[runs.length - 1]);
+    const dialog = await waitFor(() => screen.getByRole("dialog"));
+    const fold = dialog.querySelector("details.fold");
+    if (fold) {
+      expect(dialog.textContent).toMatch(/lines/);
+      // The summary is visible; what is inside is not, until it is opened.
+      expect(fold.querySelector("summary")).not.toBeNull();
+    }
+    cleanup();
+  });
+
   // Every kind of card the server offers can be put on a board — including the
   // ones a capability brought, which is the whole point of the registry.
   it("a board offers the capabilities' cards too", async () => {

@@ -198,6 +198,37 @@ export function Field({
  * A heading with a hairline over it. Settings grew into a long column of
  * unrelated decisions; this says where one subject ends and the next begins.
  */
+/**
+ * Something long that does not have to be on screen: a run's log, the output of
+ * a command, a list of three hundred files.
+ *
+ * Closed by default, and the summary says what is inside — how many lines, how
+ * many entries — so nobody has to open it to find out whether it is worth
+ * opening. Built on <details>, so the keyboard and the browser's own find
+ * already work.
+ */
+export function Fold({
+  title,
+  hint,
+  open,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  open?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="fold" open={open}>
+      <summary>
+        <span className="fold-title">{title}</span>
+        {hint ? <span className="meta">{hint}</span> : null}
+      </summary>
+      <div className="fold-body">{children}</div>
+    </details>
+  );
+}
+
 export function Section({ title }: { title: string }) {
   return <div className="section-line">{title}</div>;
 }
