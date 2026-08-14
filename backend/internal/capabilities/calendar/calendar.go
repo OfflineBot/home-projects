@@ -66,6 +66,19 @@ func (Capability) Index(ctx context.Context, env *capability.Env, p *model.Proje
 }
 
 // Presets contributes the "Calendar" entry to the create dialog.
+// A card for what is coming — one calendar's entries, or every calendar's.
+func (Capability) Cards() []capability.Card {
+	return []capability.Card{{
+		Name: "agenda", Title: "What is coming", Icon: "calendar", W: 4, H: 3,
+		Description: "The next entries, out of one calendar or out of all of them.",
+		Options: []capability.AccountField{
+			{Name: "projectId", Label: "Calendar", Type: "project",
+				Hint: "Empty takes every calendar there is."},
+			{Name: "days", Label: "How many days ahead", Type: "number", Placeholder: "14"},
+		},
+	}}
+}
+
 func (Capability) Presets() []capability.Preset {
 	return []capability.Preset{{
 		Key:          "calendar",

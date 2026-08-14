@@ -783,13 +783,17 @@ def main() -> int:
     dash = c.call("GET", "/api/dashboard")
     check(bool(dash) and any(b["group"]["slug"] == gslug for b in dash["groups"]),
           "the new group is on the dashboard")
-    tile = c.call("POST", "/api/dashboard/tiles", {
-        "groupId": group["id"], "variable": f"{made['grades']['slug']}.average",
-        "title": "Average", "kind": "number", "w": 1, "h": 1,
-    }, expect=201)
-    if tile:
-        c.call("PATCH", f"/api/dashboard/tiles/{tile['id']}", {"title": "Ø", "w": 2})
-        c.call("DELETE", f"/api/dashboard/tiles/{tile['id']}")
+    board_now = c.call("GET", "/api/boards") or {}
+    first_tab = board_now["tabs"][0]["id"] if board_now.get("tabs") else None
+    if first_tab:
+        card = c.call("POST", "/api/boards/cards", {
+            "tabId": first_tab, "kind": "number",
+            "options": {"groupId": group["id"], "variable": f"{made['grades']['slug']}.average",
+                        "title": "Average"},
+        }, expect=201)
+        if card:
+            c.call("PATCH", f"/api/boards/cards/{card['id']}", {"options": {"title": "Ø"}})
+            c.call("DELETE", f"/api/boards/cards/{card['id']}")
     c.call("GET", "/api/structure")
 
     # ------------------------------------------------- visibility for anyone
@@ -848,43 +852,6 @@ def main() -> int:
         c.call("DELETE", f"/api/users/{guest_id}")
         guest.call("POST", "/api/auth/login", {"username": guest_name, "password": guest_pw}, expect=401)
 
-    # ------------------------------------------------- a project on the dashboard
-    # Half of what a dashboard is for is the way back into a project, so a tile
-    # can be the project itself.
-    ptile = c.call("POST", "/api/dashboard/tiles",
-                   {"kind": "project", "projectId": made["data"]["id"], "title": "straight in"},
-                   expect=201)
-    check(bool(ptile and ptile.get("projectId")), "a tile can be a project")
-    check(bool(ptile and ptile.get("projectSlug")), "and it says which one")
-    c.call("POST", "/api/dashboard/tiles", {"kind": "project"}, expect=400)
-    board = c.call("GET", "/api/dashboard") or {}
-    check(any(t.get("kind") == "project" for t in board.get("tiles", [])),
-          "the dashboard hands it back")
-    if ptile:
-        c.call("PATCH", f"/api/dashboard/tiles/{ptile['id']}", {"y": 3})
-        c.call("DELETE", f"/api/dashboard/tiles/{ptile['id']}")
-
-    # ------------------------------------------------- putting one thing away
-    # Not only a whole group: a single project, and a single number.
-    c.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": made["data"]["id"]})
-    c.call("POST", "/api/dashboard/hidden", {"kind": "variable", "ref": made["data"]["id"] + ":files"})
-    c.call("POST", "/api/dashboard/hidden", {"kind": "group", "ref": "x"}, expect=400)
-    c.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": ""}, expect=400)
-    board = c.call("GET", "/api/dashboard") or {}
-    put_away = {(h["kind"], h["ref"]) for h in board.get("hidden", [])}
-    check(("project", made["data"]["id"]) in put_away, "a single project can be put away")
-    check(("variable", made["data"]["id"] + ":files") in put_away, "and a single number too")
-    # Twice is not an error, and it does not pile up.
-    c.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": made["data"]["id"]})
-    again = c.call("GET", "/api/dashboard") or {}
-    check(len(again.get("hidden", [])) == len(board.get("hidden", [])), "putting it away twice changes nothing")
-    c.call("DELETE", f"/api/dashboard/hidden?kind=project&ref={made['data']['id']}")
-    c.call("DELETE", f"/api/dashboard/hidden?kind=variable&ref={made['data']['id']}:files")
-    back = c.call("GET", "/api/dashboard") or {}
-    check(not [h for h in back.get("hidden", []) if h["ref"].startswith(made["data"]["id"])],
-          "and both come back")
-    anon.call("POST", "/api/dashboard/hidden", {"kind": "project", "ref": made["data"]["id"]}, expect=401)
-
     # ------------------------------------------------- a mailbox that is not there
     # The password is single-use, so a wrong server must be caught before it is
     # spent — that is what the precheck is for.
@@ -901,41 +868,93 @@ def main() -> int:
         check(bool(row) and row["state"] != "needs_password", "and the account is still ready")
         c.call("DELETE", f"/api/accounts/{dead['id']}")
 
-    # ------------------------------------------------- sections, and who sees a tile
-    # A dashboard is the first page anybody lands on, so a tile says for itself
-    # whether a visitor may see it — and the project behind it has the last
-    # word. A public tile on a private project shows nobody anything.
-    board_tile = c.call("POST", "/api/dashboard/tiles",
-                        {"groupId": group["id"], "variable": f"data-{stamp}.eins",
-                         "title": "average", "kind": "number"}, expect=201)
-    if board_tile:
-        c.call("PATCH", f"/api/dashboard/tiles/{board_tile['id']}",
-               {"section": "Studies", "visibility": "public"})
-        mine = c.call("GET", "/api/dashboard") or {}
-        placed = next((t for t in mine.get("tiles", []) if t["id"] == board_tile["id"]), None)
-        check(bool(placed) and placed.get("section") == "Studies", "a tile can be put under a heading")
-        check(bool(placed) and placed.get("visibility") == "public", "and told who may see it")
-        c.call("PATCH", f"/api/dashboard/tiles/{board_tile['id']}", {"visibility": "sideways"}, expect=400)
+    # ------------------------------------------------------------------ boards
+    # A board is a page somebody arranged: tabs, cards, and who may see each
+    # card. The front page and a group's page are the same thing twice.
+    home = c.call("GET", "/api/boards")
+    check(bool(home) and home.get("scope") == "home", "everybody has a board of their own")
+    check(bool(home) and len(home.get("tabs", [])) >= 1, "and it starts with one tab")
+    kinds = c.call("GET", "/api/boards/cards") or {}
+    names = [k["name"] for k in kinds.get("cards", [])]
+    check("text" in names and "project" in names, "the core's cards are offered")
+    check("machine" in names and "terminal" in names and "agenda" in names,
+          "and every capability's, without the board knowing what they are")
 
-        # The project behind it is private, so a visitor still sees nothing.
-        c.call("PATCH", f"/api/projects/{data}", {"visibility": "private"})
-        visitor = anon.call("GET", "/api/dashboard") or {}
-        check(not any(t["id"] == board_tile["id"] for t in visitor.get("tiles", [])),
-              "a public tile on a private project stays private")
+    board = c.call("GET", f"/api/boards?group={gslug}")
+    check(bool(board) and board.get("scope") == "group", "a group has a board too")
+    tab = board["tabs"][0]["id"] if board and board.get("tabs") else None
+    if tab:
+        note = c.call("POST", "/api/boards/cards", {
+            "tabId": tab, "kind": "text", "options": {"text": "a note"}, "x": 0, "y": 0, "w": 4, "h": 2,
+        }, expect=201)
+        number = c.call("POST", "/api/boards/cards", {
+            "tabId": tab, "kind": "number",
+            "options": {"variable": f"data-{stamp}.eins", "groupId": group["id"]},
+            "x": 4, "y": 0, "w": 2, "h": 2,
+        }, expect=201)
+        c.call("POST", "/api/boards/cards", {"tabId": tab, "kind": "nonsense"}, expect=400)
+        c.call("POST", "/api/boards/cards", {"kind": "text"}, expect=400)
 
-        # Public project, public tile: now it is there.
-        c.call("PATCH", f"/api/projects/{data}", {"visibility": "public"})
-        seen = anon.call("GET", "/api/dashboard") or {}
-        check(any(t["id"] == board_tile["id"] for t in seen.get("tiles", [])),
-              "a public tile on a public project is seen without an account")
+        # One drag moves several cards; one request saves the lot.
+        if note and number:
+            c.call("PUT", f"/api/boards/{board['id']}/layout", {"cards": [
+                {"id": note["id"], "x": 0, "y": 2, "w": 6, "h": 3},
+                {"id": number["id"], "x": 6, "y": 2, "w": 3, "h": 1},
+            ]})
+            moved = c.call("GET", f"/api/boards?group={gslug}") or {}
+            placed = {x["id"]: x for x in moved["tabs"][0]["cards"]}
+            check(placed.get(note["id"], {}).get("w") == 6, "an arrangement is saved as one")
+            check(placed.get(number["id"], {}).get("y") == 2, "for every card that moved")
 
-        # And private again means gone again, whatever the project says.
-        c.call("PATCH", f"/api/dashboard/tiles/{board_tile['id']}", {"visibility": "private"})
-        gone = anon.call("GET", "/api/dashboard") or {}
-        check(not any(t["id"] == board_tile["id"] for t in gone.get("tiles", [])),
-              "and private means private")
-        c.call("PATCH", f"/api/projects/{data}", {"visibility": "private"})
-        c.call("DELETE", f"/api/dashboard/tiles/{board_tile['id']}")
+        # Another tab, and the cards that sit on it.
+        second = c.call("POST", f"/api/boards/{board['id']}/tabs", {"title": "Terminals"}, expect=201)
+        if second:
+            with_tabs = c.call("GET", f"/api/boards?group={gslug}") or {}
+            check(len(with_tabs.get("tabs", [])) == 2, "a board takes more than one tab")
+            c.call("PATCH", f"/api/boards/tabs/{second['id']}", {"title": "Machines"})
+            renamed = c.call("GET", f"/api/boards?group={gslug}") or {}
+            check(any(t["title"] == "Machines" for t in renamed.get("tabs", [])), "a tab can be renamed")
+            c.call("DELETE", f"/api/boards/tabs/{second['id']}")
+
+        # Who may see a card: what it says, and what it shows, whichever is
+        # stricter. This runs on the home board — a visitor cannot see a
+        # private group at all, which is a different rule and is checked
+        # elsewhere.
+        home_tab = home["tabs"][0]["id"] if home and home.get("tabs") else None
+        number = c.call("POST", "/api/boards/cards", {
+            "tabId": home_tab, "kind": "number",
+            "options": {"variable": f"data-{stamp}.eins", "groupId": group["id"]},
+        }, expect=201) if home_tab else None
+        note = c.call("POST", "/api/boards/cards", {
+            "tabId": home_tab, "kind": "text", "options": {"text": "a note"},
+        }, expect=201) if home_tab else None
+        if number:
+            c.call("PATCH", f"/api/boards/cards/{number['id']}", {"visibility": "public"})
+            c.call("PATCH", f"/api/boards/cards/{number['id']}", {"visibility": "sideways"}, expect=400)
+            c.call("PATCH", f"/api/projects/{data}", {"visibility": "private"})
+            seen = anon.call("GET", "/api/boards") or {}
+            cards = [x["id"] for t in seen.get("tabs", []) for x in t.get("cards", [])]
+            check(number["id"] not in cards, "a public card on a private project stays private")
+            c.call("PATCH", f"/api/projects/{data}", {"visibility": "public"})
+            seen = anon.call("GET", "/api/boards") or {}
+            cards = [x["id"] for t in seen.get("tabs", []) for x in t.get("cards", [])]
+            check(number["id"] in cards, "and is seen once that project is public")
+            c.call("PATCH", f"/api/projects/{data}", {"visibility": "private"})
+        if note:
+            # A card that shows nothing of anybody's is as open as it says.
+            c.call("PATCH", f"/api/boards/cards/{note['id']}", {"visibility": "public"})
+            seen = anon.call("GET", "/api/boards") or {}
+            cards = [x["id"] for t in seen.get("tabs", []) for x in t.get("cards", [])]
+            check(note["id"] in cards, "a piece of text can simply be public")
+            c.call("PATCH", f"/api/boards/cards/{note['id']}", {"visibility": "private"})
+            gone = anon.call("GET", "/api/boards") or {}
+            cards = [x["id"] for t in gone.get("tabs", []) for x in t.get("cards", [])]
+            check(note["id"] not in cards, "and private means private")
+            c.call("DELETE", f"/api/boards/cards/{note['id']}")
+        if number:
+            c.call("DELETE", f"/api/boards/cards/{number['id']}")
+        anon.call("POST", "/api/boards/cards", {"tabId": tab, "kind": "text"}, expect=401)
+        anon.call("GET", f"/api/boards?group={gslug}", expect=404)
 
     # ------------------------------------------------- one project gathering others
     # A main calendar is not a kind of calendar: it is a project that gathers

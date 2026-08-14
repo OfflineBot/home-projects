@@ -122,6 +122,29 @@ func testMachineAccount(ctx context.Context, env *capability.Env, a *model.Accou
 	return err
 }
 
+// Cards are what this capability offers a board: a machine with its buttons,
+// and a terminal.
+func (Capability) Cards() []capability.Card {
+	return []capability.Card{{
+		Name: "machine", Title: "A machine", Icon: "server", W: 3, H: 2,
+		Description: "Is it on, wake it, shut it down.",
+		Options: []capability.AccountField{
+			{Name: "projectId", Label: "Project", Type: "project", Required: true},
+			{Name: "machine", Label: "Which machine", Type: "text", Required: true,
+				Hint: "The name it has in that project."},
+		},
+	}, {
+		Name: "terminal", Title: "A terminal", Icon: "code", W: 6, H: 4,
+		Description: "A tmux session, live — or all of them, to pick from.",
+		Options: []capability.AccountField{
+			{Name: "projectId", Label: "Project", Type: "project", Required: true},
+			{Name: "machine", Label: "Which machine", Type: "text", Required: true},
+			{Name: "session", Label: "Which session", Type: "text",
+				Hint: "Empty lists them all and lets you start one."},
+		},
+	}}
+}
+
 // ------------------------------------------------------------------- reading
 
 func read(ctx context.Context, env *capability.Env, p *model.Project) List {

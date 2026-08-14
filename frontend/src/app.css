@@ -724,3 +724,103 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   font-size: 13px; text-transform: uppercase; letter-spacing: .07em;
   color: var(--ctp-overlay1); margin: 4px 0 10px;
 }
+
+/* ------------------------------------------------------------------ boards
+   A board is a page somebody arranged. Reading it should be quiet: no handles,
+   no outlines, nothing that says "this is a tool". Edit mode is where it
+   admits to being one. */
+.board { display: flex; flex-direction: column; gap: 12px; }
+.board-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.board-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.board-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid transparent; border-radius: 9px;
+  padding: 5px 11px; color: var(--ctp-subtext0); cursor: pointer; font-size: 13.5px;
+}
+.board-tab:hover { background: var(--ctp-surface0); }
+.board-tab.on { background: var(--ctp-surface0); color: var(--ctp-text); border-color: var(--ctp-surface2); }
+.board-tab.add { padding: 5px 8px; }
+
+.grid-area { display: grid; position: relative; }
+.grid-cell { position: relative; min-width: 0; min-height: 0; }
+.grid-area.editing .grid-cell { transition: none; }
+.grid-cell.dragging { z-index: 5; opacity: .92; }
+.grid-handle, .grid-resize {
+  position: absolute; z-index: 3; background: var(--ctp-surface1); color: var(--ctp-subtext1);
+  border: none; border-radius: 6px; cursor: grab; padding: 1px 6px; font-size: 12px; line-height: 1.5;
+  opacity: 0; transition: opacity .12s ease;
+}
+.grid-handle { top: 6px; left: 6px; }
+.grid-resize { bottom: 6px; right: 6px; cursor: nwse-resize; }
+.grid-area.editing .grid-handle, .grid-area.editing .grid-resize { opacity: .9; }
+.grid-area.editing .card { outline: 1px dashed var(--ctp-surface2); outline-offset: 2px; }
+
+.card {
+  position: relative; height: 100%; overflow: auto;
+  background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0);
+  border-radius: 12px; padding: 12px 14px;
+}
+.card-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; z-index: 3; }
+.card-heading {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ctp-overlay1); margin: 0; display: flex; align-items: center; height: 100%;
+}
+.card-text p, .card-text h2, .card-text h3 { margin: 0 0 6px; }
+.card-text h2 { font-size: 16px; }
+.card-text h3 { font-size: 14px; }
+.card-links { display: flex; flex-direction: column; gap: 6px; }
+.card-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--ctp-text); text-decoration: none; font-size: 13.5px;
+}
+.card-link:hover { text-decoration: underline; }
+.card-number { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.card-number .stat { font-size: 30px; }
+.card-when { color: var(--ctp-overlay1); }
+.card-status { display: flex; align-items: center; gap: 10px; height: 100%; }
+.card-list ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.card-project { display: flex; flex-direction: column; gap: 4px; height: 100%; }
+.card-project-name {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: inherit; text-decoration: none; font-weight: 600; font-size: 15px;
+}
+.card-project-name:hover { text-decoration: underline; }
+.card-project-foot { margin-top: auto; display: flex; gap: 6px; }
+.card-machine { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.card-machine-top { display: flex; align-items: center; gap: 9px; }
+.card-machine-foot { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.card-rule { display: flex; flex-direction: column; gap: 6px; justify-content: center; height: 100%; }
+.card-agenda ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; }
+.card-agenda li { display: flex; gap: 8px; padding: 2px 0; }
+.card-agenda .when { color: var(--ctp-overlay1); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.card-agenda .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-terminal { display: flex; flex-direction: column; height: 100%; gap: 8px; }
+.card-terminal-bar { display: flex; align-items: center; gap: 8px; }
+.card-terminal .tmux-screen { flex: 1; max-height: none; }
+.card-terminal-list { display: flex; flex-direction: column; gap: 4px; }
+.card-terminal-session {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: 1px solid var(--ctp-surface0); border-radius: 8px;
+  padding: 6px 9px; color: inherit; cursor: pointer;
+}
+.card-terminal-session:hover { border-color: var(--ctp-blue); }
+
+/* Which kinds of card there are, when adding one. */
+.card-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.card-kind {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left;
+  background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; color: inherit;
+}
+.card-kind:hover { border-color: var(--ctp-surface2); }
+.card-kind.on { border-color: var(--ctp-blue); background: var(--ctp-surface0); }
+
+/* Tabs that belong to a page rather than to a board. */
+.page-tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--ctp-surface0); }
+.page-tab {
+  display: inline-flex; align-items: center; gap: 7px; background: none; border: none;
+  border-bottom: 2px solid transparent; padding: 8px 12px; color: var(--ctp-subtext0);
+  cursor: pointer; font-size: 14px;
+}
+.page-tab:hover { color: var(--ctp-text); }
+.page-tab.on { color: var(--ctp-text); border-bottom-color: var(--ctp-blue); }

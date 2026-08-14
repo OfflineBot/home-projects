@@ -286,24 +286,35 @@ type GroupVariable struct {
 	Unit    string    `json:"unit"`
 }
 
-type DashboardTile struct {
-	ID        uuid.UUID `json:"id"`
-	GroupID   uuid.UUID `json:"groupId"`
-	GroupSlug string    `json:"groupSlug,omitempty"`
-	// ProjectID is set when the tile is a project rather than a number: a way
-	// straight into the thing itself, which is half of what a dashboard is for.
-	ProjectID   *uuid.UUID `json:"projectId,omitempty"`
-	ProjectSlug string     `json:"projectSlug,omitempty"`
-	// Section is the heading this tile sits under — a person's own word, empty
-	// for the ones above all headings.
-	Section string `json:"section"`
-	// Visibility is who may see it: private, public, or password. Never wider
-	// than what it shows.
-	Visibility string          `json:"visibility"`
-	Variable   string          `json:"variable"`
-	Title      string          `json:"title"`
+// Board is a page somebody arranges themselves: the front page, a group's
+// page, later a project's. It holds tabs, a tab holds cards, and what a card is
+// comes from the card registry — the core knows a handful and every capability
+// may offer its own.
+type Board struct {
+	ID        uuid.UUID  `json:"id"`
+	OwnerID   uuid.UUID  `json:"ownerId"`
+	Scope     string     `json:"scope"`
+	GroupID   *uuid.UUID `json:"groupId,omitempty"`
+	ProjectID *uuid.UUID `json:"projectId,omitempty"`
+	Tabs      []BoardTab `json:"tabs"`
+}
+
+type BoardTab struct {
+	ID       uuid.UUID   `json:"id"`
+	Title    string      `json:"title"`
+	Icon     string      `json:"icon"`
+	Position int         `json:"position"`
+	Cards    []BoardCard `json:"cards"`
+}
+
+// BoardCard sits on a twelve-column grid. What it shows is its kind plus its
+// options, and neither is interpreted here.
+type BoardCard struct {
+	ID         uuid.UUID       `json:"id"`
+	TabID      uuid.UUID       `json:"tabId"`
 	Kind       string          `json:"kind"`
 	Options    json.RawMessage `json:"options"`
+	Visibility string          `json:"visibility"`
 	X          int             `json:"x"`
 	Y          int             `json:"y"`
 	W          int             `json:"w"`

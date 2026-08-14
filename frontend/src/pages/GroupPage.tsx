@@ -8,6 +8,7 @@ import ProjectSettings from "../components/ProjectSettings";
 import { Copyable, Empty, ErrorBox, Field, Menu, Modal, Spinner } from "../components/ui";
 import { ApiError, api, type Group, type Project } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
+import Board from "../components/board/Board";
 import { colorVar } from "../lib/theme";
 
 export default function GroupPage() {
@@ -18,6 +19,9 @@ export default function GroupPage() {
     slug ? `/api/groups/${slug}` : null,
   );
   const [creating, setCreating] = useState(false);
+  // Board or projects. The board comes first once there is anything on it —
+  // that is the page somebody arranged, and the list is always one click away.
+  const [page, setPage] = useState<"board" | "projects">("board");
   const [groupSettings, setGroupSettings] = useState(false);
   const [projectSettings, setProjectSettings] = useState<Project | null>(null);
   // What the files in this group say is there but nobody switched on.
@@ -62,8 +66,28 @@ export default function GroupPage() {
         </div>
       </div>
 
+      <div className="page-tabs">
+        <button className={page === "board" ? "page-tab on" : "page-tab"} onClick={() => setPage("board")}>
+          <Icon name="grid" size={15} /> Board
+        </button>
+        <button
+          className={page === "projects" ? "page-tab on" : "page-tab"}
+          onClick={() => setPage("projects")}
+        >
+          <Icon name="box" size={15} /> Projects
+          <span className="meta">{data?.projects.length ?? 0}</span>
+        </button>
+      </div>
+
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? <Spinner /> : null}
+
+      {page === "board" && slug ? (
+        <Board
+          group={slug}
+          emptyNote="This group has no board yet — put the things you use every day on it."
+        />
+      ) : null}
 
       {data?.group.readOnly ? (
         <div className="warning">
@@ -71,11 +95,11 @@ export default function GroupPage() {
         </div>
       ) : null}
 
-      {data && data.projects.length === 0 ? (
+      {page === "projects" && data && data.projects.length === 0 ? (
         <Empty icon="box">No projects yet.</Empty>
       ) : null}
 
-      <div className="tiles">
+      <div className="tiles" style={{ display: page === "projects" ? undefined : "none" }}>
         {data?.projects.map((p) => (
           <Link
             key={p.id}

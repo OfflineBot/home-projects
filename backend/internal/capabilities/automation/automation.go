@@ -130,6 +130,20 @@ func Read(ctx context.Context, env *capability.Env, p *model.Project) (*Spec, er
 	return &spec, nil
 }
 
+// Cards: a button that runs a rule, which is how "wake the PC every morning"
+// and "wake it now" end up being the same rule.
+func (Capability) Cards() []capability.Card {
+	return []capability.Card{{
+		Name: "rule", Title: "A button", Icon: "play", W: 2, H: 1,
+		Description: "Runs one rule of a project's automation.",
+		Options: []capability.AccountField{
+			{Name: "projectId", Label: "Project", Type: "project", Required: true},
+			{Name: "rule", Label: "Which rule", Type: "text", Required: true,
+				Hint: "The name it has in that project's rules."},
+		},
+	}}
+}
+
 func (Capability) Presets() []capability.Preset {
 	return []capability.Preset{{
 		Key:          "system",

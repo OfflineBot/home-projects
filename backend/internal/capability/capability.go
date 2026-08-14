@@ -145,6 +145,81 @@ type Option struct {
 	Label string `json:"label"`
 }
 
+// Card is one kind of card a board can hold.
+//
+// The core knows a handful — a piece of text, a link, a number — and every
+// capability may offer its own. That is the whole of how a board stays modular:
+// nothing about boards is listed in the core except the fact that cards exist.
+type Card struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Icon        string `json:"icon"`
+	Description string `json:"description,omitempty"`
+	// Options are the questions the "add a card" dialog asks. The same shape
+	// as an account's fields, because it is the same job.
+	Options []AccountField `json:"options,omitempty"`
+	// W and H are how big it starts, on a twelve-column grid.
+	W int `json:"w,omitempty"`
+	H int `json:"h,omitempty"`
+	// From names the capability it came from, filled in by the registry.
+	From string `json:"from,omitempty"`
+}
+
+// coreCards are the ones that belong to nothing in particular: they show what
+// any project reports, or nothing at all.
+var coreCards = []Card{
+	{Name: "text", Title: "Text", Icon: "notebook", W: 4, H: 2,
+		Description: "A note in your own words. Markdown.",
+		Options: []AccountField{
+			{Name: "text", Label: "The text", Type: "textarea"},
+		}},
+	{Name: "link", Title: "Links", Icon: "link", W: 3, H: 2,
+		Description: "A handful of addresses, inside this server or out.",
+		Options: []AccountField{
+			{Name: "links", Label: "One per line: title | address", Type: "textarea",
+				Placeholder: "Moodle | https://moodle.dhbw-ravensburg.de"},
+		}},
+	{Name: "heading", Title: "Heading", Icon: "flag", W: 12, H: 1,
+		Description: "A line to divide the board into parts.",
+		Options:     []AccountField{{Name: "title", Label: "The heading", Type: "text"}}},
+	{Name: "project", Title: "A project", Icon: "box", W: 3, H: 2,
+		Description: "The way straight into a project, with the numbers it reports.",
+		Options:     []AccountField{{Name: "projectId", Label: "Project", Type: "project", Required: true}}},
+	{Name: "number", Title: "A number", Icon: "grid", W: 2, H: 2,
+		Description: "One value a project reports, large enough to read across the room.",
+		Options:     []AccountField{{Name: "variable", Label: "Variable", Type: "variable", Required: true}}},
+	{Name: "history", Title: "A number over time", Icon: "zap", W: 4, H: 2,
+		Description: "The same value, as a small graph.",
+		Options:     []AccountField{{Name: "variable", Label: "Variable", Type: "variable", Required: true}}},
+	{Name: "status", Title: "A status light", Icon: "circle", W: 2, H: 1,
+		Description: "On or off, as a dot — for the things that are one or the other.",
+		Options:     []AccountField{{Name: "variable", Label: "Variable", Type: "variable", Required: true}}},
+	{Name: "list", Title: "A list", Icon: "notebook", W: 4, H: 3,
+		Description: "A value that is several things.",
+		Options:     []AccountField{{Name: "variable", Label: "Variable", Type: "variable", Required: true}}},
+}
+
+// AllCards is every kind of card there is: the core's and the capabilities'.
+func AllCards() []Card {
+	out := append([]Card{}, coreCards...)
+	for _, c := range All() {
+		for _, card := range c.Cards() {
+			card.From = c.Name()
+			out = append(out, card)
+		}
+	}
+	return out
+}
+
+func CardExists(name string) bool {
+	for _, card := range AllCards() {
+		if card.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // AccountKind is one entry in the accounts menu. Credentials live there and
 // nowhere else — never on a project, because a project gets versioned, linked,
 // published and cloned.
@@ -228,6 +303,8 @@ type Capability interface {
 	Actions() []Action
 	// Presets the capability contributes to the create dialog.
 	Presets() []Preset
+	// Cards the capability offers to a board.
+	Cards() []Card
 	// Migrations are applied under the capability's own namespace. nil is fine.
 	Migrations() fs.FS
 }
@@ -395,6 +472,7 @@ type Base struct{}
 func (Base) Owns() []string                        { return nil }
 func (Base) SchedulerKinds() []SchedulerKind       { return nil }
 func (Base) AccountKinds() []AccountKind           { return nil }
+func (Base) Cards() []Card                         { return nil }
 func (Base) Actions() []Action                     { return nil }
 func (Base) Presets() []Preset                     { return nil }
 func (Base) Migrations() fs.FS                     { return nil }

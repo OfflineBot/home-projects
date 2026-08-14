@@ -92,42 +92,44 @@ describe("every screen draws something", () => {
     await draw(<Dashboard />, /Dashboard|Nothing pinned/i);
   });
 
-  // What was put away is listed with a way back — otherwise hiding something
-  // by mistake would be final, which is not what a view is.
-  it("things put away can be brought back", async () => {
-    await api("/api/dashboard/hidden", { body: { kind: "project", ref: project.id } });
+  // The front page is a board: a card is put on it, drawn, and arranged.
+  it("the dashboard is a board that can be arranged", async () => {
+    const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
+    const card = await api<{ id: string }>("/api/boards/cards", {
+      body: {
+        tabId: board.tabs[0].id,
+        kind: "text",
+        options: { text: "# Guten Morgen\n\nEine **Notiz**." },
+        x: 0, y: 0, w: 4, h: 2,
+      },
+    });
     try {
-      const c = await draw(<Dashboard />, /Edit/i);
+      const c = await draw(<Dashboard />, /Guten Morgen/i);
+      // Drawn as markdown, not as its source.
+      expect(c.querySelector(".card-text strong")?.textContent).toBe("Notiz");
+      expect(c.textContent).not.toMatch(/\*\*/);
+      // Reading is quiet: no handles until edit mode.
+      expect(c.querySelector(".grid-handle")).toBeNull();
+
       fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      await waitFor(() => expect(c.textContent).toMatch(/1 put away/));
-      const open = [...c.querySelectorAll("button")].find((b) => /put away/i.test(b.textContent ?? ""));
-      fireEvent.click(open!);
-      await waitFor(() => expect(c.textContent).toMatch(/Bring back/i));
-      expect(c.textContent).toContain(project.slug);
+      await waitFor(() => expect(c.querySelector(".grid-handle")).not.toBeNull());
+      expect(c.querySelector(".grid-resize")).not.toBeNull();
+
+      // And the settings of that card say who may see it.
+      fireEvent.click(
+        [...c.querySelectorAll("button")].find(
+          (b) => b.getAttribute("aria-label") === "Settings for this card",
+        )!,
+      );
+      const dialog = await waitFor(() => screen.getByRole("dialog"));
+      expect(dialog.textContent).toMatch(/Who may see it/i);
+      expect(dialog.textContent).toMatch(/stays private/i);
+      cleanup();
     } finally {
-      await api(`/api/dashboard/hidden?kind=project&ref=${project.id}`, { method: "DELETE" });
+      await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
     }
   });
 
-  // A tile that is a project: the way straight back in, which is what the page
-  // is opened for. It is drawn from two answers at once — the tiles and the
-  // projects — so it fails if either is missing.
-  it("a project on the dashboard", async () => {
-    const tile = await api<{ id: string }>("/api/dashboard/tiles", {
-      body: { kind: "project", projectId: project.id, title: "straight in" },
-    });
-    try {
-      const c = await draw(<Dashboard />, /straight in/i);
-      expect(c.querySelector(".project-tile")).not.toBeNull();
-      // The tile is drawn from two answers — the tiles and the projects — and
-      // the second one lands a moment later. Asserting before it does is how
-      // this test failed while the page itself was right.
-      await waitFor(() => expect(c.textContent).toContain("Open"), { timeout: 8000 });
-      expect(c.textContent).not.toMatch(/could not be drawn|That project is gone/i);
-    } finally {
-      await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
-    }
-  });
 
   it("groups", async () => {
     await draw(<Groups />, new RegExp(group.title, "i"));
@@ -170,6 +172,7 @@ describe("every screen draws something", () => {
     cleanup();
   });
 
+
   // A real message, read the way the page reads it: the umlauts decoded, the
   // HTML shown in its frame, the attachment offered. Every one of those three
   // was broken at once, and none of it shows up in a type check.
@@ -210,31 +213,13 @@ describe("every screen draws something", () => {
     }
   });
 
-  // A tile under a heading of its own, and the dialog that puts it there.
-  it("the dashboard sorts tiles into sections", async () => {
-    const tile = await api<{ id: string }>("/api/dashboard/tiles", {
-      body: { kind: "project", projectId: project.id, title: "in a section" },
-    });
-    try {
-      await api(`/api/dashboard/tiles/${tile.id}`, {
-        method: "PATCH",
-        body: { section: "Everyday", visibility: "public" },
-      });
-      const c = await draw(<Dashboard />, /in a section/i);
-      await waitFor(() => expect(c.querySelector(".board-heading")?.textContent).toBe("Everyday"));
-      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      // The arranging dialog opens from the tile itself.
-      const arrange = [...c.querySelectorAll("button")].find(
-        (b) => b.getAttribute("aria-label") === "Arrange this tile",
-      );
-      expect(arrange).toBeTruthy();
-      fireEvent.click(arrange!);
-      const dialog = await waitFor(() => screen.getByRole("dialog"));
-      expect(dialog.textContent).toMatch(/Who may see it/i);
-      expect(dialog.textContent).toMatch(/stays private/i);
-      cleanup();
-    } finally {
-      await api(`/api/dashboard/tiles/${tile.id}`, { method: "DELETE" });
+  // Every kind of card the server offers can be put on a board — including the
+  // ones a capability brought, which is the whole point of the registry.
+  it("a board offers the capabilities' cards too", async () => {
+    const kinds = await api<{ cards: { name: string }[] }>("/api/boards/cards");
+    const names = kinds.cards.map((k) => k.name);
+    for (const wanted of ["text", "link", "project", "machine", "terminal", "agenda", "rule"]) {
+      expect(names).toContain(wanted);
     }
   });
 
