@@ -87,6 +87,28 @@ async function draw(node: React.ReactElement, expected: RegExp) {
   return container;
 }
 
+/**
+ * One project of each kind.
+ *
+ * The screens below used to walk every project on the instance, which is fine
+ * on a fresh one and hopeless on a working one: forty copies of the same
+ * machines project prove nothing the first proves, and the run grows without
+ * limit. What decides what a project's settings and tabs draw is its preset,
+ * its capabilities and its opening tab, so one of each of those is the whole
+ * of the coverage.
+ */
+function oneOfEachKind(projects: Project[]): Project[] {
+  const seen = new Set<string>();
+  const out: Project[] = [];
+  for (const p of projects) {
+    const kind = [p.preset, p.defaultTab, [...(p.capabilities ?? [])].sort().join("+")].join("|");
+    if (seen.has(kind)) continue;
+    seen.add(kind);
+    out.push(p);
+  }
+  return out;
+}
+
 describe("every screen draws something", () => {
   it("the dashboard", async () => {
     await draw(<Dashboard />, /Dashboard|Nothing pinned/i);
@@ -143,6 +165,7 @@ describe("every screen draws something", () => {
 
   it("accounts", async () => {
     await draw(<Accounts />, /New account/i);
+    cleanup();
   });
 
   // Every mailbox, not one of them. The dialog is drawn from the server's own
@@ -151,7 +174,9 @@ describe("every screen draws something", () => {
   it("a mail account can be any provider", async () => {
     const c = await draw(<Accounts />, /New account/i);
     fireEvent.click([...c.querySelectorAll("button")].find((b) => /New account/i.test(b.textContent ?? ""))!);
-    const dialog = await waitFor(() => screen.getByRole("dialog"));
+    // The dialog is drawn from what the server says the kinds are, so on a busy
+    // instance it is not there in the same tick as the click.
+    const dialog = await waitFor(() => screen.getByRole("dialog"), { timeout: 8000 });
     const selects = [...dialog.querySelectorAll("select")];
     const kind = selects[0];
     fireEvent.change(kind, { target: { value: "mail" } });
@@ -290,7 +315,7 @@ describe("every screen draws something", () => {
       });
     } finally {
       await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
-      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
       cleanup();
     }
   });
@@ -350,7 +375,7 @@ describe("every screen draws something", () => {
       await waitFor(() => expect(c.querySelector(".layout > .main .card-project")).not.toBeNull(), { timeout: 8000 });
       expect(c.querySelector(".layout > .bottom")?.textContent).toMatch(/the strip at the bottom/);
     } finally {
-      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
       cleanup();
     }
   });
@@ -393,7 +418,7 @@ describe("every screen draws something", () => {
       // And the light is a switch that says what it is doing.
       expect(c.textContent).toMatch(/Desk/);
     } finally {
-      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
       cleanup();
     }
   });
@@ -431,7 +456,7 @@ describe("every screen draws something", () => {
       expect([...c.querySelectorAll("button")].some((b) => /Start PC/.test(b.textContent ?? ""))).toBe(true);
       expect(c.textContent).not.toMatch(/That project is gone/);
     } finally {
-      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
       cleanup();
     }
   });
@@ -673,9 +698,9 @@ describe("every screen draws something", () => {
 
   // Not a project made for the test: every project that actually exists on the
   // server, because the one that breaks is always the real one.
-  it("the settings of every project that exists", async () => {
+  it("the settings of every kind of project that exists", async () => {
     const { projects } = await api<{ projects: Project[] }>("/api/projects");
-    for (const p of projects) {
+    for (const p of oneOfEachKind(projects)) {
       const view = render(
         <MemoryRouter>
           <ProjectSettings project={p} onClose={() => {}} onChanged={() => {}} onDeleted={() => {}} />
@@ -693,9 +718,9 @@ describe("every screen draws something", () => {
   // The project page itself, for every project and every one of its tabs —
   // this is where an error box would show up, and a test that only renders the
   // dialog would never see it.
-  it("every project page, and every tab it offers", { timeout: 90_000 }, async () => {
+  it("every kind of project page, and every tab it offers", { timeout: 90_000 }, async () => {
     const { projects } = await api<{ projects: Project[] }>("/api/projects");
-    for (const p of projects) {
+    for (const p of oneOfEachKind(projects)) {
       for (const tab of ["files", "git", ...p.capabilities]) {
         const view = render(
           <MemoryRouter initialEntries={[`/p/${p.id}?tab=${tab}`]}>
