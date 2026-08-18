@@ -1068,6 +1068,58 @@ def main() -> int:
     branchy = c.call("GET", f"/api/groups/{gslug}/git?branch={made['data']['slug']}") or {}
     check(branchy.get("branch") == made["data"]["slug"], "a project's own history is asked for by branch")
 
+    # ------------------------------------- a page, and what a token may not touch
+    # The two calls an assistant is given, and the fence around them. A token is
+    # not an account: it inherits nothing from whoever made it.
+    docs = c.call("GET", "/api/docs/assistant")
+    check(bool(docs) and "PUT /api/page" in str(docs), "the server hands out its own instructions")
+
+    open_group = c.call("POST", "/api/groups", {"title": f"Sweep page {stamp}", "visibility": "public"},
+                        expect=201)
+    if open_group:
+        writer = c.call("POST", "/api/tokens", {
+            "name": f"sweep-assistant-{stamp}", "scope": "write", "groupId": open_group["id"], "days": 1,
+        }, expect=201)
+        reader = c.call("POST", "/api/tokens", {
+            "name": f"sweep-reader-{stamp}", "scope": "read", "groupId": open_group["id"], "days": 1,
+        }, expect=201)
+        if writer and reader:
+            bot = Client(args.url)
+            bot.token = writer["secret"]
+            slug = open_group["slug"]
+            bot.call("GET", f"/api/page?group={slug}", expect=404)
+            bot.call("PUT", f"/api/page?group={slug}",
+                     {"html": "<h1>Written by a program</h1>", "title": "Front"})
+            page = bot.call("GET", f"/api/page?group={slug}") or {}
+            check("Written by a program" in page.get("html", ""), "an assistant can write a page and read it back")
+
+            # The fence.
+            bot.call("GET", f"/api/page?group={gslug}", expect=404)       # another group
+            bot.call("GET", f"/api/projects/{data}", expect=404)          # a private project of it
+            bot.call("GET", "/api/users", expect=403)                     # the people page
+            bot.call("POST", "/api/tokens",
+                     {"name": "x", "scope": "write", "groupId": open_group["id"]}, expect=401)
+            bot.call("POST", "/api/groups", {"title": "not allowed"}, expect=401)
+
+            only_reads = Client(args.url)
+            only_reads.token = reader["secret"]
+            only_reads.call("GET", f"/api/page?group={slug}")
+            only_reads.call("PUT", f"/api/page?group={slug}", {"html": "<p>no</p>"}, expect=403)
+            still = bot.call("GET", f"/api/page?group={slug}") or {}
+            check("Written by a program" in still.get("html", ""), "a read token cannot change the page")
+
+            c.call("DELETE", f"/api/tokens/{writer['id']}")
+            c.call("DELETE", f"/api/tokens/{reader['id']}")
+            # Reading a public group's page needs no token at all, so a
+            # revoked one is simply ignored there. What it must no longer do is
+            # write.
+            gone = Client(args.url)
+            gone.token = writer["secret"]
+            gone.call("PUT", f"/api/page?group={slug}", {"html": "<p>after the end</p>"}, expect=401)
+            left = c.call("GET", f"/api/page?group={slug}") or {}
+            check("Written by a program" in left.get("html", ""), "a revoked token writes nothing more")
+        c.call("DELETE", f"/api/groups/{open_group['slug']}?confirm={open_group['slug']}")
+
     # ------------------------------------------------------------------ links
     # A place to put an address so it can be found again — and a public one is a
     # list two people keep together.

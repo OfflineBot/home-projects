@@ -257,6 +257,29 @@ describe("every screen draws something", () => {
     }
   });
 
+  // A tab that is one page: read as the page, edited as its source beside a
+  // preview — the same document an assistant writes through /api/page.
+  it("a tab can be one page, written by hand", async () => {
+    const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
+    const tab = await api<{ id: string }>(`/api/boards/${board.id}/tabs`, {
+      body: { title: "Seite", icon: "code" },
+    });
+    try {
+      await api(`/api/boards/tabs/${tab.id}`, { method: "PATCH", body: { layout: "page" } });
+      await api(`/api/page?tab=${tab.id}`, {
+        method: "PUT",
+        body: { html: "<h1>Geschrieben</h1><p>Von Hand.</p>" },
+      });
+      const c = await draw(<Dashboard />, /Seite/i);
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => /Seite/.test(b.textContent ?? ""))!);
+      await waitFor(() => expect(c.textContent).toMatch(/Geschrieben/));
+      expect(c.querySelector(".page-tab h1")?.textContent).toBe("Geschrieben");
+      cleanup();
+    } finally {
+      await api(`/api/boards/tabs/${tab.id}`, { method: "DELETE" });
+    }
+  });
+
   // A tab is set up in one place: its name, its icon, how its cards lie and
   // how wide the page is.
   it("a tab can be set up", async () => {

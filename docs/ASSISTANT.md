@@ -1,0 +1,83 @@
+# Writing a page here, from a program
+
+This describes everything an assistant needs to build a page on this server:
+one token, two calls. Nothing else has to be understood — no cards, no
+coordinates, no ids to keep track of.
+
+## 1. The token
+
+Made in the running server under **Security → Tokens**:
+
+- **Scope** `write`
+- **Group** the group whose page is to be written
+
+The secret is shown once. A token is *not* an account: it inherits nothing from
+the person who made it. A token for the group `dhbw` can read and write that
+group's page and reach that group's projects — and nothing else on the server.
+Everything private elsewhere stays out of reach, and a token with scope `read`
+cannot write at all.
+
+Send it as a bearer token:
+
+    Authorization: Bearer <the secret>
+
+## 2. Read the page
+
+    GET /api/page?group=<group-slug>
+
+```json
+{
+  "board": "…", "tab": "…", "title": "Page",
+  "html": "<h1>DHBW</h1>…"
+}
+```
+
+`404` means nobody has made a page there yet — write one and it exists.
+
+## 3. Replace the page
+
+    PUT /api/page?group=<group-slug>
+    Content-Type: application/json
+
+```json
+{ "html": "<h1>DHBW</h1><p>Whatever you like.</p>", "title": "Front" }
+```
+
+The HTML replaces the page whole; `title` is optional and names the tab. The
+limit is two megabytes.
+
+    curl -X PUT "https://home.example.com/api/page?group=dhbw" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"html":"<h1>Hallo</h1><p>Von einem Programm geschrieben.</p>"}'
+
+## 4. What may be in that HTML
+
+The page is shown as part of the board, so it is cleaned before it is drawn:
+markup, tables, images, links and inline styles stay; `<script>`, `<iframe>`,
+`<form>` and every `on…` attribute are removed. That is a property of the
+viewer, not of the storage — what is sent is kept as it was sent.
+
+A card that needs scripts of its own is made in the browser instead ("Your own
+HTML" → *in a frame of its own*), where it runs sandboxed.
+
+Useful classes, if the page should look like the rest of the server:
+`card`, `btn`, `btn primary`, `badge`, `meta`, `mono`, `stat`, `list`,
+`list-row`, `prose`. They are optional; plain HTML works.
+
+## 5. Where the page appears
+
+- On the group's page, as a tab of its board.
+- Under the group's own address, when one is set (**Group settings → Own
+  address**): `dhbw.example.com` then shows that board, read-only.
+
+Cards on that board are private unless they say otherwise; a page written
+through this route is public, because a page is the thing that gets handed out.
+
+## 6. What a token cannot do
+
+- It cannot read a private project of another group.
+- It cannot make, change or delete accounts, users, tokens or schedulers.
+- It cannot write anywhere without scope `write`.
+- It stops working the moment it is revoked, and it is listed with the date it
+  was last used.

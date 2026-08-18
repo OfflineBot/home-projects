@@ -44,8 +44,8 @@ export interface Tab {
   title: string;
   icon: string;
   style?: TabStyle;
-  /** How its cards lie: on a grid, one after another, or wherever they are put. */
-  layout?: "grid" | "flow" | "free";
+  /** How its cards lie — or "page", where the tab is one document. */
+  layout?: "grid" | "flow" | "free" | "page";
   position: number;
   cards: Card[];
 }
@@ -254,7 +254,9 @@ export default function Board({
         </Empty>
       ) : null}
 
-      {current && current.layout === "flow" ? (
+      {current && current.layout === "page" ? (
+        <PageTab group={group} tab={current} editing={editing && !exposed} />
+      ) : current && current.layout === "flow" ? (
         <div className="flow">
           {current.cards.map((card, i) => (
             <div
@@ -596,6 +598,88 @@ function AddCard({
   );
 }
 
+/**
+ * A tab that is one page.
+ *
+ * Reading it is the page itself; editing it is the source on the left and what
+ * it will look like on the right, saved with one button or Ctrl-S. It is the
+ * same document an assistant writes through /api/page, so a person and a
+ * program are never looking at two different things.
+ */
+function PageTab({ group, tab, editing }: { group?: string; tab: Tab; editing: boolean }) {
+  const where = `/api/page?${group ? `group=${encodeURIComponent(group)}&` : ""}tab=${tab.id}`;
+  const page = useQuery<{ html: string }>(where);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saved, setSaved] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const html = draft ?? page.data?.html ?? "";
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(where, { method: "PUT", body: { html } });
+      setSaved(true);
+      page.reload();
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (page.loading && !page.data && !draft) return <Spinner />;
+
+  if (!editing) {
+    return (
+      <div className="page-tab">
+        <ErrorBox error={page.error} onRetry={page.reload} />
+        {html.trim() ? (
+          <HtmlCard options={{ html, mode: "inline" }} value={() => undefined} projects={[]} editing={false} />
+        ) : (
+          <Empty icon="code">This page is empty. Edit it, or let an assistant write it.</Empty>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-editor" onKeyDown={(e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        void save();
+      }
+    }}>
+      <ErrorBox error={error ?? page.error} />
+      <div className="page-editor-bar">
+        <span className="meta grow">
+          The whole page, as HTML. An assistant writes the same thing through{" "}
+          <code className="mono">/api/page</code>.
+        </span>
+        {saved ? <span className="meta">saved</span> : <span className="badge warn">not saved</span>}
+        <button className="btn small primary" disabled={busy || saved} onClick={save}>
+          <Icon name="check" size={14} /> Save
+        </button>
+      </div>
+      <div className="page-editor-panes">
+        <CodeArea
+          value={html}
+          minHeight={420}
+          onChange={(text) => {
+            setDraft(text);
+            setSaved(false);
+          }}
+        />
+        <div className="page-preview">
+          <HtmlCard options={{ html, mode: "inline" }} value={() => undefined} projects={[]} editing={false} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The widths a card can have on a page, said the way people say them. */
 const WIDTHS = [
   { value: 3, short: "¼", label: "a quarter" },
@@ -641,7 +725,7 @@ function TabSettings({
   const meta = useMeta();
   const [title, setTitle] = useState(tab.title);
   const [icon, setIcon] = useState(tab.icon || "grid");
-  const [layout, setLayout] = useState<"grid" | "flow" | "free">(tab.layout ?? "grid");
+  const [layout, setLayout] = useState<"grid" | "flow" | "free" | "page">(tab.layout ?? "grid");
   const [style, setStyle] = useState<TabStyle>((tab.style ?? {}) as TabStyle);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -728,6 +812,7 @@ function TabSettings({
             <option value="grid">placed on a grid</option>
             <option value="flow">one after another</option>
             <option value="free">wherever you put them</option>
+            <option value="page">one page, written by hand</option>
           </select>
         </Field>
         <Field label="Page width">

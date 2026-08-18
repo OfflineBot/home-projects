@@ -61,6 +61,7 @@ func (s *Server) Mount(app *fiber.App) {
 	s.mountBlueprint(api)
 	s.mountBundle(api)
 	s.mountBoards(api)
+	s.mountPage(api)
 	s.mountHere(api)
 	s.mountFilters(api)
 	s.mountGraph(api)

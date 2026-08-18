@@ -1019,3 +1019,17 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .code-area { border: 1px solid var(--ctp-surface1); border-radius: 10px; overflow: hidden; }
 .code-area .cm-editor { height: 100%; }
 .code-area .cm-scroller { font-family: var(--mono); font-size: 12.5px; }
+
+/* A tab that is one page: the source and what it becomes, side by side. */
+.page-tab { padding: 4px 2px; }
+.page-editor { display: flex; flex-direction: column; gap: 10px; }
+.page-editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.page-editor-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.page-preview {
+  border: 1px solid var(--ctp-surface1); border-radius: 10px; padding: 14px 16px;
+  background: var(--ctp-mantle); min-height: 420px; max-height: 70vh; overflow: auto;
+}
+@media (max-width: 900px) {
+  .page-editor-panes { grid-template-columns: 1fr; }
+  .page-preview { min-height: 200px; }
+}
