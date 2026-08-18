@@ -106,7 +106,16 @@ func (c Capability) mountPTY(env *capability.Env, r fiber.Router) {
 		errOut, _ := ssession.StderrPipe()
 
 		// Always tmux: attach if it is there, start it if it is not.
-		command := "tmux new-session -A -s " + shellQuote(session)
+		//
+		// Attached with -d, and with the window following this client. A tmux
+		// whose window-size is anything but "latest" keeps the session as narrow
+		// as another client that is still attached — a session left open in an
+		// 80-column shell stays 80 columns wide in a browser window twice that,
+		// with the rest of the screen simply empty.
+		name := shellQuote(session)
+		command := "tmux new-session -A -d -s " + name +
+			"; tmux set-option -t " + name + " window-size latest >/dev/null 2>&1" +
+			"; tmux attach-session -d -t " + name
 		if err := ssession.Start(command); err != nil {
 			say(conn, "\r\ntmux could not be started: "+err.Error()+"\r\n")
 			return

@@ -65,6 +65,12 @@ export function Terminal({
   const [note, setNote] = useState("");
   const [full, setFull] = useState(false);
   const [opened, setOpened] = useState(!asButton);
+  // The password lives in state as well as in the ref. The ref is what the
+  // tmux calls read; the state is what the emulator is given — and a ref does
+  // not re-render, which is why one wrong password used to lock the terminal
+  // for good: the corrected one never reached the socket.
+  const [secret, setSecret] = useState("");
+  const [tries, setTries] = useState(0);
   const held = useRef("");
 
   const call = useCallback(
@@ -117,6 +123,10 @@ export function Terminal({
 
   const signIn = () => {
     held.current = password;
+    setSecret(password);
+    // Counted, so that trying the same password again really does try again
+    // rather than being a state that did not change.
+    setTries((n) => n + 1);
     setAsking(false);
     void list();
   };
@@ -217,9 +227,10 @@ export function Terminal({
       ) : (
         <>
           <Emulator
+            key={tries}
             base={base}
             session={inside}
-            password={held.current}
+            password={secret}
             byAccount={byAccount}
             onNeedsPassword={() => setAsking(true)}
           />

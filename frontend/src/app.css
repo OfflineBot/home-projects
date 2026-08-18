@@ -877,9 +877,12 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .terminal-xterm { position: absolute; inset: 6px 8px; }
 .terminal-xterm .xterm { height: 100%; }
+/* Along the bottom, not over the whole screen: what the other side said before
+   it hung up is usually the reason it hung up. */
 .terminal-over {
-  position: absolute; inset: 0; display: grid; place-items: center;
-  background: rgb(17 17 27 / 0.72); border-radius: 10px;
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex;
+  align-items: center; justify-content: center; gap: 8px; padding: 6px;
+  background: rgb(17 17 27 / 0.9); border-top: 1px solid var(--ctp-surface1);
 }
 .terminal-signin { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 .terminal-signin .field { flex: 1; min-width: 180px; margin: 0; }
@@ -898,11 +901,11 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 /* Full screen: the terminal and nothing else. Escape leaves. */
 .terminal-backdrop {
   position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 0.75);
-  display: grid; place-items: stretch; padding: 18px;
+  display: grid; place-items: stretch; padding: 8px;
 }
 .terminal.full {
   height: 100%; background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
-  border-radius: 14px; padding: 14px 16px;
+  border-radius: 14px; padding: 8px 10px;
 }
 .machine-terminal { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 12px; height: 420px; }
 
