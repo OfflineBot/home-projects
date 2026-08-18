@@ -101,6 +101,12 @@ func (a *Applier) Apply(ctx context.Context, doc *Document, dryRun bool) (*Resul
 		}
 	}
 
+	// Last: a board points at everything else, so everything else has to be
+	// there first.
+	if err := a.applyBoards(ctx, doc, dryRun, result); err != nil {
+		return result, err
+	}
+
 	if !dryRun && a.ReloadSchedulers != nil {
 		if err := a.ReloadSchedulers(ctx); err != nil {
 			return result, err

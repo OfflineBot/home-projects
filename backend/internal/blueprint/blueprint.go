@@ -42,6 +42,10 @@ type Document struct {
 	// Filters are not owned by a group, so they travel beside them; a project
 	// refers to one by its address.
 	Filters []Filter `json:"filters,omitempty"`
+	// Boards are the pages somebody built out of all this. They point at
+	// projects by address rather than by id, so they still mean something on
+	// the other server.
+	Boards []Board `json:"boards,omitempty"`
 	// Accounts travel without their passwords. What is described is where an
 	// account points and what it is called, so the other side is one password
 	// away from working rather than a form away.
@@ -292,6 +296,10 @@ func ExportWhat(ctx context.Context, st *store.Store, groupSlug string, what Wha
 			}
 			doc.Accounts = append(doc.Accounts, Account{Kind: a.Kind, Title: a.Title, Config: a.Config})
 		}
+	}
+
+	if boards, err := exportBoards(ctx, st, groupSlug, groups); err == nil {
+		doc.Boards = boards
 	}
 
 	// Links are only meaningful when both ends are in the document.

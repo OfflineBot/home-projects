@@ -4,7 +4,7 @@ import FilesView from "../caps/FilesView";
 import { capabilityViews } from "../caps/index";
 import { Icon } from "../components/Icon";
 import ProjectSettings from "../components/ProjectSettings";
-import { Copyable, ErrorBox, Field, Spinner, formatDate } from "../components/ui";
+import { Copyable, ErrorBox, Field, Fold, Spinner, formatDate } from "../components/ui";
 import { ApiError, api, type Project } from "../lib/api";
 import { useQuery, useSession } from "../lib/store";
 
@@ -248,6 +248,7 @@ function GitTab({ project }: { project: Project }) {
     commits: { short: string; message: string; author: string; at: string }[];
   }>(`/api/projects/${project.id}/git`);
   const [message, setMessage] = useState("");
+  const [patch, setPatch] = useState<{ hash: string; patch: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [commitError, setCommitError] = useState<Error | null>(null);
@@ -316,17 +317,33 @@ function GitTab({ project }: { project: Project }) {
         {data?.commits?.length ? (
           <div className="list">
             {data.commits.map((c) => (
-              <div key={c.short} className="list-row">
+              <button
+                key={c.short}
+                className="list-row"
+                style={{ width: "100%", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+                onClick={async () => {
+                  if (!project.groupSlug) return;
+                  const answer = await api<{ hash: string; patch: string }>(
+                    `/api/groups/${project.groupSlug}/git/commit/${c.short}`,
+                  );
+                  setPatch(answer);
+                }}
+              >
                 <code className="mono">{c.short}</code>
                 <span className="grow">{c.message}</span>
                 <span className="meta">{c.author}</span>
                 <span className="meta">{formatDate(c.at)}</span>
-              </div>
+              </button>
             ))}
           </div>
         ) : (
           <div className="empty">No commits yet. The branch appears with the first one.</div>
         )}
+        {patch ? (
+          <Fold title={`What ${patch.hash} changed`} open>
+            <pre className="block" style={{ maxHeight: 360, overflow: "auto" }}>{patch.patch}</pre>
+          </Fold>
+        ) : null}
       </div>
     </div>
   );

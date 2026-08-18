@@ -1214,6 +1214,20 @@ def main() -> int:
     # The whole point: a group set up here, taken somewhere else, whole. It is
     # proved the only way that proves anything — export it, delete it, bring it
     # back out of the bundle and look for the files again.
+    # A board is part of the arrangement: it travels, and its cards still point
+    # at the right things on the other side.
+    travelling_board = c.call("GET", f"/api/boards?group={gslug}") or {}
+    travelling_tab = travelling_board["tabs"][0]["id"] if travelling_board.get("tabs") else None
+    if travelling_tab:
+        c.call("POST", "/api/boards/cards", {
+            "tabId": travelling_tab, "kind": "project",
+            "options": {"projectId": made["data"]["id"], "title": "the data one"},
+        }, expect=201)
+        c.call("POST", "/api/boards/cards", {
+            "tabId": travelling_tab, "kind": "html",
+            "options": {"html": "<h2>Willkommen</h2>", "mode": "inline"},
+        }, expect=201)
+
     bundle = c.raw_get(f"/api/export/bundle?group={gslug}")
     check(bool(bundle) and bundle[:2] == b"PK", "a group exports as a bundle")
     if bundle:
@@ -1222,6 +1236,12 @@ def main() -> int:
         check("blueprint.json" in names, "the bundle holds the arrangement")
         inside = json.loads(archive.read("blueprint.json"))
         check(any(g["slug"] == gslug for g in inside["groups"]), "and the group is in it")
+        boards = inside.get("boards", [])
+        check(bool(boards), "the group's board is in the bundle")
+        cards = [card for b in boards for t in b.get("tabs", []) for card in t.get("cards", [])]
+        check(any(x["kind"] == "html" for x in cards), "with the page somebody wrote")
+        check(any((x.get("options") or {}).get("project") for x in cards),
+              "and a card points at a project by address, not by an id from here")
         packed = [n for n in names if n.startswith("files/")]
         check(len(packed) > 0, "and the files are in it")
         check(not any("secret" in json.dumps(a).lower() for a in inside.get("accounts", [])),
@@ -1247,6 +1267,12 @@ def main() -> int:
 
         back = c.call("GET", f"/api/groups/{gslug}")
         check(bool(back), "the group is here again")
+        board_back = c.call("GET", f"/api/boards?group={gslug}") or {}
+        cards_back = [x for t in board_back.get("tabs", []) for x in t.get("cards", [])]
+        check(any(x["kind"] == "html" for x in cards_back), "its board came back with it")
+        pointing = next((x for x in cards_back if x["kind"] == "project"), None)
+        check(bool(pointing) and (pointing.get("options") or {}).get("projectId"),
+              "and the card that points at a project points at the one here")
         again = c.call("GET", f"/api/projects?group={gslug}") or {}
         slugs = [p["slug"] for p in again.get("projects", [])]
         check(len(slugs) > 0, f"with its projects ({len(slugs)})")

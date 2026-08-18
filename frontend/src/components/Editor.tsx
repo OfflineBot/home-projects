@@ -5,6 +5,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
+import { html } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { vim } from "@replit/codemirror-vim";
 import { Icon } from "./Icon";
@@ -45,6 +47,8 @@ export function Editor({
     const language =
       path.endsWith(".md") ? markdown()
       : path.endsWith(".json") ? json()
+      : /\.(html?|xhtml)$/.test(path) ? html()
+      : path.endsWith(".css") ? css()
       : /\.(ts|tsx|js|jsx)$/.test(path) ? javascript({ typescript: path.endsWith("ts") || path.endsWith("tsx") })
       : [];
 
