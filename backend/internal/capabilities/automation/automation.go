@@ -19,6 +19,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/events"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/store"
+	"github.com/offlinebot/home-projects/backend/internal/variables"
 	"gopkg.in/yaml.v3"
 )
 
@@ -461,7 +462,7 @@ func RunRule(ctx context.Context, env *capability.Env, p *model.Project, rule Ru
 		if v.Source == "" {
 			v.Source = "automation:" + rule.Name
 		}
-		if err := env.Store.SetVariable(ctx, p.ID, v); err != nil {
+		if err := variables.Set(ctx, env, p.ID, v); err != nil {
 			logf("variable %s could not be stored: %v", v.Name, err)
 		}
 	}

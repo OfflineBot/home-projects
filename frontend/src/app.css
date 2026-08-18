@@ -866,6 +866,8 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;
 }
 .terminal-bar .btn.icon { flex: none; padding: 4px 6px; }
+.terminal-size { font-family: var(--mono); font-size: 11px; line-height: 1; }
+.terminal-size.big { font-size: 13.5px; }
 
 /* The screen. The emulator is laid inside it rather than sizing it: measuring
    the box has to give the space the terminal was given, never the space it

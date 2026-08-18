@@ -35,6 +35,7 @@ export function Emulator({
   session,
   password,
   byAccount,
+  size,
   onNeedsPassword,
 }: {
   /** /api/projects/:id/machines/:name */
@@ -42,6 +43,8 @@ export function Emulator({
   session: string;
   password: string;
   byAccount?: boolean;
+  /** Type size in pixels. 0 means: choose one that suits the box. */
+  size?: number;
   onNeedsPassword?: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -58,9 +61,10 @@ export function Emulator({
     setState("opening");
 
     // A small box gets a smaller face, so a card two rows high is still a
-    // terminal of some width rather than forty columns of nothing.
+    // terminal of some width rather than forty columns of nothing. A size that
+    // was asked for wins over that.
     const wide = box.current.clientWidth;
-    const fontSize = wide < 380 ? 11 : wide < 620 ? 12 : 13;
+    const fontSize = size && size > 0 ? size : wide < 380 ? 11 : wide < 620 ? 12 : 13;
 
     const xterm = new Xterm({
       fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace',
@@ -150,7 +154,7 @@ export function Emulator({
       xterm.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, session, password, byAccount, attempt]);
+  }, [base, session, password, byAccount, size, attempt]);
 
   return (
     <div className="terminal-screen" ref={box}>

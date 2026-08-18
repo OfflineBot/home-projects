@@ -38,15 +38,32 @@ type Handler func(Event)
 
 type Bus struct {
 	mu       sync.RWMutex
-	handlers []Handler
+	next     int
+	handlers map[int]Handler
 }
 
-func NewBus() *Bus { return &Bus{} }
+func NewBus() *Bus { return &Bus{handlers: map[int]Handler{}} }
 
-func (b *Bus) Subscribe(h Handler) {
+// Subscribe returns the way to stop listening again.
+//
+// Most listeners are set up once at startup and never leave, and they may
+// ignore what comes back. A browser watching the stream is the other case:
+// every open page adds one, and without a way off the bus a day of reloads
+// would leave a day of handlers behind.
+func (b *Bus) Subscribe(h Handler) (stop func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.handlers = append(b.handlers, h)
+	if b.handlers == nil {
+		b.handlers = map[int]Handler{}
+	}
+	b.next++
+	id := b.next
+	b.handlers[id] = h
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		delete(b.handlers, id)
+	}
 }
 
 // Publish hands the event to every listener. Listeners run in their own
@@ -56,8 +73,10 @@ func (b *Bus) Publish(e Event) {
 		e.At = time.Now()
 	}
 	b.mu.RLock()
-	handlers := make([]Handler, len(b.handlers))
-	copy(handlers, b.handlers)
+	handlers := make([]Handler, 0, len(b.handlers))
+	for _, h := range b.handlers {
+		handlers = append(handlers, h)
+	}
 	b.mu.RUnlock()
 	for _, h := range handlers {
 		go h(e)

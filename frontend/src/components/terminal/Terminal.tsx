@@ -23,6 +23,16 @@ import { Emulator } from "./Emulator";
  * is a box that locks you out.
  */
 
+/** The type size from last time, if the browser kept it. */
+function kept(): number {
+  try {
+    const size = Number(localStorage.getItem("terminal.size"));
+    return size >= 9 && size <= 24 ? size : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export interface Session {
   name: string;
   windows: string;
@@ -70,6 +80,18 @@ export function Terminal({
   // not re-render, which is why one wrong password used to lock the terminal
   // for good: the corrected one never reached the socket.
   const [secret, setSecret] = useState("");
+  // How large the type is. Remembered, because a terminal that is set up the
+  // way somebody likes it and then forgets is worse than one that never asked.
+  const [size, setSize] = useState(kept);
+  const resize = (to: number) => {
+    const next = Math.min(24, Math.max(9, to));
+    setSize(next);
+    try {
+      localStorage.setItem("terminal.size", String(next));
+    } catch {
+      // A browser that refuses to remember is still a working terminal.
+    }
+  };
   const [tries, setTries] = useState(0);
   const held = useRef("");
 
@@ -147,6 +169,26 @@ export function Terminal({
           <button className="btn ghost icon" aria-label="Refresh" onClick={() => void list()}>
             <Icon name="refresh" size={14} />
           </button>
+        ) : null}
+        {inside ? (
+          <>
+            <button
+              className="btn ghost icon"
+              aria-label="Smaller type"
+              title="Smaller"
+              onClick={() => resize((size || 13) - 1)}
+            >
+              <span className="terminal-size">A−</span>
+            </button>
+            <button
+              className="btn ghost icon"
+              aria-label="Larger type"
+              title="Larger"
+              onClick={() => resize((size || 13) + 1)}
+            >
+              <span className="terminal-size big">A+</span>
+            </button>
+          </>
         ) : null}
         {!byAccount ? (
           <button
@@ -232,6 +274,7 @@ export function Terminal({
             session={inside}
             password={secret}
             byAccount={byAccount}
+            size={size}
             onNeedsPassword={() => setAsking(true)}
           />
           {note ? <div className="meta terminal-note">{note}</div> : null}

@@ -119,7 +119,7 @@ func (c *Collector) Refresh(ctx context.Context, p *model.Project) {
 		if v.Name == "" {
 			continue
 		}
-		if err := c.env.Store.SetVariable(ctx, p.ID, v); err != nil {
+		if err := Set(ctx, c.env, p.ID, v); err != nil {
 			// The project can be deleted while a refresh is still running. That
 			// is not a fault worth logging.
 			if strings.Contains(err.Error(), "violates foreign key constraint") {
@@ -619,4 +619,27 @@ func sum(in []float64) float64 {
 		total += n
 	}
 	return total
+}
+
+// Set stores a variable and, when the value is a different one than before,
+// says so on the bus.
+//
+// Every place that writes a variable goes through here rather than through the
+// store, so "the number changed" is published once, in one place, however it
+// came about — a scheduler, a rule, a capability's export or a file somebody
+// dropped in. A page listening on /api/events is then looking at the number as
+// it is now instead of as it was when the tab was opened.
+func Set(ctx context.Context, env *capability.Env, projectID uuid.UUID, in store.VariableInput) error {
+	changed, err := env.Store.SetVariable(ctx, projectID, in)
+	if err != nil {
+		return err
+	}
+	if changed {
+		env.Bus.Publish(events.Event{
+			Kind:      events.VariableChanged,
+			ProjectID: projectID,
+			Detail:    map[string]any{"name": in.Name, "value": in.Value, "unit": in.Unit},
+		})
+	}
+	return nil
 }

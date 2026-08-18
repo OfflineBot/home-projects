@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -114,6 +115,43 @@ class Client:
             except json.JSONDecodeError:
                 return text
         return text
+
+
+def ws_handshake(base: str, path: str, cookies: str = "") -> int:
+    """Ask for a WebSocket the way a browser does, and report the status."""
+    import base64 as _b64
+    import os as _os
+    import socket as _socket
+    from urllib.parse import urlparse as _urlparse
+
+    parts = _urlparse(base)
+    host = parts.hostname or "127.0.0.1"
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    key = _b64.b64encode(_os.urandom(16)).decode()
+    request = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        + (f"Cookie: {cookies}\r\n" if cookies else "")
+        + "\r\n"
+    )
+    with _socket.create_connection((host, port), timeout=10) as sock:
+        sock.sendall(request.encode())
+        sock.settimeout(10)
+        head = b""
+        while b"\r\n\r\n" not in head and len(head) < 8192:
+            piece = sock.recv(1024)
+            if not piece:
+                break
+            head += piece
+    first = head.split(b"\r\n", 1)[0].decode("utf-8", "replace")
+    try:
+        return int(first.split(" ")[1])
+    except (IndexError, ValueError):
+        return 0
 
 
 def check(condition: bool, message: str) -> None:
@@ -779,6 +817,45 @@ def main() -> int:
     check(bool(vars_after) and any(v["name"] == "online" for v in vars_after["variables"]),
           "the ping action produced a variable")
 
+    # ------------------------------------------------------- what is happening
+    # The old server told the browser; this one does too. A stream is opened,
+    # something is made to happen, and the line has to arrive on it — anything
+    # less is a page that only looks live.
+    heard: list[str] = []
+
+    def listen() -> None:
+        req = urllib.request.Request(args.url + "/api/events")
+        req.add_header("Authorization", "Bearer " + (c.token or ""))
+        try:
+            # Through the client's own opener: the access token is tied to a
+            # cookie, so a request without the jar is nobody.
+            with c.opener.open(req, timeout=12) as stream:
+                for raw in stream:
+                    heard.append(raw.decode("utf-8", "replace"))
+                    if len(heard) > 40:
+                        return
+        except Exception:
+            return
+
+    watcher = threading.Thread(target=listen, daemon=True)
+    watcher.start()
+    for _ in range(40):
+        if heard:
+            break
+        time.sleep(0.05)
+    check(any(line.startswith(":") for line in heard), "the stream says hello before anything happens")
+    c.call("POST", f"/api/projects/{system}/automation/rules/check-self/run", expect=(200, 502))
+    for _ in range(60):
+        if any("variable.changed" in line for line in heard):
+            break
+        time.sleep(0.1)
+    check(any("variable.changed" in line for line in heard),
+          "and a value that changed is said out loud, without asking again")
+
+    # It is a person's stream, not a machine's: a token is for asking.
+    anon = Client(args.url)
+    anon.call("GET", "/api/events", expect=401)
+
     # ---------------------------------------------------------------- lights
     # A lamp is a switch, not a rule: the card reads what the light is doing and
     # one press changes it. Nothing here has a WLED on the other end, so what is
@@ -1313,6 +1390,15 @@ def main() -> int:
         listed = c.call("GET", f"/api/projects/{pcs['id']}/machines") or {}
         check(len(listed.get("machines", [])) == 1, "a machine can be written down")
         check("up" in (listed.get("machines") or [{}])[0], "and it says whether it is up")
+
+        # A WebSocket asks to stop being HTTP, and a proxy that does not pass
+        # that request on turns the terminal into a page that spins for ever.
+        # There is no machine to sign in to here, so what is measured is the
+        # handshake: the answer has to be 101, not 200 and not an error page.
+        jar = "; ".join(f"{cookie.name}={cookie.value}" for cookie in c.jar)
+        upgrade = ws_handshake(
+            args.url, f"/api/projects/{pcs['id']}/machines/probe/pty?token={c.token}", jar)
+        check(upgrade == 101, f"the terminal's socket is let through (said {upgrade})")
         # A magic packet needs no credential and answers nothing — but it must
         # not fail, and a machine without a MAC must say so rather than pretend.
         c.call("POST", f"/api/projects/{pcs['id']}/machines/probe/wake", {})

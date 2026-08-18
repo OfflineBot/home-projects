@@ -4,6 +4,7 @@ import { Empty, ErrorBox, Field, Modal, Section, Spinner, useAsk } from "../ui";
 import { colorVar } from "../../lib/theme";
 import { api, type Project, type Variable } from "../../lib/api";
 import { useMeta, useQuery, useSession } from "../../lib/store";
+import { useLive } from "../../lib/live";
 import { Grid, type Placed } from "./Grid";
 import { CodeArea } from "../CodeArea";
 import HtmlCard from "./HtmlCard";
@@ -118,6 +119,14 @@ export default function Board({
   const kinds = useQuery<{ cards: CardKind[] }>("/api/boards/cards");
   const projects = useQuery<{ projects: Project[] }>("/api/projects");
   const reported = useQuery<{ groups: Block[] }>("/api/dashboard");
+
+  // A board shows what the projects report, so it follows them: when a value
+  // changes or a run finishes, the numbers on it are the numbers as they are
+  // now. Only that one query is asked again — the cards themselves have not
+  // moved.
+  useLive((event) => {
+    if (event.kind === "variable.changed" || event.kind === "scheduler.finished") reported.reload();
+  });
 
   const ask = useAsk();
   const [editing, setEditing] = useState(false);

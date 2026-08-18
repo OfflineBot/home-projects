@@ -41,34 +41,42 @@ type VariableInput struct {
 	History bool
 }
 
-func (s *Store) SetVariable(ctx context.Context, projectID uuid.UUID, in VariableInput) error {
+// SetVariable stores a value and says whether it is a different one than
+// before. Most writes are a refresh saying the same thing again; the ones that
+// are not are what a watching page wants to hear about.
+func (s *Store) SetVariable(ctx context.Context, projectID uuid.UUID, in VariableInput) (bool, error) {
 	if in.Type == "" {
 		in.Type = "text"
 	}
 	body, err := json.Marshal(in.Value)
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = s.pool.Exec(ctx, `
+	// The old value is read in the same statement, so nothing can slip in
+	// between looking and writing.
+	var changed bool
+	err = s.pool.QueryRow(ctx, `
+		WITH before AS (SELECT value FROM variables WHERE project_id=$1 AND name=$2)
 		INSERT INTO variables (project_id, name, type, value, unit, source, error, ttl_seconds, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
 		ON CONFLICT (project_id, name) DO UPDATE SET
 			type=EXCLUDED.type, value=EXCLUDED.value, unit=EXCLUDED.unit,
 			source=EXCLUDED.source, error=EXCLUDED.error, ttl_seconds=EXCLUDED.ttl_seconds,
-			updated_at=now()`,
-		projectID, in.Name, in.Type, body, in.Unit, in.Source, in.Error, in.TTLSeconds)
+			updated_at=now()
+		RETURNING (SELECT value FROM before) IS DISTINCT FROM $4::jsonb`,
+		projectID, in.Name, in.Type, body, in.Unit, in.Source, in.Error, in.TTLSeconds).Scan(&changed)
 	if err != nil {
-		return norm(err)
+		return false, norm(err)
 	}
 	if in.History {
 		_, err = s.pool.Exec(ctx,
 			`INSERT INTO variable_history (project_id, name, value) VALUES ($1,$2,$3)`,
 			projectID, in.Name, body)
 		if err != nil {
-			return norm(err)
+			return changed, norm(err)
 		}
 	}
-	return nil
+	return changed, nil
 }
 
 // ReplaceVariables sets a project's variables from one source and drops the
@@ -76,7 +84,7 @@ func (s *Store) SetVariable(ctx context.Context, projectID uuid.UUID, in Variabl
 func (s *Store) ReplaceVariables(ctx context.Context, projectID uuid.UUID, source string, in []VariableInput) error {
 	keep := make([]string, 0, len(in))
 	for _, v := range in {
-		if err := s.SetVariable(ctx, projectID, v); err != nil {
+		if _, err := s.SetVariable(ctx, projectID, v); err != nil {
 			return err
 		}
 		keep = append(keep, v.Name)

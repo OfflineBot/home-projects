@@ -22,6 +22,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/filter"
 	"github.com/offlinebot/home-projects/backend/internal/model"
 	"github.com/offlinebot/home-projects/backend/internal/store"
+	"github.com/offlinebot/home-projects/backend/internal/variables"
 	"github.com/robfig/cron/v3"
 )
 
@@ -361,7 +362,7 @@ func (r *Runner) Run(ctx context.Context, schedulerID uuid.UUID, trigger string)
 		if v.Source == "" {
 			v.Source = "scheduler:" + sched.Kind
 		}
-		if err := st.SetVariable(ctx, project.ID, v); err != nil {
+		if err := variables.Set(ctx, r.env, project.ID, v); err != nil {
 			logf("variable %s could not be stored: %v", v.Name, err)
 		}
 	}
