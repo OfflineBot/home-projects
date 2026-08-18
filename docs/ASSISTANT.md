@@ -81,7 +81,30 @@ person.
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
 
-## 5. What may be in that HTML
+## 5. The board itself, not only its page
+
+The same token reads and builds the board it belongs to, so an assistant can
+work in cards as well as in HTML.
+
+    GET  /api/boards?group=<slug>        the whole board: tabs, cards, sizes
+    GET  /api/boards/cards               every kind of card this server has
+    GET  /api/projects/<id>/offers       what one project has, ready to place
+    POST /api/boards/cards               { tabId, kind, options, x, y, w, h }
+    PATCH /api/boards/cards/<id>         { options, style, visibility, w, h }
+    DELETE /api/boards/cards/<id>
+    PUT  /api/boards/<board>/layout      { cards: [{ id, x, y, w, h }] }
+    POST /api/boards/<board>/tabs        { title, icon }
+    PATCH /api/boards/tabs/<id>          { title, icon, layout, style }
+    POST /api/boards/<board>/fill        put what the projects report on it
+
+A card sits on a twelve-column grid: `x` 0…11, `w` up to 12, `h` in rows of
+about 92 pixels. A tab whose `layout` is `free` takes pixels instead, and one
+whose layout is `page` is the HTML above.
+
+Reading first is worth it: `GET /api/boards?group=…` says what is already
+there, and `/offers` says what could be. Then place, or rearrange, or fill.
+
+## 6. What may be in that HTML
 
 The page is shown as part of the board, so it is cleaned before it is drawn:
 markup, tables, images, links and inline styles stay; `<script>`, `<iframe>`,
@@ -95,7 +118,7 @@ Useful classes, if the page should look like the rest of the server:
 `card`, `btn`, `btn primary`, `badge`, `meta`, `mono`, `stat`, `list`,
 `list-row`, `prose`. They are optional; plain HTML works.
 
-## 6. Where the page appears
+## 7. Where the page appears
 
 - On the group's page, as a tab of its board.
 - Under the group's own address, when one is set (**Group settings → Own
@@ -104,9 +127,9 @@ Useful classes, if the page should look like the rest of the server:
 Cards on that board are private unless they say otherwise; a page written
 through this route is public, because a page is the thing that gets handed out.
 
-## 7. What a token cannot do
+## 8. What a token cannot do
 
-- It cannot read a private project of another group.
+- It cannot read a private project of another group, or that group's board.
 - It cannot make, change or delete accounts, users, tokens or schedulers.
 - It cannot write anywhere without scope `write`.
 - It stops working the moment it is revoked, and it is listed with the date it

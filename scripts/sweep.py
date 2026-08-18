@@ -881,6 +881,14 @@ def main() -> int:
           "and every capability's, without the board knowing what they are")
     check("html" in names, "and a card that is simply your own HTML")
 
+    # A board is a home page — for a group, and for a project.
+    own = c.call("GET", f"/api/boards?project={data}")
+    check(bool(own) and own.get("scope") == "project", "a project has a board of its own")
+    view_offers = [o for o in (c.call("GET", f"/api/projects/{system}/offers") or {}).get("offers", [])
+                   if o["card"] == "view"]
+    check(bool(view_offers), "a project offers its own views to put on a board")
+    check(any(o["options"].get("view") == "files" for o in view_offers), "its files among them")
+
     board = c.call("GET", f"/api/boards?group={gslug}")
     check(bool(board) and board.get("scope") == "group", "a group has a board too")
     tab = board["tabs"][0]["id"] if board and board.get("tabs") else None
@@ -954,7 +962,9 @@ def main() -> int:
             c.call("DELETE", f"/api/boards/cards/{note['id']}")
         if number:
             c.call("DELETE", f"/api/boards/cards/{number['id']}")
-        anon.call("POST", "/api/boards/cards", {"tabId": tab, "kind": "text"}, expect=401)
+        # Without an account the tab is not admitted to exist at all, which is
+        # the better answer than "you may not".
+        anon.call("POST", "/api/boards/cards", {"tabId": tab, "kind": "text"}, expect=404)
         anon.call("GET", f"/api/boards?group={gslug}", expect=404)
 
     # What a project has to offer a board: pick the project, then the thing
@@ -995,6 +1005,15 @@ def main() -> int:
         flowing = c.call("GET", f"/api/boards?group={gslug}") or {}
         check(flowing["tabs"][0].get("layout") == "flow", "a tab can be a page instead of a grid")
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "diagonal"}, expect=400)
+        # An empty board can fill itself with what is actually there.
+        filled = c.call("POST", f"/api/boards/{board['id']}/fill?tab={tab}", {})
+        check(bool(filled) and filled.get("cards", 0) > 0, "a board can fill itself with what is here")
+        after_fill = c.call("GET", f"/api/boards?group={gslug}") or {}
+        kinds_placed = [x["kind"] for t in after_fill.get("tabs", []) for x in t["cards"]]
+        check("project" in kinds_placed, "and puts the projects on it")
+        for placed in [x for t in after_fill.get("tabs", []) for x in t["cards"]]:
+            c.call("DELETE", f"/api/boards/cards/{placed['id']}")
+
         # A free surface: pixels, and nothing snaps them anywhere.
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "free"})
         loose = c.call("POST", "/api/boards/cards", {
@@ -1099,6 +1118,21 @@ def main() -> int:
             check("Written by a program" in page.get("html", ""), "an assistant can write a page and read it back")
 
             # The fence.
+            # The board of its own group, whole — and it may build on it.
+            seen_board = bot.call("GET", f"/api/boards?group={slug}") or {}
+            check("tabs" in seen_board, "a group token reads that group's board")
+            built = bot.call("POST", "/api/boards/cards", {
+                "tabId": seen_board["tabs"][0]["id"], "kind": "text", "options": {"text": "by a program"},
+            }, expect=201)
+            if built:
+                bot.call("DELETE", f"/api/boards/cards/{built['id']}")
+            # Another group, and a private one: it is not admitted to exist.
+            bot.call("GET", f"/api/boards?group={gslug}", expect=404)
+            other_board = c.call("GET", f"/api/boards?group={gslug}") or {}
+            other_tab = other_board["tabs"][0]["id"] if other_board.get("tabs") else None
+            if other_tab:
+                bot.call("POST", "/api/boards/cards",
+                         {"tabId": other_tab, "kind": "text", "options": {"text": "no"}}, expect=404)
             bot.call("GET", f"/api/page?group={gslug}", expect=404)       # another group
             bot.call("GET", f"/api/projects/{data}", expect=404)          # a private project of it
             bot.call("GET", "/api/users", expect=403)                     # the people page

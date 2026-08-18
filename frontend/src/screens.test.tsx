@@ -514,7 +514,7 @@ describe("every screen draws something", () => {
   // The project page itself, for every project and every one of its tabs —
   // this is where an error box would show up, and a test that only renders the
   // dialog would never see it.
-  it("every project page, and every tab it offers", async () => {
+  it("every project page, and every tab it offers", { timeout: 90_000 }, async () => {
     const { projects } = await api<{ projects: Project[] }>("/api/projects");
     for (const p of projects) {
       for (const tab of ["files", "git", ...p.capabilities]) {

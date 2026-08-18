@@ -196,6 +196,13 @@ var coreCards = []Card{
 			{Name: "links", Label: "One per line: title | address", Type: "textarea",
 				Placeholder: "Moodle | https://moodle.dhbw-ravensburg.de"},
 		}},
+	{Name: "view", Title: "A project, right here", Icon: "box", W: 6, H: 5,
+		Description: "One of a project's views on the board itself — its mail, its calendar, its files.",
+		Options: []AccountField{
+			{Name: "projectId", Label: "Project", Type: "project", Required: true},
+			{Name: "view", Label: "Which view", Type: "text", Required: true,
+				Hint: "The capability's name: mail, calendar, files, machines…"},
+		}},
 	{Name: "html", Title: "Your own HTML", Icon: "code", W: 6, H: 4,
 		Description: "A piece of a page, written by hand. Part of the board, or a frame of its own.",
 		Options: []AccountField{

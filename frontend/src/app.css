@@ -1042,3 +1042,25 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .palette select { width: auto; }
 /* A card the page asked for, standing in the text. */
 .html-slot { margin: 10px 0; }
+
+/* Adding happens where the cards are. */
+.add-here {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 14px; margin-top: 12px; cursor: pointer;
+  background: none; color: var(--ctp-subtext0);
+  border: 1px dashed var(--ctp-surface2); border-radius: 12px; font-size: 14px;
+}
+.add-here:hover { border-color: var(--ctp-blue); color: var(--ctp-text); }
+
+/* A project's own view, standing on a board. */
+.card-view { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
+.card-view-head {
+  display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--ctp-surface0); font-size: 13.5px;
+}
+.card-view-head a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.card-view-head a:hover { text-decoration: underline; }
+.card-view-body { flex: 1; min-height: 0; overflow: auto; }
+/* While the board is being arranged, the view underneath does not take the
+   pointer — dragging a card should not send mail. */
+.card-view-shield { position: absolute; inset: 0; background: transparent; }

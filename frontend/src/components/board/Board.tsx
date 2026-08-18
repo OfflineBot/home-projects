@@ -94,11 +94,14 @@ interface Block {
 
 export default function Board({
   group,
+  project,
   title,
   emptyNote,
   exposed,
 }: {
   group?: string;
+  /** A project's own home page. */
+  project?: string;
   /** Shown at the head of the board, beside its tabs. */
   title?: string;
   emptyNote?: string;
@@ -106,7 +109,11 @@ export default function Board({
   exposed?: boolean;
 }) {
   const session = useSession();
-  const where = group ? `?group=${encodeURIComponent(group)}` : "";
+  const where = group
+    ? `?group=${encodeURIComponent(group)}`
+    : project
+      ? `?project=${encodeURIComponent(project)}`
+      : "";
   const board = useQuery<BoardData>(`/api/boards${where}`);
   const kinds = useQuery<{ cards: CardKind[] }>("/api/boards/cards");
   const projects = useQuery<{ projects: Project[] }>("/api/projects");
@@ -119,6 +126,7 @@ export default function Board({
   const [settling, setSettling] = useState<Card | null>(null);
   const [tabSettings, setTabSettings] = useState<Tab | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const tabs = board.data?.tabs ?? [];
   const current = tabs[Math.min(tab, Math.max(0, tabs.length - 1))];
@@ -245,13 +253,37 @@ export default function Board({
         <Empty icon="grid">
           {exposed ? "Nothing here is public." : emptyNote ?? "Nothing on this board yet."}
           {session.user && !exposed ? (
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 10, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <button
+                className="btn small primary"
+                disabled={busy}
+                onClick={async () => {
+                  if (!board.data || !current) return;
+                  setBusy(true);
+                  try {
+                    await api(`/api/boards/${board.data.id}/fill?tab=${current.id}`, { body: {} });
+                    board.reload();
+                  } catch (err) {
+                    setError(err as Error);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <Icon name="zap" size={14} /> Fill it with what I have
+              </button>
               <button className="btn small" onClick={() => { setEditing(true); setAdding(true); }}>
-                <Icon name="plus" size={14} /> Put something on it
+                <Icon name="plus" size={14} /> Put one thing on it
               </button>
             </div>
           ) : null}
         </Empty>
+      ) : null}
+
+      {editing && current && current.cards.length > 0 && current.layout !== "page" ? (
+        <button className="add-here" onClick={() => setAdding(true)}>
+          <Icon name="plus" size={16} /> Add a card
+        </button>
       ) : null}
 
       {current && current.layout === "page" ? (
@@ -353,6 +385,7 @@ export default function Board({
           kinds={kinds.data?.cards ?? []}
           projects={projects.data?.projects ?? []}
           group={group}
+          project={project}
           blocks={reported.data?.groups ?? []}
           onClose={() => setAdding(false)}
           onAdd={async (kind, options, size) => {
@@ -427,6 +460,7 @@ function AddCard({
   kinds,
   projects,
   group,
+  project,
   onClose,
   onAdd,
 }: {
@@ -434,11 +468,13 @@ function AddCard({
   projects: Project[];
   /** The group this board belongs to, when it belongs to one. */
   group?: string;
+  /** The project this board belongs to, when it is a project's own page. */
+  project?: string;
   blocks: Block[];
   onClose: () => void;
   onAdd: (kind: string, options: Record<string, any>, size?: { w: number; h: number }) => Promise<void>;
 }) {
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(project ?? "");
   // A group's board is about that group. Everything else is possible and not
   // what this board is for, so it is one tick-box away rather than in the list.
   const [outside, setOutside] = useState(false);

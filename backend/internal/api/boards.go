@@ -55,6 +55,11 @@ func (s *Server) mountBoards(r fiber.Router) {
 			return httpx.Internal("the board could not be read").WithCause(err)
 		}
 		board, err := s.Store.BoardFor(ctx, owner, scope, groupID, projectID)
+		// A token made for this group reads its board as its owner sees it:
+		// something that may build a board has to be able to look at it.
+		if err == nil && s.mayBuild(c, board) == nil {
+			return c.JSON(board)
+		}
 		if err != nil {
 			// Nobody has arranged this place yet; an empty board is the honest
 			// answer, not a 404.
@@ -72,7 +77,7 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return c.JSON(fiber.Map{"cards": capability.AllCards()})
 	})
 
-	g.Post("/:board/tabs", requireOwner, func(c *fiber.Ctx) error {
+	g.Post("/:board/tabs", func(c *fiber.Ctx) error {
 		board, err := s.myBoard(c)
 		if err != nil {
 			return err
@@ -97,13 +102,13 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return c.Status(fiber.StatusCreated).JSON(tab)
 	})
 
-	g.Patch("/tabs/:tab", requireOwner, func(c *fiber.Ctx) error {
+	g.Patch("/tabs/:tab", func(c *fiber.Ctx) error {
 		id, err := uuid.Parse(c.Params("tab"))
 		if err != nil {
 			return httpx.BadRequest("That is not a tab id.")
 		}
-		if _, owner, err := s.Store.TabBoard(c.UserContext(), id); err != nil || owner != auth.From(c).User.ID {
-			return httpx.NotFound("There is no such tab.")
+		if _, err := s.boardOfTab(c, id); err != nil {
+			return err
 		}
 		var in struct {
 			Title    *string          `json:"title"`
@@ -126,13 +131,13 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return httpx.OK(c)
 	})
 
-	g.Delete("/tabs/:tab", requireOwner, func(c *fiber.Ctx) error {
+	g.Delete("/tabs/:tab", func(c *fiber.Ctx) error {
 		id, err := uuid.Parse(c.Params("tab"))
 		if err != nil {
 			return httpx.BadRequest("That is not a tab id.")
 		}
-		if _, owner, err := s.Store.TabBoard(c.UserContext(), id); err != nil || owner != auth.From(c).User.ID {
-			return httpx.NotFound("There is no such tab.")
+		if _, err := s.boardOfTab(c, id); err != nil {
+			return err
 		}
 		if err := s.Store.DeleteTab(c.UserContext(), id); err != nil {
 			return httpx.NotFound("There is no such tab.")
@@ -140,7 +145,7 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return httpx.OK(c)
 	})
 
-	g.Post("/cards", requireOwner, func(c *fiber.Ctx) error {
+	g.Post("/cards", func(c *fiber.Ctx) error {
 		var in model.BoardCard
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The card could not be read.")
@@ -148,9 +153,8 @@ func (s *Server) mountBoards(r fiber.Router) {
 		if in.TabID == uuid.Nil {
 			return httpx.BadRequest("A card sits on a tab.")
 		}
-		if _, owner, err := s.Store.TabBoard(c.UserContext(), in.TabID); err != nil ||
-			owner != auth.From(c).User.ID {
-			return httpx.NotFound("There is no such tab.")
+		if _, err := s.boardOfTab(c, in.TabID); err != nil {
+			return err
 		}
 		if !capability.CardExists(in.Kind) {
 			return httpx.BadRequest("There is no card of kind %q.", in.Kind)
@@ -165,14 +169,13 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return c.Status(fiber.StatusCreated).JSON(card)
 	})
 
-	g.Patch("/cards/:card", requireOwner, func(c *fiber.Ctx) error {
+	g.Patch("/cards/:card", func(c *fiber.Ctx) error {
 		id, err := uuid.Parse(c.Params("card"))
 		if err != nil {
 			return httpx.BadRequest("That is not a card id.")
 		}
-		if _, owner, err := s.Store.CardBoard(c.UserContext(), id); err != nil ||
-			owner != auth.From(c).User.ID {
-			return httpx.NotFound("There is no such card.")
+		if _, err := s.boardOfCard(c, id); err != nil {
+			return err
 		}
 		var in struct {
 			Kind       *string          `json:"kind"`
@@ -202,14 +205,13 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return httpx.OK(c)
 	})
 
-	g.Delete("/cards/:card", requireOwner, func(c *fiber.Ctx) error {
+	g.Delete("/cards/:card", func(c *fiber.Ctx) error {
 		id, err := uuid.Parse(c.Params("card"))
 		if err != nil {
 			return httpx.BadRequest("That is not a card id.")
 		}
-		if _, owner, err := s.Store.CardBoard(c.UserContext(), id); err != nil ||
-			owner != auth.From(c).User.ID {
-			return httpx.NotFound("There is no such card.")
+		if _, err := s.boardOfCard(c, id); err != nil {
+			return err
 		}
 		if err := s.Store.DeleteCard(c.UserContext(), id); err != nil {
 			return httpx.NotFound("There is no such card.")
@@ -217,9 +219,97 @@ func (s *Server) mountBoards(r fiber.Router) {
 		return httpx.OK(c)
 	})
 
+	// A board that starts empty is a board nobody fills in. This puts what is
+	// actually there on it — every project, with the numbers it reports — and
+	// then it is something to rearrange rather than something to begin.
+	g.Post("/:board/fill", func(c *fiber.Ctx) error {
+		board, err := s.myBoard(c)
+		if err != nil {
+			return err
+		}
+		if len(board.Tabs) == 0 {
+			return httpx.BadRequest("This board has no tab yet.")
+		}
+		tab := board.Tabs[0]
+		if wanted := strings.TrimSpace(c.Query("tab")); wanted != "" {
+			for _, t := range board.Tabs {
+				if t.ID.String() == wanted {
+					tab = t
+				}
+			}
+		}
+
+		ctx := c.UserContext()
+		actor := auth.From(c)
+		projects, err := s.Store.ListAllProjects(ctx, false)
+		if err != nil {
+			return httpx.Internal("the projects could not be read").WithCause(err)
+		}
+
+		x, y, made := 0, 0, 0
+		place := func(kind string, options map[string]any, w, h int) error {
+			if x+w > 12 {
+				x, y = 0, y+2
+			}
+			body, merr := json.Marshal(options)
+			if merr != nil {
+				return merr
+			}
+			if _, err := s.Store.CreateCard(ctx, model.BoardCard{
+				TabID: tab.ID, Kind: kind, Options: body, Visibility: "private",
+				X: x, Y: y, W: w, H: h,
+			}); err != nil {
+				return err
+			}
+			x += w
+			made++
+			return nil
+		}
+
+		for i := range projects {
+			p := &projects[i]
+			if made >= 24 || p.Archived || !access.CanReadProject(actor, p) {
+				continue
+			}
+			// A board belongs to its place: a group's board is about that group.
+			if board.GroupID != nil && (p.GroupID == nil || *p.GroupID != *board.GroupID) {
+				continue
+			}
+			if err := place("project", map[string]any{"projectId": p.ID.String()}, 3, 2); err != nil {
+				return httpx.Internal("the board could not be filled").WithCause(err)
+			}
+
+			// And the two numbers that project reports first, because a number
+			// is the reason somebody looks at a board at all.
+			numbers := 0
+			if list, err := s.Store.VariablesForProject(ctx, p.ID); err == nil {
+				for _, v := range list {
+					if numbers >= 2 || made >= 24 {
+						break
+					}
+					kind := "number"
+					if v.Type == "bool" {
+						kind = "status"
+					} else if v.Type == "list" || v.Type == "table" {
+						continue
+					}
+					options := map[string]any{"variable": p.Slug + "." + v.Name, "title": v.Name}
+					if p.GroupID != nil {
+						options["groupId"] = p.GroupID.String()
+					}
+					if err := place(kind, options, 2, 2); err != nil {
+						return httpx.Internal("the board could not be filled").WithCause(err)
+					}
+					numbers++
+				}
+			}
+		}
+		return c.JSON(fiber.Map{"cards": made})
+	})
+
 	// One drag moves several cards out of each other's way, so the arrangement
 	// is saved in one request rather than five.
-	g.Put("/:board/layout", requireOwner, func(c *fiber.Ctx) error {
+	g.Put("/:board/layout", func(c *fiber.Ctx) error {
 		board, err := s.myBoard(c)
 		if err != nil {
 			return err
@@ -272,15 +362,67 @@ func (s *Server) placeFromQuery(c *fiber.Ctx) (string, *uuid.UUID, *uuid.UUID, e
 	return "home", nil, nil, nil
 }
 
-// myBoard is the board named in the address, and it has to be the caller's.
+// myBoard is the board named in the address, and the caller has to be allowed
+// to build it.
 func (s *Server) myBoard(c *fiber.Ctx) (*model.Board, error) {
 	id, err := uuid.Parse(c.Params("board"))
 	if err != nil {
 		return nil, httpx.BadRequest("That is not a board id.")
 	}
 	board, err := s.Store.BoardByID(c.UserContext(), id)
-	if err != nil || board.OwnerID != auth.From(c).User.ID {
+	if err != nil {
 		return nil, httpx.NotFound("There is no such board.")
+	}
+	if err := s.mayBuild(c, board); err != nil {
+		return nil, err
+	}
+	return board, nil
+}
+
+// mayBuild is the whole authorisation of a board: the person who owns it, or a
+// token made for that group with write scope. A token is not an account — it
+// can build the board of its own group and reach nothing else.
+func (s *Server) mayBuild(c *fiber.Ctx, board *model.Board) error {
+	actor := auth.From(c)
+	if actor.IsUser() && board.OwnerID == actor.User.ID {
+		return nil
+	}
+	token := actor.Token
+	if token != nil && token.Scope == "write" && token.GroupID != nil &&
+		board.GroupID != nil && *token.GroupID == *board.GroupID {
+		return nil
+	}
+	return httpx.NotFound("There is no such board.")
+}
+
+// boardOfTab and boardOfCard answer the same question when the address names a
+// tab or a card instead of the board.
+func (s *Server) boardOfTab(c *fiber.Ctx, tabID uuid.UUID) (*model.Board, error) {
+	boardID, _, err := s.Store.TabBoard(c.UserContext(), tabID)
+	if err != nil {
+		return nil, httpx.NotFound("There is no such tab.")
+	}
+	board, err := s.Store.BoardByID(c.UserContext(), boardID)
+	if err != nil {
+		return nil, httpx.NotFound("There is no such tab.")
+	}
+	if err := s.mayBuild(c, board); err != nil {
+		return nil, httpx.NotFound("There is no such tab.")
+	}
+	return board, nil
+}
+
+func (s *Server) boardOfCard(c *fiber.Ctx, cardID uuid.UUID) (*model.Board, error) {
+	boardID, _, err := s.Store.CardBoard(c.UserContext(), cardID)
+	if err != nil {
+		return nil, httpx.NotFound("There is no such card.")
+	}
+	board, err := s.Store.BoardByID(c.UserContext(), boardID)
+	if err != nil {
+		return nil, httpx.NotFound("There is no such card.")
+	}
+	if err := s.mayBuild(c, board); err != nil {
+		return nil, httpx.NotFound("There is no such card.")
 	}
 	return board, nil
 }
@@ -401,7 +543,21 @@ func (s *Server) mountOffers(one fiber.Router) {
 				continue
 			}
 			offers = append(offers, cap.Offers(ctx, s.Env, p)...)
+			// And the view itself: the whole thing on the board, usable where
+			// it stands rather than one click away.
+			offers = append(offers, capability.Offer{
+				Card: "view", Title: cap.Title() + ", right here", Icon: cap.Icon(),
+				Detail: "the view itself, on the board", W: 6, H: 5,
+				Options: map[string]any{"projectId": p.ID.String(), "view": cap.Name(),
+					"title": p.Title + " · " + cap.Title()},
+			})
 		}
+		offers = append(offers, capability.Offer{
+			Card: "view", Title: "Its files, right here", Icon: "folder",
+			Detail: "the file tree, on the board", W: 6, H: 5,
+			Options: map[string]any{"projectId": p.ID.String(), "view": "files",
+				"title": p.Title + " · Files"},
+		})
 		return c.JSON(fiber.Map{"offers": offers})
 	})
 }
