@@ -195,6 +195,9 @@ type Token struct {
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
 	RevokedAt  *time.Time `json:"revokedAt,omitempty"`
+	// Reaches says in words what this token can touch — a group, or one
+	// project — because a list of uuids tells nobody anything.
+	Reaches string `json:"reaches,omitempty"`
 	// Only ever set once, in the response that created it.
 	Secret string `json:"secret,omitempty"`
 }

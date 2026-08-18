@@ -441,6 +441,8 @@ export interface Token {
   expiresAt?: string;
   revokedAt?: string;
   secret: string;
+  /** What it can touch, in words. */
+  reaches?: string;
 }
 
 export interface Link {

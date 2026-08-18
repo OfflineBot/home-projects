@@ -202,9 +202,24 @@ func (s *Server) mountAuth(r fiber.Router) {
 	tokens := r.Group("/tokens", requireOwner)
 
 	tokens.Get("/", func(c *fiber.Ctx) error {
-		list, err := s.Store.ListTokens(c.UserContext(), auth.From(c).User.ID)
+		ctx := c.UserContext()
+		list, err := s.Store.ListTokens(ctx, auth.From(c).User.ID)
 		if err != nil {
 			return httpx.Internal("the tokens could not be read").WithCause(err)
+		}
+		// What each one reaches, in words: a list of uuids tells nobody
+		// anything, and this is the page where a person decides what to revoke.
+		for i := range list {
+			switch {
+			case list[i].GroupID != nil:
+				if g, err := s.Store.GroupByID(ctx, *list[i].GroupID); err == nil {
+					list[i].Reaches = "the group " + g.Title
+				}
+			case list[i].ProjectID != nil:
+				if p, err := s.Store.ProjectByID(ctx, *list[i].ProjectID); err == nil {
+					list[i].Reaches = p.GroupSlug + "/" + p.Slug
+				}
+			}
 		}
 		return c.JSON(fiber.Map{"tokens": list})
 	})

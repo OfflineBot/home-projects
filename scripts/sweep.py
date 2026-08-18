@@ -1083,6 +1083,11 @@ def main() -> int:
         reader = c.call("POST", "/api/tokens", {
             "name": f"sweep-reader-{stamp}", "scope": "read", "groupId": open_group["id"], "days": 1,
         }, expect=201)
+        listed_tokens = c.call("GET", "/api/tokens") or {}
+        mine_token = next((t for t in listed_tokens.get("tokens", []) if writer and t["id"] == writer["id"]), None)
+        check(bool(mine_token) and "group" in (mine_token.get("reaches") or ""),
+              "the token list says what each one reaches")
+
         if writer and reader:
             bot = Client(args.url)
             bot.token = writer["secret"]

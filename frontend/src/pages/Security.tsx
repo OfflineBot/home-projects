@@ -136,7 +136,10 @@ export default function Security() {
         {tokens.data?.tokens.map((t) => (
           <div key={t.id} className="list-row">
             <Icon name="key" size={16} />
-            <span className="grow">{t.name}</span>
+            <span className="grow">
+              {t.name}
+              {t.reaches ? <span className="meta"> · {t.reaches}</span> : null}
+            </span>
             <span className="badge">{t.scope}</span>
             <span className="meta">{t.lastUsedAt ? `last used ${formatDate(t.lastUsedAt)}` : "never used"}</span>
             <button
@@ -311,10 +314,15 @@ export default function Security() {
 function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (t: Token) => void }) {
   const guarded = useGuarded();
   const projects = useQuery<{ projects: { id: string; title: string; groupSlug?: string }[] }>("/api/projects");
+  const groups = useQuery<{ groups: { id: string; slug: string; title: string }[] }>("/api/groups");
   const [name, setName] = useState("");
   const [scope, setScope] = useState("read");
-  const [projectId, setProjectId] = useState("");
+  // One field for what the token is for: a whole group, or a single project.
+  // The value carries which of the two it is, because the server wants one or
+  // the other and never both.
+  const [target, setTarget] = useState("");
   const [error, setError] = useState<Error | null>(null);
+  const [kind, id] = target.split(":");
 
   return (
     <Modal
@@ -325,11 +333,13 @@ function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <button className="btn" onClick={onClose}>Cancel</button>
           <button
             className="btn primary"
-            disabled={!name.trim() || !projectId}
+            disabled={!name.trim() || !target}
             onClick={async () => {
               try {
                 const token = await guarded("creating a token", () =>
-                  api<Token>("/api/tokens", { body: { name, scope, projectId } }),
+                  api<Token>("/api/tokens", {
+                    body: kind === "group" ? { name, scope, groupId: id } : { name, scope, projectId: id },
+                  }),
                 );
                 onCreated(token);
               } catch (err) {
@@ -344,23 +354,43 @@ function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (
     >
       <ErrorBox error={error} />
       <p style={{ marginTop: 0, color: "var(--ctp-subtext0)" }}>
-        A token is scoped to one project and one permission, is shown once, and can be revoked on its own.
+        A token reaches one group or one project and nothing else on this server. It is shown once and
+        can be revoked on its own.
       </p>
-      <Field label="What it is for">
+      <Field label="What it is for" required>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="the phone's calendar" autoFocus />
       </Field>
-      <Field label="Project">
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+      <Field
+        label="It may reach"
+        hint="A whole group — its page and its projects — or one project on its own."
+        required
+      >
+        <select value={target} onChange={(e) => setTarget(e.target.value)}>
           <option value="">— pick one —</option>
-          {(projects.data?.projects ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.groupSlug ? `${p.groupSlug} / ` : ""}
-              {p.title}
-            </option>
-          ))}
+          <optgroup label="A whole group">
+            {(groups.data?.groups ?? []).map((g) => (
+              <option key={g.id} value={`group:${g.id}`}>
+                {g.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="One project">
+            {(projects.data?.projects ?? []).map((p) => (
+              <option key={p.id} value={`project:${p.id}`}>
+                {p.groupSlug ? `${p.groupSlug} / ` : ""}
+                {p.title}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </Field>
-      <Field label="May">
+      {kind === "group" && scope === "write" ? (
+        <p className="hint" style={{ marginTop: -6 }}>
+          This is the one an assistant needs: it may write that group's page.{" "}
+          <a href="/api/docs/assistant" target="_blank" rel="noreferrer">The instructions to hand it</a>.
+        </p>
+      ) : null}
+      <Field label="May" required>
         <select value={scope} onChange={(e) => setScope(e.target.value)}>
           <option value="read">read</option>
           <option value="write">read and write</option>
