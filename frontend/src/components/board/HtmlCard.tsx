@@ -51,17 +51,20 @@ export default function HtmlCard({ options, value, projects, editing }: CardProp
     return () => clearInterval(timer);
   }, [frame, document]);
 
-  if (!source.trim()) {
-    return <div className="meta">Nothing written yet — open this card's settings.</div>;
-  }
-
   // Where a page asked for a card, the card is mounted into that spot.
   const [slots, setSlots] = useState<{ node: Element; kind: string; options: Record<string, string> }[]>([]);
   const page = useRef<HTMLDivElement>(null);
   const cleaned = useMemo(() => (frame ? "" : clean(source)), [source, frame]);
 
+  // The page is put into the DOM here rather than by React.
+  //
+  // React would set this markup again on the next render, and the nodes the
+  // cards are mounted into would be replaced underneath them — which is
+  // precisely how a written <hp-card> stayed an empty tag while everything
+  // about it was right. Owning the subtree ourselves keeps those nodes alive.
   useEffect(() => {
     if (frame || !page.current) return;
+    page.current.innerHTML = cleaned;
     const found = [...page.current.querySelectorAll("hp-card")].map((node) => {
       const options: Record<string, string> = {};
       for (const attr of [...node.attributes]) options[attr.name] = attr.value;
@@ -73,6 +76,10 @@ export default function HtmlCard({ options, value, projects, editing }: CardProp
     });
     setSlots(found);
   }, [cleaned, frame]);
+
+  if (!source.trim()) {
+    return <div className="meta">Nothing written yet — open this card's settings.</div>;
+  }
 
   if (frame) {
     return (
@@ -93,7 +100,7 @@ export default function HtmlCard({ options, value, projects, editing }: CardProp
 
   return (
     <>
-      <div className="html-inline" ref={page} dangerouslySetInnerHTML={{ __html: cleaned }} />
+      <div className="html-inline" ref={page} />
       {slots.map((slot, i) => {
         const View = cardViews[slot.kind];
         if (!View) return null;

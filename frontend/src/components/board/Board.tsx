@@ -287,7 +287,13 @@ export default function Board({
       ) : null}
 
       {current && current.layout === "page" ? (
-        <PageTab group={group} tab={current} editing={editing && !exposed} />
+        <PageTab
+          group={group}
+          tab={current}
+          editing={editing && !exposed}
+          value={value}
+          projects={projects.data?.projects ?? []}
+        />
       ) : current && current.layout === "flow" ? (
         <div className="flow">
           {current.cards.map((card, i) => (
@@ -712,7 +718,21 @@ function Palette({ group, onInsert }: { group?: string; onInsert: (snippet: stri
  * same document an assistant writes through /api/page, so a person and a
  * program are never looking at two different things.
  */
-function PageTab({ group, tab, editing }: { group?: string; tab: Tab; editing: boolean }) {
+function PageTab({
+  group,
+  tab,
+  editing,
+  value,
+  projects,
+}: {
+  group?: string;
+  tab: Tab;
+  editing: boolean;
+  // A page knows what the rest of the board knows: which projects there are,
+  // and what every number says. Without them its cards are strangers.
+  value: (variable: string, groupId?: string) => Variable | undefined;
+  projects: Project[];
+}) {
   const where = `/api/page?${group ? `group=${encodeURIComponent(group)}&` : ""}tab=${tab.id}`;
   const page = useQuery<{ html: string }>(where);
   const [draft, setDraft] = useState<string | null>(null);
@@ -744,7 +764,7 @@ function PageTab({ group, tab, editing }: { group?: string; tab: Tab; editing: b
       <div className="page-tab">
         <ErrorBox error={page.error} onRetry={page.reload} />
         {html.trim() ? (
-          <HtmlCard options={{ html, mode: "inline" }} value={() => undefined} projects={[]} editing={false} />
+          <HtmlCard options={{ html, mode: "inline" }} value={value} projects={projects} editing={false} />
         ) : (
           <Empty icon="code">This page is empty. Edit it, or let an assistant write it.</Empty>
         )}
@@ -792,7 +812,7 @@ function PageTab({ group, tab, editing }: { group?: string; tab: Tab; editing: b
           }}
         />
         <div className="page-preview">
-          <HtmlCard options={{ html, mode: "inline" }} value={() => undefined} projects={[]} editing={false} />
+          <HtmlCard options={{ html, mode: "inline" }} value={value} projects={projects} editing={false} />
         </div>
       </div>
     </div>

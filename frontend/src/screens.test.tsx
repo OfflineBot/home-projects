@@ -295,6 +295,44 @@ describe("every screen draws something", () => {
     }
   });
 
+  // Exactly the page that was reported as not showing its button: a rule tag
+  // written by hand, in a tab that is one page.
+  it("a page shows the cards it asks for", async () => {
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "tagpage " + Date.now() } });
+    const pc = await api<Project>("/api/projects", {
+      body: { title: "pc", groupId: group.slug, preset: "machines" },
+    });
+    await api(`/api/projects/${pc.id}/automation/rules`, {
+      method: "PUT",
+      body: { rules: [{ name: "Start PC", trigger: { type: "button" },
+                        actions: [{ run: "wol", mac: "aa:bb:cc:dd:ee:ff" }] }] },
+    });
+    const board = await api<{ id: string; tabs: { id: string }[] }>(`/api/boards?group=${group.slug}`);
+    const tab = board.tabs[0].id;
+    await api(`/api/boards/tabs/${tab}`, { method: "PATCH", body: { layout: "page" } });
+    await api(`/api/page?group=${group.slug}&tab=${tab}`, {
+      method: "PUT",
+      body: {
+        html:
+          `<hp-card kind="project" project="${pc.id}"></hp-card>\n` +
+          `<h1>Home Main Page</h1>\n` +
+          `<hp-card kind="rule" project="${pc.id}" rule="Start PC">Start PC</hp-card>`,
+      },
+    });
+    try {
+      const GroupBoard = (await import("./components/board/Board")).default;
+      const c = await draw(<GroupBoard group={group.slug} />, /Home Main Page/i);
+      // The tags have to become the cards, not stay as empty elements.
+      await waitFor(() => expect(c.querySelector(".card-rule")).not.toBeNull(), { timeout: 8000 });
+      expect([...c.querySelectorAll("button")].some((b) => /Start PC/.test(b.textContent ?? ""))).toBe(true);
+      expect(c.querySelector(".card-project")).not.toBeNull();
+      expect(c.textContent).not.toMatch(/That project is gone/);
+    } finally {
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   // A page is not a picture: a value in braces is the number as it is now.
   it("a page fills in live values", async () => {
     const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
