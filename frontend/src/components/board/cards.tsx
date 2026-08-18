@@ -160,6 +160,7 @@ export const cardViews: Record<string, CardView> = {
   list: ListCard,
   project: ProjectCard,
   history: HistoryCard,
+  html: lazy(() => import("./HtmlCard")),
   // A capability's cards are loaded only when one is actually on a board.
   machine: lazy(() => import("../../caps/cards/MachineCard")),
   terminal: lazy(() => import("../../caps/cards/TerminalCard")),

@@ -229,6 +229,34 @@ describe("every screen draws something", () => {
     cleanup();
   });
 
+  // A board can be a page: HTML written by hand, drawn as part of the board —
+  // and what would run in it does not.
+  it("a card can be your own HTML", async () => {
+    const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
+    const card = await api<{ id: string }>("/api/boards/cards", {
+      body: {
+        tabId: board.tabs[0].id,
+        kind: "html",
+        options: {
+          html: '<h2 id="mine">Meine Seite</h2><p>Mit <b>Auszeichnung</b>.</p><script>window.pwned=1</script>',
+          mode: "inline",
+        },
+        x: 0, y: 0, w: 6, h: 3,
+      },
+    });
+    try {
+      const c = await draw(<Dashboard />, /Meine Seite/i);
+      expect(c.querySelector("#mine")?.textContent).toBe("Meine Seite");
+      expect(c.querySelector(".html-inline b")?.textContent).toBe("Auszeichnung");
+      // The script is gone, and it never ran.
+      expect(c.querySelector("script")).toBeNull();
+      expect((window as unknown as { pwned?: number }).pwned).toBeUndefined();
+    } finally {
+      await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   // A tab is set up in one place: its name, its icon, how its cards lie and
   // how wide the page is.
   it("a tab can be set up", async () => {

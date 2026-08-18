@@ -34,11 +34,18 @@ type Drag =
 export function Grid({
   cards,
   editing,
+  free,
   onChange,
   children,
 }: {
   cards: Placed[];
   editing: boolean;
+  /**
+   * A free surface: the card goes where it is put, in pixels, and nothing
+   * snaps it anywhere. This is the mode for building a page rather than
+   * filling a grid.
+   */
+  free?: boolean;
   /** Called once a drag ends, with everything that moved. */
   onChange: (next: Placed[]) => void;
   children: (card: Placed, editing: boolean) => ReactNode;
@@ -49,6 +56,7 @@ export function Grid({
 
   const shown = live ?? cards;
   const rows = Math.max(4, ...shown.map((c) => c.y + c.h));
+  const tallest = Math.max(360, ...shown.map((c) => c.y + c.h + 40));
 
   useEffect(() => {
     if (!drag) return;
@@ -59,6 +67,25 @@ export function Grid({
     };
 
     const move = (event: PointerEvent) => {
+      if (free) {
+        // Pixels, exactly where the pointer went. Nothing else moves.
+        const dx = event.clientX - drag.startX;
+        const dy = event.clientY - drag.startY;
+        setLive(
+          cards.map((c) => {
+            if (c.id !== drag.id) return { ...c };
+            if (drag.kind === "move") {
+              return { ...c, x: Math.max(0, drag.from.x + dx), y: Math.max(0, drag.from.y + dy) };
+            }
+            return {
+              ...c,
+              w: Math.max(120, drag.from.w + dx),
+              h: Math.max(60, drag.from.h + dy),
+            };
+          }),
+        );
+        return;
+      }
       const dx = Math.round((event.clientX - drag.startX) / (columnWidth() + GAP));
       const dy = Math.round((event.clientY - drag.startY) / (ROW_HEIGHT + GAP));
       const next = cards.map((c) => {
@@ -98,22 +125,30 @@ export function Grid({
   return (
     <div
       ref={area}
-      className={editing ? "grid-area editing" : "grid-area"}
-      style={{
-        gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
-        gridAutoRows: `${ROW_HEIGHT}px`,
-        gap: GAP,
-        minHeight: rows * (ROW_HEIGHT + GAP),
-      }}
+      className={[free ? "free-area" : "grid-area", editing ? "editing" : ""].join(" ").trim()}
+      style={
+        free
+          ? { minHeight: tallest }
+          : {
+              gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
+              gridAutoRows: `${ROW_HEIGHT}px`,
+              gap: GAP,
+              minHeight: rows * (ROW_HEIGHT + GAP),
+            }
+      }
     >
       {shown.map((card) => (
         <div
           key={card.id}
           className={drag?.id === card.id ? "grid-cell dragging" : "grid-cell"}
-          style={{
-            gridColumn: `${card.x + 1} / span ${card.w}`,
-            gridRow: `${card.y + 1} / span ${card.h}`,
-          }}
+          style={
+            free
+              ? { position: "absolute", left: card.x, top: card.y, width: card.w, height: card.h }
+              : {
+                  gridColumn: `${card.x + 1} / span ${card.w}`,
+                  gridRow: `${card.y + 1} / span ${card.h}`,
+                }
+          }
         >
           {editing ? (
             <>

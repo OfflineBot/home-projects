@@ -879,6 +879,7 @@ def main() -> int:
     check("text" in names and "project" in names, "the core's cards are offered")
     check("machine" in names and "terminal" in names and "agenda" in names,
           "and every capability's, without the board knowing what they are")
+    check("html" in names, "and a card that is simply your own HTML")
 
     board = c.call("GET", f"/api/boards?group={gslug}")
     check(bool(board) and board.get("scope") == "group", "a group has a board too")
@@ -994,6 +995,23 @@ def main() -> int:
         flowing = c.call("GET", f"/api/boards?group={gslug}") or {}
         check(flowing["tabs"][0].get("layout") == "flow", "a tab can be a page instead of a grid")
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "diagonal"}, expect=400)
+        # A free surface: pixels, and nothing snaps them anywhere.
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "free"})
+        loose = c.call("POST", "/api/boards/cards", {
+            "tabId": tab, "kind": "html",
+            "options": {"html": "<h2>A page</h2>", "mode": "inline"},
+            "x": 137, "y": 58, "w": 533, "h": 301,
+        }, expect=201)
+        check(bool(loose) and (loose["x"], loose["y"]) == (137, 58), "a card can lie anywhere, to the pixel")
+        if loose:
+            c.call("PUT", f"/api/boards/{board['id']}/layout",
+                   {"cards": [{"id": loose["id"], "x": 411, "y": 129, "w": 620, "h": 340}]})
+            put = next((x for t in (c.call("GET", f"/api/boards?group={gslug}") or {})["tabs"]
+                        for x in t["cards"] if x["id"] == loose["id"]), None)
+            check(bool(put) and (put["x"], put["y"], put["w"]) == (411, 129, 620),
+                  "and stays exactly where it was put")
+            c.call("DELETE", f"/api/boards/cards/{loose['id']}")
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "sideways"}, expect=400)
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "grid"})
         # A tab is set up in one place: its name, its icon, and how wide the
         # page is.

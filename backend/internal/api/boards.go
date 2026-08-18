@@ -115,8 +115,8 @@ func (s *Server) mountBoards(r fiber.Router) {
 		if err := c.BodyParser(&in); err != nil {
 			return httpx.BadRequest("The change could not be read.")
 		}
-		if in.Layout != nil && *in.Layout != "grid" && *in.Layout != "flow" {
-			return httpx.BadRequest("A tab is a grid or a flow.")
+		if in.Layout != nil && *in.Layout != "grid" && *in.Layout != "flow" && *in.Layout != "free" {
+			return httpx.BadRequest("A tab is a grid, a flow or free.")
 		}
 		patch := store.TabPatch{Title: in.Title, Icon: in.Icon, Layout: in.Layout,
 			Style: in.Style, Position: in.Position}

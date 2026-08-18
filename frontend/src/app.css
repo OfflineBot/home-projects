@@ -988,3 +988,34 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   .board.width-narrow .grid-area, .board.width-normal .grid-area { max-width: none; }
   .widths { display: none; }
 }
+
+/* --------------------------------------------------------- a page of one's own
+   A free surface: the card lies where it was put, in pixels. Nothing snaps,
+   nothing pushes anything else out of the way — this is the mode for building
+   a page rather than filling a grid. */
+.free-area { position: relative; width: 100%; }
+.free-area.editing {
+  background-image:
+    radial-gradient(color-mix(in srgb, var(--ctp-surface2) 60%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  border-radius: 10px;
+}
+.free-area .grid-cell { overflow: visible; }
+.free-area .card { height: 100%; }
+
+/* HTML written by hand: in the page, or in a frame of its own. */
+.html-inline { font-size: 14px; }
+.html-inline :where(h1, h2, h3) { margin: 0 0 6px; }
+.html-inline :where(p, ul, ol) { margin: 0 0 8px; }
+.html-inline img { max-width: 100%; height: auto; }
+.html-inline a { color: var(--ctp-blue); }
+.html-frame { width: 100%; height: 100%; min-height: 120px; border: none; border-radius: 8px; background: transparent; display: block; }
+.card-html { padding: 0; overflow: hidden; }
+.card-html .html-inline { padding: 12px 14px; }
+.html-preview {
+  border: 1px solid var(--ctp-surface1); border-radius: 10px; padding: 10px 12px;
+  max-height: 260px; overflow: auto; background: var(--ctp-mantle);
+}
+.code-area { border: 1px solid var(--ctp-surface1); border-radius: 10px; overflow: hidden; }
+.code-area .cm-editor { height: 100%; }
+.code-area .cm-scroller { font-family: var(--mono); font-size: 12.5px; }

@@ -196,6 +196,16 @@ var coreCards = []Card{
 			{Name: "links", Label: "One per line: title | address", Type: "textarea",
 				Placeholder: "Moodle | https://moodle.dhbw-ravensburg.de"},
 		}},
+	{Name: "html", Title: "Your own HTML", Icon: "code", W: 6, H: 4,
+		Description: "A piece of a page, written by hand. Part of the board, or a frame of its own.",
+		Options: []AccountField{
+			{Name: "html", Label: "HTML", Type: "code"},
+			{Name: "mode", Label: "Shown", Type: "select",
+				Options: []Option{
+					{Value: "inline", Label: "as part of the board — it takes the theme"},
+					{Value: "frame", Label: "in a frame of its own — your CSS, your scripts"},
+				}},
+		}},
 	{Name: "heading", Title: "Heading", Icon: "flag", W: 12, H: 1,
 		Description: "A line to divide the board into parts.",
 		Options:     []AccountField{{Name: "title", Label: "The heading", Type: "text"}}},

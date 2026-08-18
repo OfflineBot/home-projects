@@ -5,6 +5,8 @@ import { colorVar } from "../../lib/theme";
 import { api, type Project, type Variable } from "../../lib/api";
 import { useMeta, useQuery, useSession } from "../../lib/store";
 import { Grid, type Placed } from "./Grid";
+import { CodeArea } from "../CodeArea";
+import HtmlCard from "./HtmlCard";
 import { cardViews } from "./cards";
 
 /**
@@ -42,8 +44,8 @@ export interface Tab {
   title: string;
   icon: string;
   style?: TabStyle;
-  /** "grid" — placed by hand — or "flow", where cards follow one another. */
-  layout?: "grid" | "flow";
+  /** How its cards lie: on a grid, one after another, or wherever they are put. */
+  layout?: "grid" | "flow" | "free";
   position: number;
   cards: Card[];
 }
@@ -67,6 +69,7 @@ interface CardKind {
     placeholder?: string;
     hint?: string;
     required?: boolean;
+    options?: { value: string; label: string }[];
   }[];
   w?: number;
   h?: number;
@@ -306,6 +309,7 @@ export default function Board({
         <Grid
           cards={current.cards.map((c) => ({ id: c.id, x: c.x, y: c.y, w: c.w, h: c.h }))}
           editing={editing}
+          free={current.layout === "free"}
           onChange={saveLayout}
         >
           {(placed) => {
@@ -351,7 +355,12 @@ export default function Board({
           onClose={() => setAdding(false)}
           onAdd={async (kind, options, size) => {
             const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
-            const y = Math.max(0, ...current.cards.map((c) => c.y + c.h));
+            const loose = current.layout === "free";
+            // On a free surface a card is measured in pixels, so a fresh one
+            // arrives at a sensible size instead of three columns wide.
+            const y = loose
+              ? Math.max(0, ...current.cards.map((c) => c.y + c.h)) + 16
+              : Math.max(0, ...current.cards.map((c) => c.y + c.h));
             await api("/api/boards/cards", {
               body: {
                 tabId: current.id,
@@ -359,8 +368,8 @@ export default function Board({
                 options,
                 x: 0,
                 y,
-                w: size?.w ?? fallback?.w ?? 3,
-                h: size?.h ?? fallback?.h ?? 2,
+                w: loose ? ((size?.w ?? fallback?.w ?? 3) * 90) : (size?.w ?? fallback?.w ?? 3),
+                h: loose ? ((size?.h ?? fallback?.h ?? 2) * 92) : (size?.h ?? fallback?.h ?? 2),
               },
             });
             setAdding(false);
@@ -542,7 +551,25 @@ function AddCard({
         </>
       ) : (
         <>
-          {chosen?.options?.map((option) => (
+          {chosen?.options?.map((option) =>
+            option.type === "code" ? (
+              <Field key={option.name} label={option.label} hint={option.hint}>
+                <CodeArea value={options[option.name] ?? ""} onChange={(text) => setOptions({ ...options, [option.name]: text })} />
+              </Field>
+            ) : option.type === "select" ? (
+              <Field key={option.name} label={option.label} hint={option.hint}>
+                <select
+                  value={options[option.name] ?? ""}
+                  onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
+                >
+                  {(option.options ?? []).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
             <Field key={option.name} label={option.label} hint={option.hint} required={option.required}>
               {option.type === "textarea" ? (
                 <textarea
@@ -561,7 +588,8 @@ function AddCard({
                 />
               )}
             </Field>
-          ))}
+            ),
+          )}
         </>
       )}
     </Modal>
@@ -613,7 +641,7 @@ function TabSettings({
   const meta = useMeta();
   const [title, setTitle] = useState(tab.title);
   const [icon, setIcon] = useState(tab.icon || "grid");
-  const [layout, setLayout] = useState(tab.layout ?? "grid");
+  const [layout, setLayout] = useState<"grid" | "flow" | "free">(tab.layout ?? "grid");
   const [style, setStyle] = useState<TabStyle>((tab.style ?? {}) as TabStyle);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -699,6 +727,7 @@ function TabSettings({
           <select value={layout} onChange={(e) => setLayout(e.target.value as "grid" | "flow")}>
             <option value="grid">placed on a grid</option>
             <option value="flow">one after another</option>
+            <option value="free">wherever you put them</option>
           </select>
         </Field>
         <Field label="Page width">
@@ -834,22 +863,52 @@ function CardSettings({
       }
     >
       <ErrorBox error={error} />
-      {(kind?.options ?? []).map((option) => (
-        <Field key={option.name} label={option.label} hint={option.hint}>
-          {option.type === "textarea" ? (
-            <textarea
+      {(kind?.options ?? []).map((option) =>
+        option.type === "code" ? (
+          <Field key={option.name} label={option.label} hint={option.hint}>
+            <CodeArea
               value={options[option.name] ?? ""}
-              style={{ minHeight: 90 }}
-              onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
+              onChange={(text) => setOptions({ ...options, [option.name]: text })}
             />
-          ) : (
-            <input
+          </Field>
+        ) : option.type === "select" ? (
+          <Field key={option.name} label={option.label} hint={option.hint}>
+            <select
               value={options[option.name] ?? ""}
               onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-            />
-          )}
+            >
+              {(option.options ?? []).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : (
+          <Field key={option.name} label={option.label} hint={option.hint}>
+            {option.type === "textarea" ? (
+              <textarea
+                value={options[option.name] ?? ""}
+                style={{ minHeight: 90 }}
+                onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
+              />
+            ) : (
+              <input
+                value={options[option.name] ?? ""}
+                onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
+              />
+            )}
+          </Field>
+        ),
+      )}
+
+      {card.kind === "html" ? (
+        <Field label="How it looks">
+          <div className="html-preview">
+            <HtmlCard options={options} value={() => undefined} projects={[]} editing={false} />
+          </div>
         </Field>
-      ))}
+      ) : null}
       <Field label="Title">
         <input
           value={options.title ?? ""}
