@@ -229,6 +229,23 @@ describe("every screen draws something", () => {
     cleanup();
   });
 
+  // A tab is set up in one place: its name, its icon, how its cards lie and
+  // how wide the page is.
+  it("a tab can be set up", async () => {
+    const c = await draw(<Dashboard />, /Dashboard/i);
+    fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
+    await waitFor(() =>
+      expect([...c.querySelectorAll("button")].some((b) => /This tab/i.test(b.textContent ?? ""))).toBe(true),
+    );
+    fireEvent.click([...c.querySelectorAll("button")].find((b) => /This tab/i.test(b.textContent ?? ""))!);
+    const dialog = await waitFor(() => screen.getByRole("dialog"));
+    for (const label of ["Name", "Icon", "Cards are", "Page width"]) {
+      expect(dialog.textContent).toContain(label);
+    }
+    expect(dialog.textContent).toMatch(/one after another/i);
+    cleanup();
+  });
+
   // Every kind of card the server offers can be put on a board — including the
   // ones a capability brought, which is the whole point of the registry.
   it("a board offers the capabilities' cards too", async () => {

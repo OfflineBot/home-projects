@@ -41,6 +41,7 @@ export interface Tab {
   id: string;
   title: string;
   icon: string;
+  style?: TabStyle;
   /** "grid" — placed by hand — or "flow", where cards follow one another. */
   layout?: "grid" | "flow";
   position: number;
@@ -90,10 +91,13 @@ interface Block {
 
 export default function Board({
   group,
+  title,
   emptyNote,
   exposed,
 }: {
   group?: string;
+  /** Shown at the head of the board, beside its tabs. */
+  title?: string;
   emptyNote?: string;
   /** Handed to somebody: read it, that is all. */
   exposed?: boolean;
@@ -110,6 +114,7 @@ export default function Board({
   const [tab, setTab] = useState(0);
   const [adding, setAdding] = useState(false);
   const [settling, setSettling] = useState<Card | null>(null);
+  const [tabSettings, setTabSettings] = useState<Tab | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
   const tabs = board.data?.tabs ?? [];
@@ -161,36 +166,29 @@ export default function Board({
     board.reload();
   };
 
-  const widen = async (card: Card, by: number) => {
-    const w = Math.max(2, Math.min(12, card.w + by));
+  const setWidth = async (card: Card, w: number) => {
     await api(`/api/boards/cards/${card.id}`, { method: "PATCH", body: { w } });
     board.reload();
   };
 
   if (board.loading && !board.data) return <Spinner />;
 
+  const look = tabStyle(current);
+
   return (
-    <div className="board">
+    <div className={`board width-${look.width}`}>
       <div className="board-bar">
+        {title ? <h1 className="board-title">{title}</h1> : null}
         <div className="board-tabs">
           {tabs.map((t, i) => (
             <button
               key={t.id}
               className={i === tab ? "board-tab on" : "board-tab"}
-              onClick={() => setTab(i)}
-              onDoubleClick={async () => {
-                if (!editing) return;
-                const title = await ask.text({
-                  title: "Name this tab",
-                  label: "Name",
-                  value: t.title,
-                });
-                if (!title) return;
-                await api(`/api/boards/tabs/${t.id}`, { method: "PATCH", body: { title } });
-                board.reload();
-              }}
+              onClick={() => (i === tab && editing ? setTabSettings(t) : setTab(i))}
+              title={i === tab && editing ? "Set this tab up" : undefined}
             >
               <Icon name={t.icon || "grid"} size={14} /> {t.title}
+              {i === tab && editing ? <Icon name="settings" size={12} /> : null}
             </button>
           ))}
           {editing && board.data && !exposed ? (
@@ -222,37 +220,8 @@ export default function Board({
                 <Icon name="plus" size={14} /> Add a card
               </button>
               {current ? (
-                <button
-                  className="btn small ghost"
-                  title={current.layout === "flow" ? "Place the cards yourself" : "Let them follow one another"}
-                  onClick={async () => {
-                    await api(`/api/boards/tabs/${current.id}`, {
-                      method: "PATCH",
-                      body: { layout: current.layout === "flow" ? "grid" : "flow" },
-                    });
-                    board.reload();
-                  }}
-                >
-                  <Icon name="grid" size={14} /> {current.layout === "flow" ? "Flow" : "Grid"}
-                </button>
-              ) : null}
-              {tabs.length > 1 && current ? (
-                <button
-                  className="btn small ghost"
-                  onClick={async () => {
-                    const sure = await ask.confirm({
-                      title: `Remove the tab “${current.title}”?`,
-                      confirmLabel: "Remove",
-                      danger: true,
-                      body: <>Its cards go with it.</>,
-                    });
-                    if (!sure) return;
-                    await api(`/api/boards/tabs/${current.id}`, { method: "DELETE" });
-                    setTab(0);
-                    board.reload();
-                  }}
-                >
-                  <Icon name="trash" size={14} /> Remove tab
+                <button className="btn small ghost" onClick={() => setTabSettings(current)}>
+                  <Icon name="settings" size={14} /> This tab
                 </button>
               ) : null}
               <button className="btn small primary" onClick={() => setEditing(false)}>
@@ -292,16 +261,18 @@ export default function Board({
             >
               {editing ? (
                 <div className="card-tools">
-                  <button
-                    className="btn ghost icon"
-                    aria-label="Narrower"
-                    onClick={() => void widen(card, -2)}
-                  >
-                    <Icon name="chevronLeft" size={13} />
-                  </button>
-                  <button className="btn ghost icon" aria-label="Wider" onClick={() => void widen(card, 2)}>
-                    <Icon name="chevronRight" size={13} />
-                  </button>
+                  <span className="widths">
+                    {WIDTHS.map((w) => (
+                      <button
+                        key={w.value}
+                        className={card.w === w.value ? "width on" : "width"}
+                        title={w.label}
+                        onClick={() => void setWidth(card, w.value)}
+                      >
+                        {w.short}
+                      </button>
+                    ))}
+                  </span>
                   <button className="btn ghost icon" aria-label="Up" onClick={() => void shift(i, -1)}>
                     <Icon name="chevronUp" size={13} />
                   </button>
@@ -393,6 +364,23 @@ export default function Board({
               },
             });
             setAdding(false);
+            board.reload();
+          }}
+        />
+      ) : null}
+
+      {tabSettings ? (
+        <TabSettings
+          tab={tabSettings}
+          canRemove={tabs.length > 1}
+          onClose={() => setTabSettings(null)}
+          onSaved={() => {
+            setTabSettings(null);
+            board.reload();
+          }}
+          onRemoved={() => {
+            setTabSettings(null);
+            setTab(0);
             board.reload();
           }}
         />
@@ -576,6 +564,154 @@ function AddCard({
           ))}
         </>
       )}
+    </Modal>
+  );
+}
+
+/** The widths a card can have on a page, said the way people say them. */
+const WIDTHS = [
+  { value: 3, short: "¼", label: "a quarter" },
+  { value: 4, short: "⅓", label: "a third" },
+  { value: 6, short: "½", label: "half" },
+  { value: 8, short: "⅔", label: "two thirds" },
+  { value: 12, short: "1", label: "the whole width" },
+];
+
+/** How wide a tab's page is, and what sits behind it. */
+export interface TabStyle {
+  width?: "narrow" | "normal" | "wide";
+  background?: "plain" | "bare";
+}
+
+function tabStyle(tab?: Tab): Required<TabStyle> {
+  const s = (tab?.style ?? {}) as TabStyle;
+  return { width: s.width ?? "normal", background: s.background ?? "plain" };
+}
+
+/**
+ * A tab's own settings.
+ *
+ * Name and icon, a grid or a page, and how wide that page is — narrow reads
+ * like a document, wide fills the screen. Removing the tab lives here too,
+ * beside the thing it removes, rather than as a button you can hit while
+ * reaching for something else.
+ */
+function TabSettings({
+  tab,
+  canRemove,
+  onClose,
+  onSaved,
+  onRemoved,
+}: {
+  tab: Tab;
+  canRemove: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  onRemoved: () => void;
+}) {
+  const ask = useAsk();
+  const meta = useMeta();
+  const [title, setTitle] = useState(tab.title);
+  const [icon, setIcon] = useState(tab.icon || "grid");
+  const [layout, setLayout] = useState(tab.layout ?? "grid");
+  const [style, setStyle] = useState<TabStyle>((tab.style ?? {}) as TabStyle);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  return (
+    <Modal
+      title={tab.title}
+      onClose={onClose}
+      footer={
+        <>
+          {canRemove ? (
+            <button
+              className="btn danger"
+              style={{ marginRight: "auto" }}
+              onClick={async () => {
+                const sure = await ask.confirm({
+                  title: `Remove “${tab.title}”?`,
+                  confirmLabel: "Remove",
+                  danger: true,
+                  body: <>Its cards go with it.</>,
+                });
+                if (!sure) return;
+                await api(`/api/boards/tabs/${tab.id}`, { method: "DELETE" });
+                onRemoved();
+              }}
+            >
+              <Icon name="trash" size={14} /> Remove
+            </button>
+          ) : null}
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button
+            className="btn primary"
+            disabled={busy || !title.trim()}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await api(`/api/boards/tabs/${tab.id}`, {
+                  method: "PATCH",
+                  body: { title, icon, layout, style },
+                });
+                onSaved();
+              } catch (err) {
+                setError(err as Error);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save
+          </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+      <Field label="Name" required>
+        <input value={title} autoFocus onChange={(e) => setTitle(e.target.value)} />
+      </Field>
+
+      <Field label="Icon">
+        <div className="swatches">
+          {(meta?.icons ?? ["grid", "code", "calendar", "server", "notebook", "link", "zap"]).map((name) => (
+            <button
+              key={name}
+              className="swatch"
+              title={name}
+              style={{
+                background: "var(--ctp-surface0)",
+                display: "grid",
+                placeItems: "center",
+                borderColor: icon === name ? "var(--ctp-text)" : "transparent",
+              }}
+              onClick={() => setIcon(name)}
+            >
+              <Icon name={name} size={15} />
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div className="row">
+        <Field label="Cards are" hint="A grid is placed by hand; a page lets them follow one another.">
+          <select value={layout} onChange={(e) => setLayout(e.target.value as "grid" | "flow")}>
+            <option value="grid">placed on a grid</option>
+            <option value="flow">one after another</option>
+          </select>
+        </Field>
+        <Field label="Page width">
+          <select
+            value={style.width ?? "normal"}
+            onChange={(e) => setStyle({ ...style, width: e.target.value as TabStyle["width"] })}
+          >
+            <option value="narrow">narrow — reads like a document</option>
+            <option value="normal">normal</option>
+            <option value="wide">wide — fills the screen</option>
+          </select>
+        </Field>
+      </div>
     </Modal>
   );
 }

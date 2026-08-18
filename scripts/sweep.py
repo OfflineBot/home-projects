@@ -995,6 +995,15 @@ def main() -> int:
         check(flowing["tabs"][0].get("layout") == "flow", "a tab can be a page instead of a grid")
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "diagonal"}, expect=400)
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "grid"})
+        # A tab is set up in one place: its name, its icon, and how wide the
+        # page is.
+        c.call("PATCH", f"/api/boards/tabs/{tab}",
+               {"title": "Alltag", "icon": "home", "style": {"width": "narrow"}})
+        dressed_tab = (c.call("GET", f"/api/boards?group={gslug}") or {})["tabs"][0]
+        check(dressed_tab.get("title") == "Alltag" and dressed_tab.get("icon") == "home",
+              "a tab keeps its name and icon")
+        check((dressed_tab.get("style") or {}).get("width") == "narrow", "and how wide its page is")
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"title": "Board", "icon": "grid", "style": {}})
         dressed = c.call("POST", "/api/boards/cards", {
             "tabId": tab, "kind": "text", "options": {"text": "look"},
             "style": {"color": "mauve", "background": "tinted", "align": "center"},

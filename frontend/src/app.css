@@ -946,3 +946,45 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .editor-host { flex: 1; min-height: 340px; border: 1px solid var(--ctp-surface1); border-radius: 10px; overflow: hidden; }
 .editor-host .cm-editor { height: 100%; }
 .editor-host .cm-scroller { font-family: var(--mono); font-size: 13px; }
+
+/* ------------------------------------------------------- the board's layout
+   One header line: the board's name, its tabs, and what can be done to it.
+   Everything else is the page itself. */
+.board-title { margin: 0 12px 0 0; font-size: 21px; }
+.board-bar { padding-bottom: 2px; border-bottom: 1px solid var(--ctp-surface0); margin-bottom: 4px; }
+.board-tab .icon-svg:last-child { opacity: .6; }
+
+/* How wide the page is. Narrow reads like a document; wide fills the screen. */
+.board.width-narrow .grid-area,
+.board.width-narrow .flow { max-width: 760px; }
+.board.width-normal .grid-area,
+.board.width-normal .flow { max-width: 1240px; }
+.board.width-wide .grid-area,
+.board.width-wide .flow { max-width: none; }
+
+/* In edit mode the grid shows itself: twelve columns behind the cards, so
+   placing one is aiming rather than guessing. */
+.grid-area.editing {
+  background-image: repeating-linear-gradient(
+    to right,
+    color-mix(in srgb, var(--ctp-surface2) 45%, transparent) 0 1px,
+    transparent 1px calc(100% / 12)
+  );
+  background-position: left top;
+  border-radius: 10px;
+}
+
+/* A card's width on a page, in the fractions people actually say. */
+.widths { display: inline-flex; border: 1px solid var(--ctp-surface1); border-radius: 7px; overflow: hidden; }
+.widths .width {
+  background: var(--ctp-mantle); border: none; color: var(--ctp-subtext0);
+  padding: 1px 7px; font-size: 12px; cursor: pointer; line-height: 1.6;
+}
+.widths .width:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+.widths .width.on { background: var(--ctp-blue); color: var(--ctp-base); }
+
+@media (max-width: 760px) {
+  .board-title { font-size: 18px; }
+  .board.width-narrow .grid-area, .board.width-normal .grid-area { max-width: none; }
+  .widths { display: none; }
+}
