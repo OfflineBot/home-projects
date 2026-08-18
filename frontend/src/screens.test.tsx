@@ -318,6 +318,43 @@ describe("every screen draws something", () => {
     cleanup();
   });
 
+  it("a page puts things left, right and along the bottom", async () => {
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "sides " + Date.now() } });
+    const pc = await api<Project>("/api/projects", {
+      body: { title: "pc", groupId: group.slug, preset: "machines" },
+    });
+    await api(`/api/projects/${pc.id}/automation/rules`, {
+      method: "PUT",
+      body: { rules: [{ name: "Start PC", trigger: { type: "button" }, actions: [{ run: "wol", mac: "aa:bb:cc:dd:ee:ff" }] }] },
+    });
+    const board = await api<{ tabs: { id: string }[] }>(`/api/boards?group=${group.slug}`);
+    const tab = board.tabs[0].id;
+    await api(`/api/boards/tabs/${tab}`, { method: "PATCH", body: { layout: "page" } });
+    await api(`/api/page?group=${group.slug}&tab=${tab}`, {
+      method: "PUT",
+      body: {
+        html:
+          `<div class="layout">\n` +
+          `<div class="top"><h1>Sides Page</h1></div>\n` +
+          `<div class="left"><hp-card kind="rule" project="${pc.id}" rule="Start PC"></hp-card></div>\n` +
+          `<div class="main"><hp-card kind="project" project="${pc.id}"></hp-card></div>\n` +
+          `<div class="bottom"><p>the strip at the bottom</p></div>\n` +
+          `</div>`,
+      },
+    });
+    try {
+      const GroupBoard = (await import("./components/board/Board")).default;
+      const c = await draw(<GroupBoard group={group.slug} />, /Sides Page/i);
+      // Each card has to end up inside its own region, not merely on the page.
+      await waitFor(() => expect(c.querySelector(".layout > .left .card-rule")).not.toBeNull(), { timeout: 8000 });
+      await waitFor(() => expect(c.querySelector(".layout > .main .card-project")).not.toBeNull(), { timeout: 8000 });
+      expect(c.querySelector(".layout > .bottom")?.textContent).toMatch(/the strip at the bottom/);
+    } finally {
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   it("a page decides how wide its cards are", async () => {
     // "keine Kontrolle wie breit? nur untereinander" — a written card is a
     // block, and without a width every page was one column.

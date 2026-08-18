@@ -682,7 +682,7 @@ func cardsAsHTML(tab *model.BoardTab) string {
 		line := rows[y]
 		sort.Slice(line, func(i, j int) bool { return line[i].X < line[j].X })
 		if len(line) > 1 {
-			out.WriteString("<div style=\"display:flex;gap:16px;flex-wrap:wrap\">\n")
+			out.WriteString("<div class=\"row\">\n")
 		}
 		for _, card := range line {
 			piece := cardAsHTML(card)
@@ -692,7 +692,7 @@ func cardsAsHTML(tab *model.BoardTab) string {
 					width = 3
 				}
 				out.WriteString("  <div style=\"flex:" + strconv.Itoa(width) +
-					";min-width:220px\">" + piece + "</div>\n")
+					" 1 220px\">" + piece + "</div>\n")
 				continue
 			}
 			out.WriteString(piece + "\n")

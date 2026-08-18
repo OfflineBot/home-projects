@@ -94,6 +94,23 @@ For rows there are two classes, so no hand-written flexbox is needed:
     <div class="row">…</div>                          side by side, wrapping
     <div class="cols" style="--cols:3">…</div>        three equal columns
 
+**Where things sit.** A top strip, a left side, the middle, a right side, a
+bottom strip — any of the five may be left out, and one that is not there takes
+no room:
+
+    <div class="layout">
+      <div class="top">…</div>
+      <div class="left">…</div>
+      <div class="main">…</div>
+      <div class="right">…</div>
+      <div class="bottom">…</div>
+    </div>
+
+The sides are 260 pixels wide; `style="--side:180px"` on the layout changes
+that. On a narrow screen the whole thing becomes one column, in the order it is
+written. `POST /api/boards/tabs/<id>/as-html` writes the same vocabulary, so a
+tab of cards turned into a page comes out as something you would have written.
+
 A terminal is worth giving a height: without one it is as tall as its box, and
 `as="button"` makes it a button that opens the terminal over the page instead —
 usually the better card on a page that is mostly text.

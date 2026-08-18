@@ -1060,6 +1060,32 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .html-inline hp-card { display: block; }
 .html-inline hp-card > .html-slot { margin: 0; height: 100%; }
 .html-inline hp-card .terminal { min-height: 220px; }
+/* Where things sit on a page: a top strip, a left side, the middle, a right
+   side, a bottom strip. Any of the five may be left out — a side that is not
+   there takes no width, so "left and main" is the same layout with one element
+   fewer. Written by hand or dropped in from the palette; the same classes
+   either way, which is the point.
+
+   The sides are 260 pixels unless the layout says otherwise:
+   <div class="layout" style="--side:180px">. On a narrow screen it all becomes
+   one column, in the order it is written. */
+.html-inline .layout {
+  display: grid; gap: 12px; align-items: start;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "top top top" "left main right" "bottom bottom bottom";
+}
+.html-inline .layout > .top { grid-area: top; }
+.html-inline .layout > .left { grid-area: left; width: var(--side, 260px); }
+.html-inline .layout > .main { grid-area: main; min-width: 0; }
+.html-inline .layout > .right { grid-area: right; width: var(--side, 260px); }
+.html-inline .layout > .bottom { grid-area: bottom; }
+.html-inline .layout > * > hp-card { margin-bottom: 12px; }
+@media (max-width: 800px) {
+  .html-inline .layout { grid-template-columns: 1fr; grid-template-areas: "top" "left" "main" "right" "bottom"; }
+  .html-inline .layout > .left,
+  .html-inline .layout > .right { width: auto; }
+}
+
 /* Two helpers, so a row of cards does not need a hand-written flexbox every
    time. Both are usable from written HTML and from the palette. */
 .html-inline .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }

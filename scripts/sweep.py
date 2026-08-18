@@ -1053,6 +1053,10 @@ def main() -> int:
         check(bool(turned) and "<hp-card" in turned.get("html", ""),
               "a board turns into the page it already was")
         check("{{" in turned.get("html", ""), "and its numbers become live values in that page")
+        # Written in the same words a person writes: the row class, not a
+        # hand-rolled flexbox nobody would have typed.
+        check("style=\"display:flex" not in turned.get("html", ""),
+              "a turned board is written the way the page classes are written")
         as_page = c.call("GET", f"/api/boards?group={gslug}") or {}
         first = as_page["tabs"][0]
         check(first.get("layout") == "page" and [x["kind"] for x in first["cards"]] == ["html"],

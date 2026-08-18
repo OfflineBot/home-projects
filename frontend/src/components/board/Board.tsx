@@ -700,6 +700,17 @@ function Palette({ group, onInsert }: { group?: string; onInsert: (snippet: stri
       {[
         { label: "Heading", snippet: "<h2>A heading</h2>" },
         { label: "A row", snippet: '<div class="row">\n  \n  \n</div>' },
+        {
+          label: "Sides",
+          snippet:
+            '<div class="layout">\n' +
+            '  <div class="top"></div>\n' +
+            '  <div class="left"></div>\n' +
+            '  <div class="main"></div>\n' +
+            '  <div class="right"></div>\n' +
+            '  <div class="bottom"></div>\n' +
+            "</div>",
+        },
         { label: "Columns", snippet: '<div class="cols" style="--cols:3">\n  \n  \n  \n</div>' },
         { label: "Button", snippet: '<a class="btn primary" href="/groups">A button</a>' },
       ].map((piece) => (
