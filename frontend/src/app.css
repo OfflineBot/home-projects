@@ -1054,6 +1054,25 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .palette select { width: auto; }
 /* A card the page asked for, standing in the text. */
 .html-slot { margin: 10px 0; }
+/* A light: the switch says what the lamp is doing before it says what it is
+   called, and a lamp that is on looks like one. */
+.card-light { display: flex; flex-direction: column; gap: 8px; justify-content: center; height: 100%; }
+.light-switch {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 9px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--ctp-surface1); background: var(--ctp-mantle); color: inherit;
+}
+.light-switch:hover:not(:disabled) { border-color: var(--ctp-yellow); }
+.light-switch:disabled { cursor: default; opacity: .7; }
+.card-light.lit .light-switch {
+  background: color-mix(in srgb, var(--ctp-yellow) 16%, var(--ctp-mantle));
+  border-color: var(--ctp-yellow);
+}
+.card-light.lit .light-switch svg { color: var(--ctp-yellow); }
+.light-state { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--ctp-subtext0); }
+.card-light.lit .light-state { color: var(--ctp-yellow); }
+.light-bright { width: 100%; accent-color: var(--ctp-yellow); }
+
 /* A card in a written page is a block, so width, height and any layout around
    it do what they say. Unknown elements are inline by default, which is why a
    width on one used to be ignored and everything stacked. */
