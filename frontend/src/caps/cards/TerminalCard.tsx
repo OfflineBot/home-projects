@@ -3,7 +3,7 @@ import { useQuery } from "../../lib/store";
 import type { CardProps } from "../../components/board/cards";
 
 /** A tmux session on a board. The work is all in <Terminal>. */
-export default function TerminalCard({ options }: CardProps) {
+export default function TerminalCard({ options, editing }: CardProps) {
   const project = String(options.projectId ?? "");
   const machine = String(options.machine ?? "");
   const { data } = useQuery<{ machines: { name: string; account?: string }[] }>(
@@ -19,6 +19,7 @@ export default function TerminalCard({ options }: CardProps) {
       session={String(options.session ?? "") || undefined}
       byAccount={Boolean(known?.account)}
       asButton={String(options.as ?? "") === "button"}
+      editing={editing}
       title={options.title ? String(options.title) : undefined}
     />
   );

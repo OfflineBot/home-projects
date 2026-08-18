@@ -65,11 +65,20 @@ export default function HtmlCard({ options, value, projects, editing }: CardProp
   useEffect(() => {
     if (frame || !page.current) return;
     page.current.innerHTML = cleaned;
-    const found = [...page.current.querySelectorAll("hp-card")].map((node) => {
+    const found = [...page.current.querySelectorAll<HTMLElement>("hp-card")].map((node) => {
       const options: Record<string, string> = {};
       for (const attr of [...node.attributes]) options[attr.name] = attr.value;
       const kind = options.kind ?? "";
       delete options.kind;
+      // How wide, how tall — the page decides. Without this every card was a
+      // block of its own and a page could only ever be one column.
+      if (options.width) {
+        node.style.display = "inline-block";
+        node.style.verticalAlign = "top";
+        node.style.width = size(options.width);
+        node.style.boxSizing = "border-box";
+      }
+      if (options.height) node.style.height = size(options.height);
       // A card brought from the page keeps its own box; the page decides where.
       node.innerHTML = "";
       return { node, kind, options };
@@ -142,6 +151,12 @@ export function fill(html: string, value: CardProps["value"]): string {
     const shown = format(found.value);
     return found.unit ? `${shown} ${found.unit}` : shown;
   });
+}
+
+/** "320" is pixels; "50%", "20rem" and the rest are taken as written. */
+function size(value: string): string {
+  const raw = value.trim();
+  return /^\d+(\.\d+)?$/.test(raw) ? `${raw}px` : raw;
 }
 
 function readTheme() {

@@ -699,7 +699,8 @@ function Palette({ group, onInsert }: { group?: string; onInsert: (snippet: stri
       <span className="grow" />
       {[
         { label: "Heading", snippet: "<h2>A heading</h2>" },
-        { label: "Two columns", snippet: '<div style="display:flex;gap:16px;flex-wrap:wrap">\n  <div style="flex:1;min-width:220px"></div>\n  <div style="flex:1;min-width:220px"></div>\n</div>' },
+        { label: "A row", snippet: '<div class="row">\n  \n  \n</div>' },
+        { label: "Columns", snippet: '<div class="cols" style="--cols:3">\n  \n  \n  \n</div>' },
         { label: "Button", snippet: '<a class="btn primary" href="/groups">A button</a>' },
       ].map((piece) => (
         <button key={piece.label} className="btn small ghost" onClick={() => onInsert(piece.snippet)}>
@@ -812,7 +813,9 @@ function PageTab({
           }}
         />
         <div className="page-preview">
-          <HtmlCard options={{ html, mode: "inline" }} value={value} projects={projects} editing={false} />
+          {/* Shown, not connected: writing a page is not the moment to be asked
+              for a machine's password. */}
+          <HtmlCard options={{ html, mode: "inline" }} value={value} projects={projects} editing={true} />
         </div>
       </div>
     </div>

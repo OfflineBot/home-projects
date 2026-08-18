@@ -297,6 +297,70 @@ describe("every screen draws something", () => {
 
   // Exactly the page that was reported as not showing its button: a rule tag
   // written by hand, in a tab that is one page.
+  it("a terminal being arranged asks for nothing, and can be signed into later", async () => {
+    // Two complaints, one card: it must not pop a password box while a page is
+    // being laid out, and once a box has been dismissed it has to be possible
+    // to get it back.
+    const { Terminal } = await import("./components/Terminal");
+    const quiet = await draw(
+      <Terminal base="/api/projects/none/machines/pc" machine="pc" editing />,
+      /Opens when you leave edit mode/i,
+    );
+    expect(quiet.querySelector("input")).toBeNull();
+    cleanup();
+
+    const live = await draw(<Terminal base="/api/projects/none/machines/pc" machine="pc" />, /pc/);
+    expect(live.querySelector(".terminal-signin")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Password"));
+    await waitFor(() => expect(live.querySelector(".terminal-signin input")).not.toBeNull());
+    fireEvent.click(screen.getByLabelText("Password"));
+    await waitFor(() => expect(live.querySelector(".terminal-signin")).toBeNull());
+    cleanup();
+  });
+
+  it("a page decides how wide its cards are", async () => {
+    // "keine Kontrolle wie breit? nur untereinander" — a written card is a
+    // block, and without a width every page was one column.
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "wide " + Date.now() } });
+    const pc = await api<Project>("/api/projects", {
+      body: { title: "pc", groupId: group.slug, preset: "machines" },
+    });
+    await api(`/api/projects/${pc.id}/automation/rules`, {
+      method: "PUT",
+      body: { rules: [
+        { name: "On", trigger: { type: "button" }, actions: [{ run: "wled", host: "192.168.178.60", power: "on" }] },
+      ] },
+    });
+    const board = await api<{ tabs: { id: string }[] }>(`/api/boards?group=${group.slug}`);
+    const tab = board.tabs[0].id;
+    await api(`/api/boards/tabs/${tab}`, { method: "PATCH", body: { layout: "page" } });
+    await api(`/api/page?group=${group.slug}&tab=${tab}`, {
+      method: "PUT",
+      body: {
+        html:
+          `<h1>Wide Page</h1>\n` +
+          `<div class="row">\n` +
+          `<hp-card kind="rule" project="${pc.id}" rule="On" width="220"></hp-card>\n` +
+          `<hp-card kind="light" project="${pc.id}" host="127.0.0.1:9" title="Desk"></hp-card>\n` +
+          `</div>`,
+      },
+    });
+    try {
+      const GroupBoard = (await import("./components/board/Board")).default;
+      const c = await draw(<GroupBoard group={group.slug} />, /Wide Page/i);
+      await waitFor(() => expect(c.querySelector(".card-light")).not.toBeNull(), { timeout: 8000 });
+      const tags = [...c.querySelectorAll("hp-card")] as HTMLElement[];
+      const sized = tags.find((t) => t.getAttribute("rule") === "On");
+      expect(sized?.style.width).toBe("220px");
+      expect(sized?.style.display).toBe("inline-block");
+      // And the light is a switch that says what it is doing.
+      expect(c.textContent).toMatch(/Desk/);
+    } finally {
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   it("a page shows the cards it asks for", async () => {
     const group = await api<{ slug: string }>("/api/groups", { body: { title: "tagpage " + Date.now() } });
     const pc = await api<Project>("/api/projects", {

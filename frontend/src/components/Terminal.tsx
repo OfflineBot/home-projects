@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
-import { Field, Modal, Spinner } from "./ui";
+import { Field, Spinner } from "./ui";
 import { api } from "../lib/api";
 import { Screen } from "./Screen";
 
@@ -36,6 +36,7 @@ export function Terminal({
   onLeave,
   title,
   asButton,
+  editing,
 }: {
   /** /api/projects/:id/machines/:name */
   base: string;
@@ -48,6 +49,11 @@ export function Terminal({
   title?: string;
   /** A button on the board; the terminal itself opens over the page. */
   asButton?: boolean;
+  /**
+   * The board is being arranged. Nothing is connected and nothing is asked —
+   * laying out a page is not the moment to be asked for a machine's password.
+   */
+  editing?: boolean;
 }) {
   const [password, setPassword] = useState("");
   const [asking, setAsking] = useState(false);
@@ -85,9 +91,10 @@ export function Terminal({
 
 
   useEffect(() => {
+    if (editing) return;
     if (!inside) void list();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, inside]);
+  }, [base, inside, editing]);
 
   useEffect(() => {
     if (!full) return;
@@ -125,12 +132,52 @@ export function Terminal({
         >
           <Icon name={full ? "x" : "grid"} size={14} />
         </button>
+        {!byAccount ? (
+          <button
+            className="btn ghost icon"
+            aria-label="Password"
+            title="That machine's password"
+            onClick={() => setAsking((a) => !a)}
+          >
+            <Icon name="key" size={14} />
+          </button>
+        ) : null}
         {onLeave && !full ? (
           <button className="btn ghost icon" aria-label="Close" onClick={onLeave}>
             <Icon name="x" size={15} />
           </button>
         ) : null}
       </div>
+
+      {asking ? (
+        <div className="terminal-signin">
+          <Field label="SSH password" required>
+            <input
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                held.current = password;
+                setAsking(false);
+                void list();
+              }}
+            />
+          </Field>
+          <button
+            className="btn primary small"
+            onClick={() => {
+              held.current = password;
+              setAsking(false);
+              void list();
+            }}
+          >
+            Go on
+          </button>
+          <p className="meta">That machine's password, not this server's. Kept while the page is open.</p>
+        </div>
+      ) : null}
 
       {!inside ? (
         sessions === null ? (
@@ -193,6 +240,21 @@ export function Terminal({
     </div>
   );
 
+  // The board is being arranged: a still picture. No socket is opened, nothing
+  // is asked for. Being asked for a machine's password while moving a card
+  // around is the kind of interruption that makes a page not worth arranging.
+  if (editing) {
+    return (
+      <div className="terminal quiet">
+        <div className="terminal-bar">
+          <Icon name="code" size={15} />
+          <strong className="mono">{title ?? (session ? `${machine} · ${session}` : machine)}</strong>
+        </div>
+        <p className="meta">Opens when you leave edit mode.</p>
+      </div>
+    );
+  }
+
   // As a button: one press and the terminal is over the page, full size.
   if (asButton && !opened) {
     return (
@@ -224,45 +286,6 @@ export function Terminal({
       ) : (
         body
       )}
-      {asking ? (
-        <Modal
-          title={machine}
-          onClose={() => setAsking(false)}
-          footer={
-            <>
-              <button className="btn" onClick={() => setAsking(false)}>Cancel</button>
-              <button
-                className="btn primary"
-                onClick={() => {
-                  held.current = password;
-                  setAsking(false);
-                  void list();
-                }}
-              >
-                Go on
-              </button>
-            </>
-          }
-        >
-          <p className="meta" style={{ marginTop: 0 }}>
-            That machine's password, not this server's. Kept while the page is open.
-          </p>
-          <Field label="SSH password" required>
-            <input
-              type="password"
-              autoFocus
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                held.current = password;
-                setAsking(false);
-                void list();
-              }}
-            />
-          </Field>
-        </Modal>
-      ) : null}
     </>
   );
 }

@@ -141,6 +141,16 @@ func (Capability) Cards() []capability.Card {
 			{Name: "rule", Label: "Which rule", Type: "text", Required: true,
 				Hint: "The name it has in that project's rules."},
 		},
+	}, {
+		// A lamp is not a rule: it has a state, and a switch should show it.
+		Name: "light", Title: "A light", Icon: "lightbulb", W: 2, H: 1,
+		Description: "A WLED light: says whether it is on, and one press changes it.",
+		Options: []capability.AccountField{
+			{Name: "projectId", Label: "Project", Type: "project", Required: true},
+			{Name: "host", Label: "Address", Type: "text", Required: true,
+				Placeholder: "192.168.178.60", Hint: "Several, separated by commas, are switched together."},
+			{Name: "title", Label: "Name", Type: "text", Placeholder: "Desk"},
+		},
 	}}
 }
 
@@ -159,6 +169,37 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 			Card: "rule", Title: r.Name, Icon: "play", Detail: "runs this rule", W: 2, H: 1,
 			Options: map[string]any{"projectId": p.ID.String(), "rule": r.Name, "title": r.Name},
 		})
+	}
+	// Every light this project already knows how to speak to is offered as a
+	// switch. The addresses are in the rules; nobody should have to copy one
+	// out of a YAML file to put a lamp on a board.
+	for _, host := range lightsIn(spec) {
+		out = append(out, capability.Offer{
+			Card: "light", Title: host, Icon: "lightbulb", Detail: "on and off", W: 2, H: 1,
+			Options: map[string]any{"projectId": p.ID.String(), "host": host, "title": host},
+		})
+	}
+	return out
+}
+
+// lightsIn collects the WLED addresses named anywhere in a project's rules,
+// each one once, in the order they appear.
+func lightsIn(spec *Spec) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, r := range spec.Rules {
+		for _, a := range r.Actions {
+			if a.Run != "wled" {
+				continue
+			}
+			raw, _ := a.Params["host"].(string)
+			for _, host := range wledHosts(raw) {
+				if !seen[host] {
+					seen[host] = true
+					out = append(out, host)
+				}
+			}
+		}
 	}
 	return out
 }

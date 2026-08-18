@@ -852,8 +852,19 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
    changes colour with the theme — a terminal that does is one you stop
    trusting. */
 .terminal {
-  display: flex; flex-direction: column; height: 100%; min-height: 220px; gap: 8px;
+  /* No height of its own: it fills the card, the slot or the page it was put
+     in. A terminal that insists on 220 pixels inside a card 90 pixels tall is
+     the reason one used to spill over its own board. */
+  display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px;
 }
+.terminal.quiet {
+  border: 1px dashed var(--ctp-surface1); border-radius: 10px; padding: 10px 12px;
+  min-height: 60px; justify-content: center;
+}
+.terminal.quiet .meta { margin: 0; }
+.terminal-signin { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.terminal-signin .field { flex: 1; min-width: 180px; margin: 0; }
+.terminal-signin .meta { flex-basis: 100%; margin: 0; }
 .terminal-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .terminal-screen {
   flex: 1; min-height: 180px; margin: 0; overflow: auto;
@@ -936,7 +947,7 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .list-row a:hover strong { text-decoration: underline; }
 
 /* The terminal proper: xterm fills whatever it is given. */
-.screen { flex: 1; min-height: 220px; background: #11111b; border: 1px solid var(--ctp-surface1); border-radius: 10px; padding: 8px; overflow: hidden; }
+.screen { flex: 1; min-height: 120px; background: #11111b; border: 1px solid var(--ctp-surface1); border-radius: 10px; padding: 8px; overflow: hidden; }
 .screen .xterm { height: 100%; }
 .terminal.full .screen { min-height: 0; }
 
@@ -1042,6 +1053,23 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .palette select { width: auto; }
 /* A card the page asked for, standing in the text. */
 .html-slot { margin: 10px 0; }
+/* A card in a written page is a block, so width, height and any layout around
+   it do what they say. Unknown elements are inline by default, which is why a
+   width on one used to be ignored and everything stacked. */
+.html-inline hp-card { display: block; }
+.html-inline hp-card > .html-slot { margin: 0; height: 100%; }
+.html-inline hp-card .terminal { min-height: 220px; }
+/* Two helpers, so a row of cards does not need a hand-written flexbox every
+   time. Both are usable from written HTML and from the palette. */
+.html-inline .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+.html-inline .row > * { flex: 1 1 220px; min-width: 0; }
+.html-inline .cols {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+}
+@media (max-width: 700px) {
+  .html-inline .cols { grid-template-columns: 1fr; }
+}
 
 /* Adding happens where the cards are. */
 .add-here {

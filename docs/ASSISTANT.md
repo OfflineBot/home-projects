@@ -75,11 +75,28 @@ person.
     <hp-card kind="terminal" project="<project-id>" machine="pc" as="button"></hp-card>
     <hp-card kind="agenda"   project="<project-id>" days="14"></hp-card>
     <hp-card kind="rule"     project="<project-id>" rule="Start PC"></hp-card>
+    <hp-card kind="light"    project="<project-id>" host="192.168.178.60" title="Desk"></hp-card>
     <hp-card kind="links-list" project="<project-id>"></hp-card>
 
 `kind` is the card's name from `GET /api/boards/cards`; every other attribute is
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
+
+**How wide, how tall.** A card is a block and fills the line unless it is told
+otherwise. `width` and `height` do exactly what they say; a bare number is
+pixels, anything else (`50%`, `20rem`) is taken as written:
+
+    <hp-card kind="rule" project="<id>" rule="Start PC" width="220"></hp-card>
+    <hp-card kind="terminal" project="<id>" machine="pc" width="60%" height="320"></hp-card>
+
+For rows there are two classes, so no hand-written flexbox is needed:
+
+    <div class="row">…</div>                          side by side, wrapping
+    <div class="cols" style="--cols:3">…</div>        three equal columns
+
+A terminal is worth giving a height: without one it is as tall as its box, and
+`as="button"` makes it a button that opens the terminal over the page instead —
+usually the better card on a page that is mostly text.
 
 ## 5. The board itself, not only its page
 

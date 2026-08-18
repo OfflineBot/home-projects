@@ -779,6 +779,38 @@ def main() -> int:
     check(bool(vars_after) and any(v["name"] == "online" for v in vars_after["variables"]),
           "the ping action produced a variable")
 
+    # ---------------------------------------------------------------- lights
+    # A lamp is a switch, not a rule: the card reads what the light is doing and
+    # one press changes it. Nothing here has a WLED on the other end, so what is
+    # checked is that it asks properly and fails politely.
+    c.call("GET", f"/api/projects/{system}/automation/light", expect=400)
+    dark = c.call("GET", f"/api/projects/{system}/automation/light?host=127.0.0.1:9")
+    check(bool(dark) and dark["light"]["reachable"] is False and bool(dark.get("note")),
+          "a light that is not answering is said so, not an error page")
+    c.call("POST", f"/api/projects/{system}/automation/light",
+           {"host": "127.0.0.1:9", "power": "toggle"}, expect=502)
+    c.call("POST", f"/api/projects/{system}/automation/light",
+           {"host": "127.0.0.1:9", "brightness": 900}, expect=400)
+    c.call("POST", f"/api/projects/{system}/automation/light", {"host": "127.0.0.1:9"}, expect=400)
+    kinds = c.call("GET", "/api/boards/cards") or {}
+    check(any(k["name"] == "light" for k in kinds.get("cards", [])),
+          "a light is a kind of card the board knows")
+    # Every address a project's rules already speak to is offered as a switch.
+    c.call("PUT", f"/api/projects/{system}/automation/rules", {"rules": [{
+        "name": "check-self", "trigger": {"type": "button"},
+        "actions": [{"run": "ping", "host": "127.0.0.1", "port": 5000, "variable": "online"}],
+    }, {
+        "name": "Start PC", "trigger": {"type": "button"},
+        "actions": [{"run": "ping", "host": "127.0.0.1", "port": 5000, "variable": "online"}],
+    }, {
+        "name": "Lights on", "trigger": {"type": "button"},
+        "actions": [{"run": "wled", "host": "192.168.178.60", "power": "on"}],
+    }]})
+    offered = c.call("GET", f"/api/projects/{system}/offers") or {}
+    check(any(o["card"] == "light" and o["options"].get("host") == "192.168.178.60"
+              for o in offered.get("offers", [])),
+          "a light named in the rules is offered as a switch")
+
     # ------------------------------------------------------------- dashboard
     dash = c.call("GET", "/api/dashboard")
     check(bool(dash) and any(b["group"]["slug"] == gslug for b in dash["groups"]),
