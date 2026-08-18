@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Icon } from "../components/Icon";
 import { Empty, ErrorBox, Field, Menu, Modal, Spinner, useAsk } from "../components/ui";
-import { Terminal } from "../components/Terminal";
+import { Terminal } from "../components/terminal";
 import { api, type Project } from "../lib/api";
 import { useQuery } from "../lib/store";
 

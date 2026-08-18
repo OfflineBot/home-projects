@@ -847,14 +847,11 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
 
 /* ---------------------------------------------------------------- terminal
-   A terminal is the one place where the app should get out of the way: dark,
-   monospace, as large as it is given, and full-screen on demand. It never
-   changes colour with the theme — a terminal that does is one you stop
-   trusting. */
+   One terminal, in three places: the machines page, a card on a board, a tag in
+   a written page. It has no size of its own — it fills what it is given — and
+   it never changes colour with the theme, because a terminal that does is one
+   you stop trusting. */
 .terminal {
-  /* No height of its own: it fills the card, the slot or the page it was put
-     in. A terminal that insists on 220 pixels inside a card 90 pixels tall is
-     the reason one used to spill over its own board. */
   display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px;
 }
 .terminal.quiet {
@@ -862,26 +859,33 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   min-height: 60px; justify-content: center;
 }
 .terminal.quiet .meta { margin: 0; }
+/* The bar does not wrap: in a small card three rows of buttons is the card. The
+   title gives way first. */
+.terminal-bar { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-height: 26px; }
+.terminal-title {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;
+}
+.terminal-bar .btn.icon { flex: none; padding: 4px 6px; }
+
+/* The screen. The emulator is laid inside it rather than sizing it: measuring
+   the box has to give the space the terminal was given, never the space it
+   just asked for. */
+.terminal-screen {
+  position: relative; flex: 1; min-height: 90px; overflow: hidden;
+  background: #11111b; border: 1px solid var(--ctp-surface1); border-radius: 10px;
+  padding: 6px 8px;
+}
+.terminal-xterm { position: absolute; inset: 6px 8px; }
+.terminal-xterm .xterm { height: 100%; }
+.terminal-over {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: rgb(17 17 27 / 0.72); border-radius: 10px;
+}
 .terminal-signin { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 .terminal-signin .field { flex: 1; min-width: 180px; margin: 0; }
 .terminal-signin .meta { flex-basis: 100%; margin: 0; }
-.terminal-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.terminal-screen {
-  flex: 1; min-height: 180px; margin: 0; overflow: auto;
-  background: #11111b; color: #cdd6f4;
-  border: 1px solid var(--ctp-surface1); border-radius: 10px;
-  padding: 12px 14px; white-space: pre; tab-size: 8;
-  font-family: var(--mono); font-size: 13px; line-height: 1.5;
-  scrollbar-width: thin;
-}
-.terminal-type { display: flex; align-items: center; gap: 8px; }
-.terminal-type .prompt { color: var(--ctp-green); }
-.terminal-type input {
-  flex: 1; background: var(--ctp-crust); border: 1px solid var(--ctp-surface1);
-  color: var(--ctp-text); font-size: 13px;
-}
 .terminal-note { color: var(--ctp-peach); }
-.terminal-sessions { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.terminal-sessions { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
 .terminal-session {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0); border-radius: 9px;
@@ -900,7 +904,6 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   height: 100%; background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
   border-radius: 14px; padding: 14px 16px;
 }
-.terminal.full .terminal-screen { font-size: 13.5px; }
 .machine-terminal { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 12px; height: 420px; }
 
 /* Flow: no grid, no coordinates — the cards follow one another and each says
@@ -935,7 +938,6 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   .grid-cell { grid-column: auto !important; grid-row: auto !important; min-height: 120px; }
   .flow-item { flex-basis: 100% !important; }
   .board-bar { gap: 6px; }
-  .terminal-screen { font-size: 12px; }
   .terminal-backdrop { padding: 6px; }
 }
 
@@ -946,10 +948,6 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .list-row a { color: inherit; text-decoration: none; min-width: 0; }
 .list-row a:hover strong { text-decoration: underline; }
 
-/* The terminal proper: xterm fills whatever it is given. */
-.screen { flex: 1; min-height: 120px; background: #11111b; border: 1px solid var(--ctp-surface1); border-radius: 10px; padding: 8px; overflow: hidden; }
-.screen .xterm { height: 100%; }
-.terminal.full .screen { min-height: 0; }
 
 /* The editor: the file, and one line saying whether it is saved. */
 .editor { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; }

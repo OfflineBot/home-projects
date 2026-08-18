@@ -301,7 +301,7 @@ describe("every screen draws something", () => {
     // Two complaints, one card: it must not pop a password box while a page is
     // being laid out, and once a box has been dismissed it has to be possible
     // to get it back.
-    const { Terminal } = await import("./components/Terminal");
+    const { Terminal } = await import("./components/terminal");
     const quiet = await draw(
       <Terminal base="/api/projects/none/machines/pc" machine="pc" editing />,
       /Opens when you leave edit mode/i,
@@ -387,9 +387,11 @@ describe("every screen draws something", () => {
       const GroupBoard = (await import("./components/board/Board")).default;
       const c = await draw(<GroupBoard group={group.slug} />, /Home Main Page/i);
       // The tags have to become the cards, not stay as empty elements.
+      // Each card is loaded when it is first needed, so they do not appear in
+      // the same tick: waiting for one and asserting the other is a race.
       await waitFor(() => expect(c.querySelector(".card-rule")).not.toBeNull(), { timeout: 8000 });
+      await waitFor(() => expect(c.querySelector(".card-project")).not.toBeNull(), { timeout: 8000 });
       expect([...c.querySelectorAll("button")].some((b) => /Start PC/.test(b.textContent ?? ""))).toBe(true);
-      expect(c.querySelector(".card-project")).not.toBeNull();
       expect(c.textContent).not.toMatch(/That project is gone/);
     } finally {
       await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });

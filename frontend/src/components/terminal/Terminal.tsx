@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "./Icon";
-import { Field, Spinner } from "./ui";
-import { api } from "../lib/api";
-import { Screen } from "./Screen";
+import { Icon } from "../Icon";
+import { Field, Spinner } from "../ui";
+import { api } from "../../lib/api";
+import { Emulator } from "./Emulator";
 
 /**
- * A tmux session, to look at and to type into.
+ * A terminal, with everything around it: which session, the password, full
+ * screen, and the emulator in the middle.
  *
- * One component for both places it appears: a card on a board, and the machines
- * page. It fills whatever it is given and can be thrown full-screen, because a
- * terminal in a 300-pixel box is not a terminal.
+ * There is one of these, and every place that shows a terminal uses it — the
+ * machines page, a card on a board, a tag in a hand-written page. That is the
+ * point: a terminal that looks wrong looks wrong in exactly one file, and
+ * fixing it fixes it everywhere. Nothing else may open a socket of its own.
  *
- * What it shows is what tmux draws — capture-pane, character for character, in
- * a monospace block that scrolls with the output and stays at the bottom unless
- * you scroll up yourself. Keys go the other way with send-keys. It is not a
- * terminal emulator and does not claim to be: no colours, no cursor. What it is
- * for is a long-running thing you want to watch and occasionally tell something.
+ * It has no height of its own. It fills what it is given, whether that is a
+ * card, a slot in a page or the whole screen, and it stays usable when what it
+ * is given is small: the bar does not wrap, the title gives way before the
+ * buttons do.
  *
- * The password is asked for once and held here while the page is open. A
- * machine with an account behind it is never asked.
+ * The password is asked for inside the terminal, never over the page, and the
+ * key in the bar asks again at any time — a box that can only be dismissed once
+ * is a box that locks you out.
  */
 
 export interface Session {
@@ -89,7 +91,6 @@ export function Terminal({
     }
   }, [base, call]);
 
-
   useEffect(() => {
     if (editing) return;
     if (!inside) void list();
@@ -107,6 +108,21 @@ export function Terminal({
     return () => window.removeEventListener("keydown", escape);
   }, [full, asButton]);
 
+  const start = async (name: string) => {
+    setLine("");
+    await call(`${base}/tmux-new`, { session: name });
+    await list();
+    setInside(name);
+  };
+
+  const signIn = () => {
+    held.current = password;
+    setAsking(false);
+    void list();
+  };
+
+  const shown = title ?? (inside ? `${machine} · ${inside}` : machine);
+
   const body = (
     <div className={full ? "terminal full" : "terminal"}>
       <div className="terminal-bar">
@@ -115,23 +131,13 @@ export function Terminal({
             <Icon name="chevronLeft" size={15} />
           </button>
         ) : null}
-        <strong className="mono">{title ?? (inside ? `${machine} · ${inside}` : machine)}</strong>
+        <strong className="mono terminal-title">{shown}</strong>
         <span className="grow" />
-        {inside ? (
-          <span className="meta">tmux · {inside}</span>
-        ) : (
+        {!inside ? (
           <button className="btn ghost icon" aria-label="Refresh" onClick={() => void list()}>
             <Icon name="refresh" size={14} />
           </button>
-        )}
-        <button
-          className="btn ghost icon"
-          aria-label={full ? "Leave full screen" : "Full screen"}
-          title={full ? "Escape" : "Full screen"}
-          onClick={() => setFull(!full)}
-        >
-          <Icon name={full ? "x" : "grid"} size={14} />
-        </button>
+        ) : null}
         {!byAccount ? (
           <button
             className="btn ghost icon"
@@ -142,6 +148,14 @@ export function Terminal({
             <Icon name="key" size={14} />
           </button>
         ) : null}
+        <button
+          className="btn ghost icon"
+          aria-label={full ? "Leave full screen" : "Full screen"}
+          title={full ? "Escape" : "Full screen"}
+          onClick={() => setFull(!full)}
+        >
+          <Icon name={full ? "x" : "grid"} size={14} />
+        </button>
         {onLeave && !full ? (
           <button className="btn ghost icon" aria-label="Close" onClick={onLeave}>
             <Icon name="x" size={15} />
@@ -158,21 +172,11 @@ export function Terminal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                held.current = password;
-                setAsking(false);
-                void list();
+                if (e.key === "Enter") signIn();
               }}
             />
           </Field>
-          <button
-            className="btn primary small"
-            onClick={() => {
-              held.current = password;
-              setAsking(false);
-              void list();
-            }}
-          >
+          <button className="btn primary small" onClick={signIn}>
             Go on
           </button>
           <p className="meta">That machine's password, not this server's. Kept while the page is open.</p>
@@ -200,26 +204,11 @@ export function Terminal({
                 value={line}
                 placeholder="name for a new session"
                 onChange={(e) => setLine(e.target.value)}
-                onKeyDown={async (e) => {
-                  if (e.key !== "Enter" || !line.trim()) return;
-                  const name = line.trim();
-                  setLine("");
-                  await call(`${base}/tmux-new`, { session: name });
-                  await list();
-                  setInside(name);
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && line.trim()) void start(line.trim());
                 }}
               />
-              <button
-                className="btn small"
-                disabled={!line.trim()}
-                onClick={async () => {
-                  const name = line.trim();
-                  setLine("");
-                  await call(`${base}/tmux-new`, { session: name });
-                  await list();
-                  setInside(name);
-                }}
-              >
+              <button className="btn small" disabled={!line.trim()} onClick={() => void start(line.trim())}>
                 <Icon name="plus" size={13} /> Start it
               </button>
             </div>
@@ -227,7 +216,7 @@ export function Terminal({
         )
       ) : (
         <>
-          <Screen
+          <Emulator
             base={base}
             session={inside}
             password={held.current}
@@ -248,7 +237,7 @@ export function Terminal({
       <div className="terminal quiet">
         <div className="terminal-bar">
           <Icon name="code" size={15} />
-          <strong className="mono">{title ?? (session ? `${machine} · ${session}` : machine)}</strong>
+          <strong className="mono terminal-title">{shown}</strong>
         </div>
         <p className="meta">Opens when you leave edit mode.</p>
       </div>
@@ -270,22 +259,18 @@ export function Terminal({
     );
   }
 
-  return (
-    <>
-      {full ? (
-        <div
-          className="terminal-backdrop"
-          onClick={(e) => {
-            if (e.target !== e.currentTarget) return;
-            setFull(false);
-            if (asButton) setOpened(false);
-          }}
-        >
-          {body}
-        </div>
-      ) : (
-        body
-      )}
-    </>
+  return full ? (
+    <div
+      className="terminal-backdrop"
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return;
+        setFull(false);
+        if (asButton) setOpened(false);
+      }}
+    >
+      {body}
+    </div>
+  ) : (
+    body
   );
 }

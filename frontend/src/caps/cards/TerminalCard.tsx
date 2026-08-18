@@ -1,4 +1,4 @@
-import { Terminal } from "../../components/Terminal";
+import { Terminal } from "../../components/terminal";
 import { useQuery } from "../../lib/store";
 import type { CardProps } from "../../components/board/cards";
 
