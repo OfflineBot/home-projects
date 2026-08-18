@@ -758,6 +758,21 @@ def main() -> int:
         runs = c.call("GET", f"/api/schedulers/{sid}/runs")
         check(bool(runs) and len(runs["runs"]) >= 1, "the run is in the log")
         c.call("GET", "/api/runs")
+
+    # The lecture timetable the old server kept: a scheduler kind like any
+    # other. Whether the university answers is not this test's business — that
+    # it is offered, can be set up, and says what it is missing, is.
+    kinds = (c.call("GET", "/api/schedulers") or {}).get("kinds", [])
+    check(any(k["name"] == "timetable" for k in kinds), "the timetable is one of the scheduler kinds")
+    plan = c.call("POST", "/api/schedulers", {
+        "projectId": cal, "kind": "timetable", "title": "sweep-timetable",
+        "schedule": "manual", "options": {},
+    }, expect=201)
+    if plan:
+        failed = c.call("POST", f"/api/schedulers/{plan['id']}/run", expect=(200, 502)) or {}
+        said = json.dumps(failed)
+        check("course" in said, "a timetable without a course says which course it wants")
+        c.call("DELETE", f"/api/schedulers/{plan['id']}")
         c.call("DELETE", f"/api/schedulers/{sid}")
     if f:
         c.call("DELETE", f"/api/filters/{f['id']}")
@@ -869,6 +884,12 @@ def main() -> int:
     c.call("POST", f"/api/projects/{system}/automation/light",
            {"host": "127.0.0.1:9", "brightness": 900}, expect=400)
     c.call("POST", f"/api/projects/{system}/automation/light", {"host": "127.0.0.1:9"}, expect=400)
+    # The old server could set a colour; so can this one, and a colour that is
+    # not one is refused before anything is sent.
+    c.call("POST", f"/api/projects/{system}/automation/light",
+           {"host": "127.0.0.1:9", "color": "#ff8800"}, expect=502)
+    c.call("POST", f"/api/projects/{system}/automation/light",
+           {"host": "127.0.0.1:9", "color": "not-a-colour"}, expect=400)
     kinds = c.call("GET", "/api/boards/cards") or {}
     check(any(k["name"] == "light" for k in kinds.get("cards", [])),
           "a light is a kind of card the board knows")

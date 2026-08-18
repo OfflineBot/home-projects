@@ -3,6 +3,13 @@ import { Icon } from "../../components/Icon";
 import { api } from "../../lib/api";
 import type { CardProps } from "../../components/board/cards";
 
+interface Light {
+  on: boolean;
+  brightness: number;
+  color?: string;
+  reachable: boolean;
+}
+
 /**
  * A light, as a switch.
  *
@@ -19,19 +26,21 @@ export default function LightCard({ options, editing }: CardProps) {
   const name = String(options.title ?? "") || host;
   const [on, setOn] = useState<boolean | null>(null);
   const [bright, setBright] = useState(128);
+  const [colour, setColour] = useState("#b4befe");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
   const read = useCallback(async () => {
     if (!project || !host) return;
     try {
-      const answer = await api<{ light: { on: boolean; brightness: number; reachable: boolean }; note?: string }>(
+      const answer = await api<{ light: Light; note?: string }>(
         `/api/projects/${project}/automation/light?host=${encodeURIComponent(host)}`,
         { method: "GET" },
       );
       if (answer.light?.reachable) {
         setOn(answer.light.on);
         if (answer.light.brightness > 0) setBright(answer.light.brightness);
+        if (answer.light.color) setColour(answer.light.color);
         setNote("");
       } else {
         setOn(null);
@@ -54,13 +63,14 @@ export default function LightCard({ options, editing }: CardProps) {
   const send = async (body: Record<string, unknown>) => {
     setBusy(true);
     try {
-      const answer = await api<{ light: { on: boolean; brightness: number; reachable: boolean }; note?: string }>(
+      const answer = await api<{ light: Light; note?: string }>(
         `/api/projects/${project}/automation/light`,
         { body: { host, ...body } },
       );
       if (answer.light?.reachable) {
         setOn(answer.light.on);
         if (answer.light.brightness > 0) setBright(answer.light.brightness);
+        if (answer.light.color) setColour(answer.light.color);
         setNote("");
       } else setNote(answer.note || "not answering");
     } catch (err) {
@@ -85,20 +95,32 @@ export default function LightCard({ options, editing }: CardProps) {
         <span className="grow">{name}</span>
         <span className="light-state">{on === null ? "—" : on ? "on" : "off"}</span>
       </button>
-      <input
-        className="light-bright"
-        type="range"
-        min={1}
-        max={255}
-        value={bright}
-        disabled={busy || editing}
-        aria-label="Brightness"
-        onChange={(e) => setBright(Number(e.target.value))}
-        onPointerUp={() => void send({ brightness: bright })}
-        onKeyUp={(e) => {
-          if (e.key.startsWith("Arrow")) void send({ brightness: bright });
-        }}
-      />
+      <div className="light-knobs">
+        <input
+          className="light-colour"
+          type="color"
+          value={colour}
+          disabled={busy || editing}
+          aria-label="Colour"
+          title="Colour"
+          onChange={(e) => setColour(e.target.value)}
+          onBlur={() => void send({ color: colour })}
+        />
+        <input
+          className="light-bright"
+          type="range"
+          min={1}
+          max={255}
+          value={bright}
+          disabled={busy || editing}
+          aria-label="Brightness"
+          onChange={(e) => setBright(Number(e.target.value))}
+          onPointerUp={() => void send({ brightness: bright })}
+          onKeyUp={(e) => {
+            if (e.key.startsWith("Arrow")) void send({ brightness: bright });
+          }}
+        />
+      </div>
       {note ? <div className="meta bad">{note}</div> : null}
     </div>
   );

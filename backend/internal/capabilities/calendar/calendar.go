@@ -311,6 +311,19 @@ func (c Capability) SchedulerKinds() []capability.SchedulerKind {
 			{Name: "name", Label: "Name for the file it writes", Type: "text"},
 		},
 		Run: runICSSubscription,
+	}, {
+		// The university publishes the schedule; this brings it in as one of
+		// the project's calendars. No login: it is a public timetable.
+		Name:        "timetable",
+		Title:       "Lecture timetable",
+		Description: "Fetches a course's lectures from dhbw.app and keeps them as a read-only calendar — with the room, the lecturer and the exams.",
+		Options: []capability.AccountField{
+			{Name: "course", Label: "Course", Type: "text", Required: true,
+				Placeholder: "RV-WDS125", Hint: "The way it is written on dhbw.app."},
+			{Name: "name", Label: "Name for the file it writes", Type: "text", Placeholder: "timetable"},
+			{Name: "weeksBack", Label: "Weeks of history to keep", Type: "text", Placeholder: "4"},
+		},
+		Run: runTimetable,
 	}}
 }
 

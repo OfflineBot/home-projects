@@ -26,9 +26,10 @@ import (
 
 // lightState is what WLED says about itself, in the two words that matter here.
 type lightState struct {
-	On         bool `json:"on"`
-	Brightness int  `json:"brightness"`
-	Reachable  bool `json:"reachable"`
+	On         bool   `json:"on"`
+	Brightness int    `json:"brightness"`
+	Colour     string `json:"color,omitempty"`
+	Reachable  bool   `json:"reachable"`
 }
 
 func wledAddress(host string) string {
@@ -73,11 +74,19 @@ func wledRead(ctx context.Context, host string) (lightState, error) {
 	var said struct {
 		On  bool `json:"on"`
 		Bri int  `json:"bri"`
+		Seg []struct {
+			Col [][]int `json:"col"`
+		} `json:"seg"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&said); err != nil {
 		return lightState{}, fmt.Errorf("%s answered something that is not WLED", host)
 	}
-	return lightState{On: said.On, Brightness: said.Bri, Reachable: true}, nil
+	colour := ""
+	if len(said.Seg) > 0 && len(said.Seg[0].Col) > 0 && len(said.Seg[0].Col[0]) >= 3 {
+		rgb := said.Seg[0].Col[0]
+		colour = fmt.Sprintf("#%02x%02x%02x", rgb[0], rgb[1], rgb[2])
+	}
+	return lightState{On: said.On, Brightness: said.Bri, Colour: colour, Reachable: true}, nil
 }
 
 func wledWrite(ctx context.Context, host string, state map[string]any) error {
@@ -135,6 +144,7 @@ func mountLights(r fiber.Router) {
 			Host       string `json:"host"`
 			Power      string `json:"power"`
 			Brightness *int   `json:"brightness"`
+			Colour     string `json:"color"`
 		}
 		if err := ctx.BodyParser(&in); err != nil {
 			return httpx.BadRequest("that is not a light to switch")
@@ -162,8 +172,19 @@ func mountLights(r fiber.Router) {
 				state["on"] = true
 			}
 		}
+		if colour := strings.TrimSpace(in.Colour); colour != "" {
+			rgb, err := parseColour(colour)
+			if err != nil {
+				return httpx.BadRequest("%v", err)
+			}
+			state["seg"] = []any{map[string]any{"col": []any{rgb}}}
+			// A colour asked for while it is off means: on, in that colour.
+			if _, said := state["on"]; !said {
+				state["on"] = true
+			}
+		}
 		if len(state) == 0 {
-			return httpx.BadRequest("nothing to change — say on, off, toggle or a brightness")
+			return httpx.BadRequest("nothing to change — say on, off, toggle, a brightness or a colour")
 		}
 		for _, host := range hosts {
 			if err := wledWrite(ctx.UserContext(), host, state); err != nil {

@@ -27,6 +27,7 @@ own route table, not from memory.
 | Moodle import | the `moodle` capability | `capabilities/moodle` |
 | `/notes` | the `markdown` capability, with backlinks | `capabilities/markdown` |
 | `/pc` wake, state, ssh, tmux | the `machines` capability | `capabilities/machines` |
+| `/dhbw/timetable` | a `timetable` scheduler on a calendar project | `capabilities/calendar/timetable.go` |
 | `/lights` on, off, colour | the `automation` capability and its light card | `capabilities/automation` |
 | `/admin` schedulers, locks | schedulers, accounts | `internal/scheduler`, `internal/accounts` |
 | client error reporting | same | `internal/api/clienterrors.go` |
@@ -40,9 +41,9 @@ are worked through in this order.
 | Missing | What it was | Status |
 | --- | --- | --- |
 | live updates | `/lights/events`, `/mail/stream` — the browser was told, not asked | done: `GET /api/events` |
-| lights: colour | the old page set a colour, not only on and off | open |
+| lights: colour | the old page set a colour, not only on and off | done: on the light card |
 | web push | VAPID, subscribe, a notification on the phone | open |
-| timetable | the Rapla scrape that filled the DHBW calendar | open |
+| timetable | the Rapla scrape that filled the DHBW calendar | done: a `timetable` scheduler |
 | whiteboards | a drawing per note | open |
 | mensa | the canteen menu of the day | open |
 | lecturers | who teaches what, from the DHBW pages | open |
