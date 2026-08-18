@@ -143,7 +143,13 @@ export function Grid({
           className={drag?.id === card.id ? "grid-cell dragging" : "grid-cell"}
           style={
             free
-              ? { position: "absolute", left: card.x, top: card.y, width: card.w, height: card.h }
+              ? {
+                  position: "absolute",
+                  left: card.x,
+                  top: card.y,
+                  width: Math.max(120, card.w),
+                  height: Math.max(60, card.h),
+                }
               : {
                   gridColumn: `${card.x + 1} / span ${card.w}`,
                   gridRow: `${card.y + 1} / span ${card.h}`,

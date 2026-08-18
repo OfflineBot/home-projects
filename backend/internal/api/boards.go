@@ -131,6 +131,14 @@ func (s *Server) mountBoards(r fiber.Router) {
 		if err := s.Store.UpdateTab(c.UserContext(), id, patch); err != nil {
 			return httpx.Internal("the tab could not be changed").WithCause(err)
 		}
+		// Changing how a tab lays out changes what its numbers mean: columns on
+		// a grid, pixels on a free surface. Cards that were already there are
+		// converted, or they would sit two pixels wide and look like nothing.
+		if in.Layout != nil {
+			if err := s.rescale(c, id, *in.Layout); err != nil {
+				return err
+			}
+		}
 		return httpx.OK(c)
 	})
 
@@ -156,7 +164,8 @@ func (s *Server) mountBoards(r fiber.Router) {
 		if in.TabID == uuid.Nil {
 			return httpx.BadRequest("A card sits on a tab.")
 		}
-		if _, err := s.boardOfTab(c, in.TabID); err != nil {
+		tab, err := s.tabByID(c, in.TabID)
+		if err != nil {
 			return err
 		}
 		if !capability.CardExists(in.Kind) {
@@ -165,6 +174,10 @@ func (s *Server) mountBoards(r fiber.Router) {
 		if err := checkVisibility(in.Visibility); err != nil {
 			return err
 		}
+		// A free surface measures in pixels. A card arriving with grid numbers
+		// there would be two pixels wide — which is how a button ends up
+		// "not showing" while everything about it is right.
+		in.W, in.H = sizeFor(&tab, in.W, in.H)
 		card, err := s.Store.CreateCard(c.UserContext(), in)
 		if err != nil {
 			return httpx.Internal("the card could not be made").WithCause(err)
@@ -307,13 +320,19 @@ func (s *Server) mountBoards(r fiber.Router) {
 			if x+w > 12 {
 				x, y = 0, y+2
 			}
+			// The same on a free surface: what is placed has to be visible.
+			placedW, placedH := sizeFor(&tab, w, h)
+			placedX, placedY := x, y
+			if tab.Layout == "free" {
+				placedX, placedY = x*COLUMN, y*ROW
+			}
 			body, merr := json.Marshal(options)
 			if merr != nil {
 				return merr
 			}
 			if _, err := s.Store.CreateCard(ctx, model.BoardCard{
 				TabID: tab.ID, Kind: kind, Options: body, Visibility: "private",
-				X: x, Y: y, W: w, H: h,
+				X: placedX, Y: placedY, W: placedW, H: placedH,
 			}); err != nil {
 				return err
 			}
@@ -739,4 +758,87 @@ func cardAsHTML(card model.BoardCard) string {
 	}
 	sort.Strings(attrs)
 	return "<hp-card " + strings.Join(attrs, " ") + "></hp-card>"
+}
+
+// A column and a row, in pixels: what the grid is worth on a free surface.
+const (
+	COLUMN = 96
+	ROW    = 100
+)
+
+// sizeFor turns grid numbers into pixels when the tab is a free surface, and
+// leaves them alone otherwise.
+//
+// The heuristic is safe because the two scales cannot be confused: nothing on a
+// free surface is meant to be twelve pixels wide, and nothing on a grid is
+// meant to be two hundred columns.
+func sizeFor(tab *model.BoardTab, w, h int) (int, int) {
+	if tab == nil || tab.Layout != "free" {
+		return w, h
+	}
+	if w <= 0 {
+		w = 3
+	}
+	if h <= 0 {
+		h = 2
+	}
+	if w <= 12 {
+		w *= COLUMN
+	}
+	if h <= 12 {
+		h *= ROW
+	}
+	return w, h
+}
+
+// tabByID is the tab itself, once the caller has been allowed to build it.
+func (s *Server) tabByID(c *fiber.Ctx, id uuid.UUID) (model.BoardTab, error) {
+	board, err := s.boardOfTab(c, id)
+	if err != nil {
+		return model.BoardTab{}, err
+	}
+	for _, tab := range board.Tabs {
+		if tab.ID == id {
+			return tab, nil
+		}
+	}
+	return model.BoardTab{}, httpx.NotFound("There is no such tab.")
+}
+
+// rescale converts the cards of a tab when its layout changes between the grid
+// and the free surface.
+func (s *Server) rescale(c *fiber.Ctx, tabID uuid.UUID, layout string) error {
+	board, err := s.boardOfTab(c, tabID)
+	if err != nil {
+		return err
+	}
+	var tab *model.BoardTab
+	for i := range board.Tabs {
+		if board.Tabs[i].ID == tabID {
+			tab = &board.Tabs[i]
+		}
+	}
+	if tab == nil {
+		return nil
+	}
+	ctx := c.UserContext()
+	for _, card := range tab.Cards {
+		x, y, w, h := card.X, card.Y, card.W, card.H
+		switch {
+		case layout == "free" && w <= 12 && h <= 12:
+			x, y, w, h = x*COLUMN, y*ROW, w*COLUMN, h*ROW
+		case layout != "free" && (w > 12 || h > 12):
+			x, y = x/COLUMN, y/ROW
+			w, h = max(1, w/COLUMN), max(1, h/ROW)
+			if w > 12 {
+				w = 12
+			}
+		default:
+			continue
+		}
+		if err := s.Store.UpdateCard(ctx, card.ID, store.CardPatch{X: &x, Y: &y, W: &w, H: &h}); err != nil {
+			return httpx.Internal("the cards could not be converted").WithCause(err)
+		}
+	}
+	return nil
 }

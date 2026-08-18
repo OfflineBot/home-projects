@@ -1031,6 +1031,28 @@ def main() -> int:
 
         # A free surface: pixels, and nothing snaps them anywhere.
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "free"})
+        # A card put on a free surface with grid numbers would be two pixels
+        # wide, which is how a working button "does not show".
+        small = c.call("POST", "/api/boards/cards", {
+            "tabId": tab, "kind": "text", "options": {"text": "small"}, "x": 0, "y": 0, "w": 2, "h": 1,
+        }, expect=201)
+        check(bool(small) and small["w"] > 100, "a card on a free surface is measured in pixels")
+        if small:
+            c.call("DELETE", f"/api/boards/cards/{small['id']}")
+
+        # And what was already on the tab is converted when the layout changes.
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "grid"})
+        was_grid = c.call("POST", "/api/boards/cards", {
+            "tabId": tab, "kind": "heading", "options": {"title": "converted"}, "x": 0, "y": 0, "w": 6, "h": 1,
+        }, expect=201)
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "free"})
+        converted = next((x for t in (c.call("GET", f"/api/boards?group={gslug}") or {}).get("tabs", [])
+                          for x in t["cards"] if was_grid and x["id"] == was_grid["id"]), None)
+        check(bool(converted) and converted["w"] > 100, "and cards already there are converted with it")
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "free"})
+        if was_grid:
+            c.call("DELETE", f"/api/boards/cards/{was_grid['id']}")
+
         loose = c.call("POST", "/api/boards/cards", {
             "tabId": tab, "kind": "html",
             "options": {"html": "<h2>A page</h2>", "mode": "inline"},

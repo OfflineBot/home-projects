@@ -257,6 +257,44 @@ describe("every screen draws something", () => {
     }
   });
 
+  // A button that runs a rule: it has to be drawn, and pressing it has to say
+  // what happened. This is the card that was reported as not showing at all.
+  it("a rule is a button on the board", async () => {
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "btn " + Date.now() } });
+    const pc = await api<Project>("/api/projects", {
+      body: { title: "pc", groupId: group.slug, preset: "machines" },
+    });
+    await api(`/api/projects/${pc.id}/automation/rules`, {
+      method: "PUT",
+      body: {
+        rules: [{ name: "Start PC", trigger: { type: "button" },
+                  actions: [{ run: "wol", mac: "aa:bb:cc:dd:ee:ff" }] }],
+      },
+    });
+    const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
+    const card = await api<{ id: string }>("/api/boards/cards", {
+      body: {
+        tabId: board.tabs[0].id, kind: "rule",
+        options: { projectId: pc.id, rule: "Start PC", title: "Start PC" },
+        x: 0, y: 0, w: 2, h: 1,
+      },
+    });
+    try {
+      const c = await draw(<Dashboard />, /Start PC/i);
+      const button = [...c.querySelectorAll("button")].find((b) => /Start PC/.test(b.textContent ?? ""));
+      expect(button).toBeTruthy();
+      fireEvent.click(button!);
+      // It says what it did — a button that reports nothing is not trusted twice.
+      await waitFor(() => expect(c.querySelector(".card-rule .meta")?.textContent ?? "").not.toBe(""), {
+        timeout: 8000,
+      });
+    } finally {
+      await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   // A page is not a picture: a value in braces is the number as it is now.
   it("a page fills in live values", async () => {
     const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
