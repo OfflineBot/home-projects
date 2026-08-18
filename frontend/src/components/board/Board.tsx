@@ -904,6 +904,33 @@ function TabSettings({
         <input value={title} autoFocus onChange={(e) => setTitle(e.target.value)} />
       </Field>
 
+      {layout !== "page" && tab.cards.length > 0 ? (
+        <div className="notice">
+          <strong>Turn this into one page.</strong> The cards become tags in a document you can then
+          write by hand — nothing is lost, and they keep working.
+          <div style={{ marginTop: 8 }}>
+            <button
+              className="btn small"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await api(`/api/boards/tabs/${tab.id}/as-html`, { body: {} });
+                  onSaved();
+                } catch (err) {
+                  setError(err as Error);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Icon name="code" size={14} /> Make it a page
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <Field label="Icon">
         <div className="swatches">
           {(meta?.icons ?? ["grid", "code", "calendar", "server", "notebook", "link", "zap"]).map((name) => (
@@ -926,12 +953,15 @@ function TabSettings({
       </Field>
 
       <div className="row">
-        <Field label="Cards are" hint="A grid is placed by hand; a page lets them follow one another.">
+        <Field
+          label="Cards are"
+          hint="A page is HTML you write yourself — cards can stand inside it with <hp-card>."
+        >
           <select value={layout} onChange={(e) => setLayout(e.target.value as "grid" | "flow")}>
             <option value="grid">placed on a grid</option>
             <option value="flow">one after another</option>
             <option value="free">wherever you put them</option>
-            <option value="page">one page, written by hand</option>
+            <option value="page">one page of HTML — cards may stand in it</option>
           </select>
         </Field>
         <Field label="Page width">

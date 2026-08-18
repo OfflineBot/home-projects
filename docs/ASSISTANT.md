@@ -96,6 +96,12 @@ work in cards as well as in HTML.
     POST /api/boards/<board>/tabs        { title, icon }
     PATCH /api/boards/tabs/<id>          { title, icon, layout, style }
     POST /api/boards/<board>/fill        put what the projects report on it
+    POST /api/boards/tabs/<id>/as-html   turn its cards into one page of HTML
+
+The last one is worth knowing: cards and HTML are not two systems. A tab full of
+cards becomes one document in which the cards stand as `<hp-card>` tags and the
+numbers as `{{…}}` — after that it is written like any other page, by hand or by
+you, and it still works.
 
 A card sits on a twelve-column grid: `x` 0…11, `w` up to 12, `h` in rows of
 about 92 pixels. A tab whose `layout` is `free` takes pixels instead, and one

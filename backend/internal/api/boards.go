@@ -3,6 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -217,6 +220,59 @@ func (s *Server) mountBoards(r fiber.Router) {
 			return httpx.NotFound("There is no such card.")
 		}
 		return httpx.OK(c)
+	})
+
+	// Turning a tab into the page it already is.
+	//
+	// Cards and HTML were two ways of saying the same thing, and having both
+	// beside each other was the confusion. This makes one out of the other: the
+	// cards become <hp-card> tags in a document that can then be written by
+	// hand, or by an assistant. Nothing is lost — every card keeps its options,
+	// and the tags draw the same components.
+	g.Post("/tabs/:tab/as-html", func(c *fiber.Ctx) error {
+		id, err := uuid.Parse(c.Params("tab"))
+		if err != nil {
+			return httpx.BadRequest("That is not a tab id.")
+		}
+		board, err := s.boardOfTab(c, id)
+		if err != nil {
+			return err
+		}
+		var tab *model.BoardTab
+		for i := range board.Tabs {
+			if board.Tabs[i].ID == id {
+				tab = &board.Tabs[i]
+			}
+		}
+		if tab == nil {
+			return httpx.NotFound("There is no such tab.")
+		}
+		if tab.Layout == "page" {
+			return c.JSON(fiber.Map{"already": true})
+		}
+
+		ctx := c.UserContext()
+		page := cardsAsHTML(tab)
+		for _, card := range tab.Cards {
+			if err := s.Store.DeleteCard(ctx, card.ID); err != nil {
+				return httpx.Internal("the cards could not be folded in").WithCause(err)
+			}
+		}
+		options, merr := json.Marshal(map[string]any{"html": page, "mode": "inline"})
+		if merr != nil {
+			return httpx.Internal("the page could not be written").WithCause(merr)
+		}
+		if _, err := s.Store.CreateCard(ctx, model.BoardCard{
+			TabID: tab.ID, Kind: "html", Options: options, Visibility: "private",
+			X: 0, Y: 0, W: 12, H: 8,
+		}); err != nil {
+			return httpx.Internal("the page could not be written").WithCause(err)
+		}
+		layout := "page"
+		if err := s.Store.UpdateTab(ctx, tab.ID, store.TabPatch{Layout: &layout}); err != nil {
+			return httpx.Internal("the tab could not be turned into a page").WithCause(err)
+		}
+		return c.JSON(fiber.Map{"html": page, "cards": len(tab.Cards)})
 	})
 
 	// A board that starts empty is a board nobody fills in. This puts what is
@@ -583,4 +639,104 @@ func (s *Server) mountHere(r fiber.Router) {
 			"icon": g.Icon, "color": g.Color,
 		})
 	})
+}
+
+// cardsAsHTML writes the cards of a tab out as a document.
+//
+// The order is the order they lie in, and the width they had becomes the width
+// they take: a card that filled half the grid fills half the page. What it
+// produces is meant to be edited afterwards — it is a starting point in the
+// person's own hands, not a generated file to leave alone.
+func cardsAsHTML(tab *model.BoardTab) string {
+	rows := map[int][]model.BoardCard{}
+	order := []int{}
+	for _, card := range tab.Cards {
+		if _, seen := rows[card.Y]; !seen {
+			order = append(order, card.Y)
+		}
+		rows[card.Y] = append(rows[card.Y], card)
+	}
+	sort.Ints(order)
+
+	var out strings.Builder
+	for _, y := range order {
+		line := rows[y]
+		sort.Slice(line, func(i, j int) bool { return line[i].X < line[j].X })
+		if len(line) > 1 {
+			out.WriteString("<div style=\"display:flex;gap:16px;flex-wrap:wrap\">\n")
+		}
+		for _, card := range line {
+			piece := cardAsHTML(card)
+			if len(line) > 1 {
+				width := card.W
+				if width <= 0 || width > 12 {
+					width = 3
+				}
+				out.WriteString("  <div style=\"flex:" + strconv.Itoa(width) +
+					";min-width:220px\">" + piece + "</div>\n")
+				continue
+			}
+			out.WriteString(piece + "\n")
+		}
+		if len(line) > 1 {
+			out.WriteString("</div>\n")
+		}
+	}
+	return out.String()
+}
+
+func cardAsHTML(card model.BoardCard) string {
+	var options map[string]any
+	_ = json.Unmarshal(card.Options, &options)
+
+	switch card.Kind {
+	case "html":
+		if text, ok := options["html"].(string); ok {
+			return text
+		}
+		return ""
+	case "heading":
+		if title, ok := options["title"].(string); ok {
+			return "<h2>" + title + "</h2>"
+		}
+		return ""
+	case "text":
+		if text, ok := options["text"].(string); ok {
+			// Markdown was the card's language; a page speaks HTML, and the
+			// smallest honest translation is a paragraph per line.
+			lines := strings.Split(strings.TrimSpace(text), "\n")
+			var out strings.Builder
+			for _, line := range lines {
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				out.WriteString("<p>" + strings.TrimPrefix(strings.TrimPrefix(line, "## "), "# ") + "</p>")
+			}
+			return out.String()
+		}
+		return ""
+	case "number", "status":
+		if name, ok := options["variable"].(string); ok {
+			title, _ := options["title"].(string)
+			if title == "" {
+				title = name
+			}
+			return "<p>" + title + ": <strong>{{" + name + "}}</strong></p>"
+		}
+		return ""
+	}
+
+	attrs := []string{"kind=\"" + card.Kind + "\""}
+	for key, raw := range options {
+		if key == "title" || raw == nil || raw == "" {
+			continue
+		}
+		name := key
+		if key == "projectId" {
+			name = "project"
+		}
+		attrs = append(attrs, name+"=\""+strings.ReplaceAll(fmt.Sprint(raw), "\"", "&quot;")+"\"")
+	}
+	sort.Strings(attrs)
+	return "<hp-card " + strings.Join(attrs, " ") + "></hp-card>"
 }

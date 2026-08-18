@@ -1014,6 +1014,21 @@ def main() -> int:
         for placed in [x for t in after_fill.get("tabs", []) for x in t["cards"]]:
             c.call("DELETE", f"/api/boards/cards/{placed['id']}")
 
+        # Cards and HTML are one thing: what lies on the board becomes the page
+        # it already was, and the cards keep working as tags in it.
+        c.call("POST", f"/api/boards/{board['id']}/fill?tab={tab}", {})
+        turned = c.call("POST", f"/api/boards/tabs/{tab}/as-html", {})
+        check(bool(turned) and "<hp-card" in turned.get("html", ""),
+              "a board turns into the page it already was")
+        check("{{" in turned.get("html", ""), "and its numbers become live values in that page")
+        as_page = c.call("GET", f"/api/boards?group={gslug}") or {}
+        first = as_page["tabs"][0]
+        check(first.get("layout") == "page" and [x["kind"] for x in first["cards"]] == ["html"],
+              "and the tab is that one page afterwards")
+        for placed in first["cards"]:
+            c.call("DELETE", f"/api/boards/cards/{placed['id']}")
+        c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "grid"})
+
         # A free surface: pixels, and nothing snaps them anywhere.
         c.call("PATCH", f"/api/boards/tabs/{tab}", {"layout": "free"})
         loose = c.call("POST", "/api/boards/cards", {
