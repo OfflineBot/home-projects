@@ -1033,3 +1033,12 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   .page-editor-panes { grid-template-columns: 1fr; }
   .page-preview { min-height: 200px; }
 }
+
+/* What can be dropped into a page. */
+.palette {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  border: 1px solid var(--ctp-surface0); border-radius: 10px; padding: 8px 10px;
+}
+.palette select { width: auto; }
+/* A card the page asked for, standing in the text. */
+.html-slot { margin: 10px 0; }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CardProps } from "./cards";
+import { createPortal } from "react-dom";
+import { Suspense } from "react";
+import { cardViews, format, type CardProps } from "./cards";
 
 /**
  * A piece of a page, written by hand.
@@ -16,8 +18,11 @@ import type { CardProps } from "./cards";
  *
  * A board is somebody's own page, and this is what makes it one.
  */
-export default function HtmlCard({ options }: CardProps) {
-  const source = String(options.html ?? "");
+export default function HtmlCard({ options, value, projects, editing }: CardProps) {
+  // A page is not a picture of the system: {{dhbw/noten.average}} is the
+  // number as it is now, and <hp-card …> is a real card in the middle of the
+  // text. Both are why a hand-written page stays alive.
+  const source = fill(String(options.html ?? ""), value);
   const frame = String(options.mode ?? "inline") === "frame";
   const holder = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(0);
@@ -50,6 +55,25 @@ export default function HtmlCard({ options }: CardProps) {
     return <div className="meta">Nothing written yet — open this card's settings.</div>;
   }
 
+  // Where a page asked for a card, the card is mounted into that spot.
+  const [slots, setSlots] = useState<{ node: Element; kind: string; options: Record<string, string> }[]>([]);
+  const page = useRef<HTMLDivElement>(null);
+  const cleaned = useMemo(() => (frame ? "" : clean(source)), [source, frame]);
+
+  useEffect(() => {
+    if (frame || !page.current) return;
+    const found = [...page.current.querySelectorAll("hp-card")].map((node) => {
+      const options: Record<string, string> = {};
+      for (const attr of [...node.attributes]) options[attr.name] = attr.value;
+      const kind = options.kind ?? "";
+      delete options.kind;
+      // A card brought from the page keeps its own box; the page decides where.
+      node.innerHTML = "";
+      return { node, kind, options };
+    });
+    setSlots(found);
+  }, [cleaned, frame]);
+
   if (frame) {
     return (
       <iframe
@@ -67,7 +91,50 @@ export default function HtmlCard({ options }: CardProps) {
     );
   }
 
-  return <div className="html-inline" dangerouslySetInnerHTML={{ __html: clean(source) }} />;
+  return (
+    <>
+      <div className="html-inline" ref={page} dangerouslySetInnerHTML={{ __html: cleaned }} />
+      {slots.map((slot, i) => {
+        const View = cardViews[slot.kind];
+        if (!View) return null;
+        return createPortal(
+          <Suspense fallback={null}>
+            <div className="card html-slot">
+              <View
+                options={{ ...slot.options, projectId: slot.options.project ?? slot.options.projectId }}
+                value={value}
+                projects={projects}
+                editing={editing}
+              />
+            </div>
+          </Suspense>,
+          slot.node,
+          `slot-${i}`,
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * {{group/project.variable}} becomes what that variable says right now.
+ *
+ * The braces are the whole language on purpose: an assistant writing a page
+ * should not have to learn a template engine, and a person reading the source
+ * should be able to guess what it does.
+ */
+export function fill(html: string, value: CardProps["value"]): string {
+  return html.replace(/\{\{([^}]+)\}\}/g, (whole, reference: string) => {
+    const name = reference.trim();
+    // "group/project.variable" or "project.variable" — the group is optional
+    // because a board usually lives in one.
+    const [head, ...rest] = name.split("/");
+    const variable = rest.length ? rest.join("/") : head;
+    const found = value(variable);
+    if (found === undefined) return whole;
+    const shown = format(found.value);
+    return found.unit ? `${shown} ${found.unit}` : shown;
+  });
 }
 
 function readTheme() {

@@ -51,7 +51,37 @@ limit is two megabytes.
       -H "Content-Type: application/json" \
       -d '{"html":"<h1>Hallo</h1><p>Von einem Programm geschrieben.</p>"}'
 
-## 4. What may be in that HTML
+## 4. A page is not a picture: live values and real cards
+
+Two things inside the HTML are replaced when the page is drawn, and they are
+what make a hand-written page worth writing.
+
+**A value, in double braces.** The name is `project-slug.variable`, optionally
+with its group in front:
+
+    <p>Schnitt: <strong>{{noten.average}}</strong></p>
+    <p>Ungelesen: {{mail.inbox}}</p>
+
+Whatever the project reports is put there when somebody looks. A name that does
+not exist is left as it stands, so a typo is visible rather than silent.
+
+Which names exist: `GET /api/projects/<id>/offers` lists everything a project
+has to offer, ready to use — that is the same list the interface offers a
+person.
+
+**A card, as a tag.** Anything the board can draw can stand in the text:
+
+    <hp-card kind="machine"  project="<project-id>" machine="pc"></hp-card>
+    <hp-card kind="terminal" project="<project-id>" machine="pc" as="button"></hp-card>
+    <hp-card kind="agenda"   project="<project-id>" days="14"></hp-card>
+    <hp-card kind="rule"     project="<project-id>" rule="Start PC"></hp-card>
+    <hp-card kind="links-list" project="<project-id>"></hp-card>
+
+`kind` is the card's name from `GET /api/boards/cards`; every other attribute is
+that card's option, with `project` standing for the project id. The tag is
+replaced by the working card — buttons press, terminals open, numbers update.
+
+## 5. What may be in that HTML
 
 The page is shown as part of the board, so it is cleaned before it is drawn:
 markup, tables, images, links and inline styles stay; `<script>`, `<iframe>`,
@@ -65,7 +95,7 @@ Useful classes, if the page should look like the rest of the server:
 `card`, `btn`, `btn primary`, `badge`, `meta`, `mono`, `stat`, `list`,
 `list-row`, `prose`. They are optional; plain HTML works.
 
-## 5. Where the page appears
+## 6. Where the page appears
 
 - On the group's page, as a tab of its board.
 - Under the group's own address, when one is set (**Group settings → Own
@@ -74,7 +104,7 @@ Useful classes, if the page should look like the rest of the server:
 Cards on that board are private unless they say otherwise; a page written
 through this route is public, because a page is the thing that gets handed out.
 
-## 6. What a token cannot do
+## 7. What a token cannot do
 
 - It cannot read a private project of another group.
 - It cannot make, change or delete accounts, users, tokens or schedulers.

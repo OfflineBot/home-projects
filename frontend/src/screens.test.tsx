@@ -257,6 +257,29 @@ describe("every screen draws something", () => {
     }
   });
 
+  // A page is not a picture: a value in braces is the number as it is now.
+  it("a page fills in live values", async () => {
+    const board = await api<{ id: string; tabs: { id: string }[] }>("/api/boards");
+    const card = await api<{ id: string }>("/api/boards/cards", {
+      body: {
+        tabId: board.tabs[0].id,
+        kind: "html",
+        options: { html: "<p>Files: <b>{{" + project.slug + ".files}}</b> · {{nothing.here}}</p>", mode: "inline" },
+        x: 0, y: 0, w: 6, h: 2,
+      },
+    });
+    try {
+      const c = await draw(<Dashboard />, /Files:/i);
+      // The name that exists is replaced; the one that does not stays visible,
+      // so a typo shows itself instead of vanishing.
+      await waitFor(() => expect(c.querySelector(".html-inline b")?.textContent).not.toBe(""));
+      expect(c.textContent).toContain("{{nothing.here}}");
+    } finally {
+      await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   // A tab that is one page: read as the page, edited as its source beside a
   // preview — the same document an assistant writes through /api/page.
   it("a tab can be one page, written by hand", async () => {

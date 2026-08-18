@@ -18,11 +18,14 @@ export function CodeArea({
   value,
   language = "html",
   onChange,
+  onReady,
   minHeight = 220,
 }: {
   value: string;
   language?: "html" | "css";
   onChange: (text: string) => void;
+  /** Hands back a way to put something in at the cursor. */
+  onReady?: (api: { insert: (text: string) => void }) => void;
   minHeight?: number;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -51,6 +54,16 @@ export function CodeArea({
     });
     const editor = new EditorView({ state, parent: host.current });
     view.current = editor;
+    onReady?.({
+      insert: (text: string) => {
+        const at = editor.state.selection.main;
+        editor.dispatch({
+          changes: { from: at.from, to: at.to, insert: text },
+          selection: { anchor: at.from + text.length },
+        });
+        editor.focus();
+      },
+    });
     return () => {
       editor.destroy();
       view.current = null;

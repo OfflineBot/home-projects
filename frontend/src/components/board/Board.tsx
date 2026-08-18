@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { Empty, ErrorBox, Field, Modal, Section, Spinner, useAsk } from "../ui";
 import { colorVar } from "../../lib/theme";
@@ -599,6 +599,76 @@ function AddCard({
 }
 
 /**
+ * What can be dropped into a page.
+ *
+ * The same offers a board picks from — this project's machine, that terminal,
+ * the average out of the grades — except here they come out as a line of HTML
+ * rather than a card on a grid. Both roads lead to the same thing: write it by
+ * hand if you know the tag, press a button if you would rather not.
+ */
+function Palette({ group, onInsert }: { group?: string; onInsert: (snippet: string) => void }) {
+  const projects = useQuery<{ projects: Project[] }>("/api/projects");
+  const [projectId, setProjectId] = useState("");
+  const offers = useQuery<{ offers: { card: string; title: string; detail?: string; options: Record<string, any> }[] }>(
+    projectId ? `/api/projects/${projectId}/offers` : null,
+  );
+  const mine = group
+    ? (projects.data?.projects ?? []).filter((p) => p.groupSlug === group)
+    : (projects.data?.projects ?? []);
+
+  const asTag = (card: string, options: Record<string, any>) => {
+    const attrs: string[] = [`kind="${card}"`];
+    for (const [key, raw] of Object.entries(options)) {
+      if (raw === undefined || raw === null || raw === "") continue;
+      if (key === "title") continue;
+      const name = key === "projectId" ? "project" : key;
+      attrs.push(`${name}="${String(raw).replace(/"/g, "&quot;")}"`);
+    }
+    return `<hp-card ${attrs.join(" ")}></hp-card>`;
+  };
+
+  return (
+    <div className="palette">
+      <span className="meta">Drop in:</span>
+      <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        <option value="">— from which project —</option>
+        {mine.map((p) => (
+          <option key={p.id} value={p.id}>
+            {(p.groupSlug ?? "ungrouped") + "/" + p.slug}
+          </option>
+        ))}
+      </select>
+      {(offers.data?.offers ?? []).map((offer, i) => (
+        <button
+          key={offer.card + i}
+          className="btn small ghost"
+          title={offer.detail}
+          onClick={() =>
+            onInsert(
+              offer.card === "number" || offer.card === "status"
+                ? `{{${offer.options.variable}}}`
+                : asTag(offer.card, offer.options),
+            )
+          }
+        >
+          <Icon name="plus" size={12} /> {offer.title}
+        </button>
+      ))}
+      <span className="grow" />
+      {[
+        { label: "Heading", snippet: "<h2>A heading</h2>" },
+        { label: "Two columns", snippet: '<div style="display:flex;gap:16px;flex-wrap:wrap">\n  <div style="flex:1;min-width:220px"></div>\n  <div style="flex:1;min-width:220px"></div>\n</div>' },
+        { label: "Button", snippet: '<a class="btn primary" href="/groups">A button</a>' },
+      ].map((piece) => (
+        <button key={piece.label} className="btn small ghost" onClick={() => onInsert(piece.snippet)}>
+          {piece.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * A tab that is one page.
  *
  * Reading it is the page itself; editing it is the source on the left and what
@@ -613,6 +683,7 @@ function PageTab({ group, tab, editing }: { group?: string; tab: Tab; editing: b
   const [saved, setSaved] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const put = useRef<((text: string) => void) | null>(null);
 
   const html = draft ?? page.data?.html ?? "";
 
@@ -663,10 +734,22 @@ function PageTab({ group, tab, editing }: { group?: string; tab: Tab; editing: b
           <Icon name="check" size={14} /> Save
         </button>
       </div>
+      <Palette
+        group={group}
+        onInsert={(snippet) => {
+          if (put.current) put.current(snippet);
+          else {
+            setDraft(html + "\n" + snippet);
+            setSaved(false);
+          }
+        }}
+      />
+
       <div className="page-editor-panes">
         <CodeArea
           value={html}
           minHeight={420}
+          onReady={(api) => (put.current = api.insert)}
           onChange={(text) => {
             setDraft(text);
             setSaved(false);
