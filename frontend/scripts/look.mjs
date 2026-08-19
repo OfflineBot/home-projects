@@ -170,6 +170,25 @@ if (await full.count()) {
   await shot("06-after-closing");
 }
 
+// ---------------------------------------------- the machines page of a project
+await page.goto(`${URL}/p/${pc.id}?tab=machines`, { waitUntil: "networkidle" });
+await page.waitForTimeout(2500);
+await shot("11-machines");
+const opener = page.getByRole("button", { name: /sessions|terminal/i }).first();
+if (await opener.count()) {
+  await opener.click();
+  await page.waitForTimeout(5000);
+  await shot("12-machines-terminal");
+  const sizes = await page.evaluate(() => {
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? Math.round(el.getBoundingClientRect().width) : "?";
+    };
+    return `main ${box("main.main")}  tiles ${box(".tiles")}  tile ${box(".tile.machine")}  terminal ${box(".machine-terminal")}`;
+  });
+  console.log("machines widths:", sizes);
+}
+
 // ------------------------------------------------- what can be set on a card
 // Edit mode, then one card's settings: this is where how wide and how high a
 // card is are typed rather than dragged.

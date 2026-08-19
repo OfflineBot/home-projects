@@ -901,7 +901,9 @@ main.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
 .terminal-signin .field { flex: 1; min-width: 180px; margin: 0; }
 .terminal-signin .meta { flex-basis: 100%; margin: 0; }
 .terminal-note { color: var(--ctp-peach); }
-.terminal-sessions { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
+/* The list of sessions reads better as a column than as a row of names with a
+   metre of nothing after them; the terminal itself still takes the width. */
+.terminal-sessions { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; max-width: 900px; }
 .terminal-session {
   display: flex; align-items: center; gap: 6px; width: 100%;
   background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0); border-radius: 9px;
@@ -926,7 +928,17 @@ main.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
   border-radius: 0; padding: 6px 8px;
 }
 .terminal.full .terminal-screen { border-radius: 0; border-width: 1px 0 0; }
-.machine-terminal { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 12px; height: 420px; }
+/* A terminal that was opened on the machines page takes the whole row, and the
+   page gives up its width limit for it. The tiles are 270 pixels wide — a
+   terminal in one of those is a joke, and that is what it was. It can be
+   dragged taller, because how tall a terminal should be is not something a
+   stylesheet knows. */
+.machine-terminal {
+  margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 12px;
+  height: 460px; min-height: 200px; resize: vertical; overflow: hidden;
+}
+.tiles .tile:has(.machine-terminal) { grid-column: 1 / -1; }
+main.main:has(.machine-terminal) { max-width: none; }
 
 /* Flow: no grid, no coordinates — the cards follow one another and each says
    how wide it is. This is the layout for something that reads like a page. */
