@@ -143,6 +143,14 @@ export default function Board({
         box.style.removeProperty("height");
         return;
       }
+      // Not on a telephone. There the cards are already one under the other,
+      // and dividing a 500-pixel screen between seven of them gives seven
+      // things too small to be anything. The page scrolls instead, and each
+      // card keeps the height it was given.
+      if (window.innerWidth <= 760) {
+        box.style.removeProperty("height");
+        return;
+      }
       const room = window.innerHeight - box.getBoundingClientRect().top - 18;
       box.style.height = `${Math.max(240, room)}px`;
     };

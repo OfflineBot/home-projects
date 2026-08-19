@@ -977,6 +977,9 @@ main.main:has(.machine-terminal) { max-width: none; }
        told to be four rows tall ended up four lines of text on a phone. */
     display: flex; flex-direction: column;
   }
+  /* Even on a tab that fills the screen: on a phone nothing shares a height. */
+  .board.fills .grid-cell { min-height: calc(var(--rows, 2) * 88px); }
+  .board.fills .grid-area { grid-template-rows: none; }
   .grid-cell > .card { flex: 1; height: auto; display: flex; flex-direction: column; }
   /* And the same one step further in: what the card holds fills the card. */
   .grid-cell > .card > * { min-height: 0; }
@@ -1256,3 +1259,20 @@ main.main:has(.machine-terminal) { max-width: none; }
 /* While the board is being arranged, the view underneath does not take the
    pointer — dragging a card should not send mail. */
 .card-view-shield { position: absolute; inset: 0; background: transparent; }
+
+/* ------------------------------------------------------------- on a phone
+   Last, on purpose. These undo the desktop's height sharing for a narrow
+   screen, and a rule that comes later wins between equals — a media query
+   adds no weight of its own, which is why saying this earlier in the file did
+   nothing at all. */
+@media (max-width: 760px) {
+  .board.fills { height: auto !important; }
+  .board.fills .grid-area { grid-template-rows: none; }
+  .board.fills .grid-cell { min-height: calc(var(--rows, 2) * 88px); }
+  .board.fills .grid-cell > .card,
+  .grid-cell > .card {
+    height: auto; flex: 1; display: flex; flex-direction: column; overflow: auto;
+  }
+  .board.fills .grid-cell > .card > .terminal,
+  .grid-cell > .card > .terminal { flex: 1; min-height: 0; }
+}

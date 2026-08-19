@@ -67,6 +67,28 @@ func (lockingCapability) Name() string  { return "locking-test" }
 func (lockingCapability) Title() string { return "Locking test" }
 func (lockingCapability) Icon() string  { return "lock" }
 
+// A kind whose remote side does not lock: a machine on the home network. Its
+// credential may be used by two callers at once and survives a failure — which
+// is the opposite of the locking one above, and the reason both exist.
+type openCapability struct{ capability.Base }
+
+func (openCapability) Name() string  { return "open-test" }
+func (openCapability) Title() string { return "Open test" }
+func (openCapability) Icon() string  { return "key" }
+
+func (openCapability) AccountKinds() []capability.AccountKind {
+	return []capability.AccountKind{{
+		Name:        "open-test",
+		Title:       "Open test account",
+		SecretLabel: "Password",
+		Locks:       false,
+		Test: func(ctx context.Context, env *capability.Env, a *model.Account, s []byte) error {
+			record(string(s))
+			return nil
+		},
+	}}
+}
+
 func (lockingCapability) AccountKinds() []capability.AccountKind {
 	return []capability.AccountKind{{
 		Name:        "locking-test",
@@ -152,6 +174,9 @@ func setup(t *testing.T) *harness {
 
 	if !capability.Exists("locking-test") {
 		capability.Register(lockingCapability{})
+	}
+	if !capability.Exists("open-test") {
+		capability.Register(openCapability{})
 	}
 
 	// A user, a project — the little the scheduler needs.
@@ -396,5 +421,68 @@ func TestCrashDuringAttemptConsumes(t *testing.T) {
 	}
 	if after.LastError == "" {
 		t.Error("the account does not say why it is locked")
+	}
+}
+
+// A credential that cannot be locked out is not queued.
+//
+// The reservation exists so that two schedulers cannot race for one mailbox
+// and lock it. A key to a machine on the home network has nothing to protect
+// and everything to lose by being serialised: a board with a terminal, a
+// second terminal and a status check on the same machine is ordinary, and the
+// second one being told "another attempt is already running" is not.
+func TestOpenCredentialIsNotQueued(t *testing.T) {
+	h := setup(t)
+	ctx := context.Background()
+
+	sealed, err := h.env.Box.Seal([]byte("the-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := h.store.CreateAccount(ctx, h.ownerID, "open-test",
+		"Open account", json.RawMessage(`{"user":"someone"}`), sealed)
+	if err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	t.Cleanup(func() { _ = h.store.DeleteAccount(ctx, account.ID) })
+
+	// Two at once, one held open while the other runs.
+	holding := make(chan struct{})
+	second := make(chan error, 1)
+	go func() {
+		second <- accounts.Attempt(ctx, h.env, account.ID, time.Minute, func(secret []byte) error {
+			if string(secret) != "the-key" {
+				return fmt.Errorf("the second attempt was handed %q", secret)
+			}
+			return nil
+		})
+	}()
+	err = accounts.Attempt(ctx, h.env, account.ID, time.Minute, func(secret []byte) error {
+		close(holding)
+		return <-second
+	})
+	if err != nil {
+		t.Fatalf("two attempts at once on a credential that cannot be locked: %v", err)
+	}
+
+	// And a failure leaves the secret where it is: nothing was used up.
+	failed := accounts.Attempt(ctx, h.env, account.ID, time.Minute, func([]byte) error {
+		return fmt.Errorf("the machine is switched off")
+	})
+	if failed == nil {
+		t.Fatal("a failed attempt was reported as a success")
+	}
+	after, err := h.store.AccountByID(ctx, account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.NeedsSecret {
+		t.Fatal("the key was thrown away because the machine was off")
+	}
+	if after.AttemptInFlight {
+		t.Fatal("an attempt that is over is still marked as running")
+	}
+	if err := accounts.Attempt(ctx, h.env, account.ID, time.Minute, func([]byte) error { return nil }); err != nil {
+		t.Fatalf("the credential could not be used again after a failure: %v", err)
 	}
 }
