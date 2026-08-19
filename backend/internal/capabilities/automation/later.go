@@ -208,8 +208,16 @@ func timerCard() capability.Card {
 			{Name: "projectId", Label: "Project", Type: "project", Required: true},
 			{Name: "rule", Label: "Which rule", Type: "text", Required: true,
 				Hint: "The name it has in that project's rules."},
-			{Name: "minutes", Label: "Suggested minutes", Type: "number", Placeholder: "5"},
+			{Name: "minutes", Label: "In how many minutes", Type: "number", Placeholder: "5"},
+			{Name: "ask", Label: "The minutes are", Type: "select", Options: []capability.Option{
+				{Value: "yes", Label: "typed in each time — a box and a button"},
+				{Value: "no", Label: "fixed — one button that says how long"},
+			}},
 			{Name: "title", Label: "Name", Type: "text", Placeholder: "Alles an"},
+			{Name: "feedback", Label: "After pressing", Type: "select", Options: []capability.Option{
+				{Value: "brief", Label: "show what is waiting"},
+				{Value: "none", Label: "nothing"},
+			}},
 		},
 	}
 }

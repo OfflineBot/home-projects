@@ -27,7 +27,11 @@ export function dress(style?: CardStyle) {
     ]
       .filter(Boolean)
       .join(" "),
-    style: s.color ? ({ ["--card-color" as string]: `var(--ctp-${s.color})` } as const) : undefined,
+    style: {
+      ...(s.color ? { ["--card-color" as string]: `var(--ctp-${s.color})` } : {}),
+      ...(s.tint ? { ["--card-color" as string]: s.tint } : {}),
+      ...(s.radius !== undefined ? { borderRadius: `${s.radius}px` } : {}),
+    } as Record<string, string>,
   };
 }
 

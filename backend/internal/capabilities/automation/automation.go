@@ -182,6 +182,10 @@ func (Capability) Cards() []capability.Card {
 			{Name: "projectId", Label: "Project", Type: "project", Required: true},
 			{Name: "rule", Label: "Which rule", Type: "text", Required: true,
 				Hint: "The name it has in that project's rules."},
+			{Name: "feedback", Label: "After pressing", Type: "select", Options: []capability.Option{
+				{Value: "brief", Label: "a tick, briefly"},
+				{Value: "none", Label: "nothing — the lamp is the answer"},
+			}},
 		},
 	}, timerCard(), {
 		// A lamp is not a rule: it has a state, and a switch should show it.
@@ -190,8 +194,8 @@ func (Capability) Cards() []capability.Card {
 		Options: []capability.AccountField{
 			{Name: "account", Label: "Light account", Type: "select", From: "accounts:wled",
 				Hint: "A light account holds several lamps and is switched as one."},
-			{Name: "projectId", Label: "Project", Type: "project"},
-			{Name: "host", Label: "Address", Type: "text",
+			{Name: "projectId", Label: "Project", Type: "project", Show: "!account"},
+			{Name: "host", Label: "Address", Type: "text", Show: "!account",
 				Placeholder: "192.168.178.60", Hint: "Several, separated by commas, are switched together."},
 			{Name: "title", Label: "Name", Type: "text", Placeholder: "Desk"},
 		},

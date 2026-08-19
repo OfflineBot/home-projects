@@ -310,7 +310,9 @@ describe("every screen draws something", () => {
       expect(button).toBeTruthy();
       fireEvent.click(button!);
       // It says what it did — a button that reports nothing is not trusted twice.
-      await waitFor(() => expect(c.querySelector(".card-rule .meta")?.textContent ?? "").not.toBe(""), {
+      // What it said is a mark over the button now — a press must not move the
+      // page about, and it can be switched off entirely.
+      await waitFor(() => expect(c.querySelector(".card-rule .said")).not.toBeNull(), {
         timeout: 8000,
       });
     } finally {

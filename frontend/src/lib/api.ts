@@ -337,6 +337,8 @@ export interface AccountField {
   options?: FieldOption[];
   /** Where the choices come from when the server fills them in: "accounts:wled". */
   from?: string;
+  /** When the field applies at all: "power!=off", "!account". */
+  show?: string;
 }
 
 export interface Provider {

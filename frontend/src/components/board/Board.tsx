@@ -22,6 +22,10 @@ import HtmlCard from "./HtmlCard";
 
 /** The small set of looks a card may choose. Not free CSS — a palette. */
 export interface CardStyle {
+  /** Corners, in pixels. 0 is a square card, 24 is a pill of a card. */
+  radius?: number;
+  /** A colour of your own, when the palette does not have the one you mean. */
+  tint?: string;
   color?: string;
   background?: "plain" | "tinted" | "bare";
   border?: boolean;

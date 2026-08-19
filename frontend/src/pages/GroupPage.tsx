@@ -42,35 +42,39 @@ export default function GroupPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <div style={{ color: "var(--ctp-subtext0)", fontSize: 13 }}>
-            <Link to="/groups">Groups</Link>
-          </div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {data ? <Icon name={data.group.icon} size={22} /> : null}
-            {data?.group.title ?? slug}
-          </h1>
-          <p>{data?.group.description}</p>
-        </div>
+      {/* The whole head on one line: where you are, what it is called, and
+          what you can do with it. A page whose job is to show the board should
+          not spend three rows introducing itself. */}
+      <div className="page-head tight">
+        <Link className="meta" to="/groups">
+          Groups
+        </Link>
+        <span className="meta">·</span>
+        {data ? <Icon name={data.group.icon} size={17} /> : null}
+        <h1>{data?.group.title ?? slug}</h1>
+        {data?.group.description ? <span className="meta hide-small">{data.group.description}</span> : null}
+        <span className="grow" />
         <div className="head-actions">
-          <button className="btn" onClick={() => setShowGit(true)}>
-            <Icon name="git" size={16} /> Repository
+          <button className="btn small ghost" title="The group's repository" onClick={() => setShowGit(true)}>
+            <Icon name="git" size={15} />
           </button>
           {session.user && data ? (
             <>
-              <button className="btn" onClick={() => setGroupSettings(true)}>
-                <Icon name="settings" size={16} /> Settings
+              <button className="btn small ghost" title="Settings" onClick={() => setGroupSettings(true)}>
+                <Icon name="settings" size={15} />
               </button>
-              <button className="btn primary" onClick={() => setCreating(true)}>
-                <Icon name="plus" size={16} /> New project
+              <button className="btn small primary" onClick={() => setCreating(true)}>
+                <Icon name="plus" size={14} /> Project
               </button>
             </>
           ) : null}
         </div>
       </div>
 
-      <div className="page-tabs">
+      {/* One line: where you are, what you are looking at, and what you can
+          do. It used to be three — a title, a row of buttons and a row of tabs
+          — for a page whose whole job is to show the board underneath. */}
+      <div className="page-tabs compact">
         <button className={page === "board" ? "page-tab on" : "page-tab"} onClick={() => setPage("board")}>
           <Icon name="grid" size={15} /> Board
         </button>

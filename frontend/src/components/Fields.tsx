@@ -31,6 +31,12 @@ export interface FieldSpec {
   hint?: string;
   options?: { value: string; label: string }[];
   /**
+   * When this field applies at all, as a condition on another one: "power" for
+   * "while it has any value", "!account" for "while that one is empty",
+   * "power=on" or "power!=off". What does not apply is not shown and not sent.
+   */
+  show?: string;
+  /**
    * Where the choices come from when they are not known in advance:
    * "accounts:wled" is every light account, "wled:effects" the effects a WLED
    * can play. The field is still a choice — it is just one the server fills in.
@@ -49,18 +55,53 @@ export function Fields({
   values: Values;
   onChange: (next: Values) => void;
 }) {
+  const shown = specs.filter((spec) => applies(spec.show, values));
+
+  // What is not shown is not sent. Choosing "off" and leaving a colour behind
+  // in the data would mean the form said one thing and the rule did another.
+  const change = (next: Values) => {
+    const cleaned = { ...next };
+    for (const spec of specs) {
+      if (!applies(spec.show, next)) delete cleaned[spec.name];
+    }
+    onChange(cleaned);
+  };
+
   return (
     <>
-      {specs.map((spec) => (
+      {shown.map((spec) => (
         <OneField
           key={spec.name}
           spec={spec}
           value={values[spec.name]}
-          onChange={(v) => onChange({ ...values, [spec.name]: v })}
+          onChange={(v) => change({ ...values, [spec.name]: v })}
         />
       ))}
     </>
   );
+}
+
+/**
+ * Does this field apply, given what the others say?
+ *
+ * The grammar is four things and no more, because a condition somebody has to
+ * learn is worse than a field too many: a name on its own, a name with "!" in
+ * front, name=value (or several, separated by commas) and name!=value.
+ */
+export function applies(show: string | undefined, values: Values): boolean {
+  if (!show) return true;
+  const has = (name: string) => {
+    const v = values[name];
+    return Array.isArray(v) ? v.filter(Boolean).length > 0 : v !== undefined && v !== null && String(v) !== "";
+  };
+  const condition = show.trim();
+  if (condition.startsWith("!")) return !has(condition.slice(1));
+  const not = condition.includes("!=");
+  const [name, list] = condition.split(not ? "!=" : "=");
+  if (list === undefined) return has(name.trim());
+  const wanted = list.split(",").map((v) => v.trim());
+  const value = String(values[name.trim()] ?? "");
+  return not ? !wanted.includes(value) : wanted.includes(value);
 }
 
 export function OneField({

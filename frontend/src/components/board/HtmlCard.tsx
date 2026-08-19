@@ -78,6 +78,23 @@ export default function HtmlCard({ options, value, projects, editing }: CardProp
         node.style.width = size(options.width);
         node.style.boxSizing = "border-box";
       }
+      // What it looks like, said on the tag: colour, background, border,
+      // radius, padding. A page somebody writes should not have to accept the
+      // one look the app chose.
+      const dressed: Record<string, string> = {
+        color: "--card-ink",
+        background: "--card-back",
+        border: "--card-edge",
+        radius: "--card-radius",
+        padding: "--card-pad",
+        shadow: "--card-shadow",
+      };
+      for (const [attribute, property] of Object.entries(dressed)) {
+        const said = options[attribute];
+        if (!said) continue;
+        node.style.setProperty(property, property === "--card-radius" || property === "--card-pad" ? size(said) : said);
+        node.classList.add("dressed");
+      }
       if (options.height) {
         node.style.height = size(options.height);
         // A percentage is a percentage *of something*. If what the card sits in

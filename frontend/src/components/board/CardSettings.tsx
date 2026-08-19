@@ -151,6 +151,24 @@ export function CardFields({
         </Field>
       </div>
       <div className="row">
+        <Field label="Corners" hint="Pixels. 0 is square, 24 is a pill.">
+          <input
+            type="number"
+            min={0}
+            max={40}
+            value={style.radius ?? 12}
+            onChange={(e) => setStyle({ ...style, radius: clampTo(Number(e.target.value), 0, 40) })}
+          />
+        </Field>
+        <Field label="Its own colour" optional hint="Overrides the swatch above.">
+          <input
+            type="color"
+            value={style.tint ?? "#89b4fa"}
+            onChange={(e) => setStyle({ ...style, tint: e.target.value })}
+          />
+        </Field>
+      </div>
+      <div className="row">
         <Field label="Background">
           <select
             value={style.background ?? "plain"}

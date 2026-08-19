@@ -22,6 +22,10 @@ export default function TimerCard({ options, editing }: CardProps) {
   const project = String(options.projectId ?? "");
   const rule = String(options.rule ?? "");
   const suggested = Number(options.minutes) || 5;
+  // A button that says how long is a button somebody can press without
+  // reading: "everything on in 20 minutes", and another one for five.
+  const ask = String(options.ask ?? "yes") !== "no";
+  const feedback = String(options.feedback ?? "brief") !== "none";
   const [minutes, setMinutes] = useState(String(suggested));
   const [waiting, setWaiting] = useState<Waiting[]>([]);
   const [busy, setBusy] = useState(false);
@@ -51,7 +55,7 @@ export default function TimerCard({ options, editing }: CardProps) {
     setNote("");
     try {
       await api(`/api/projects/${project}/automation/later`, {
-        body: { rule, minutes: Number(minutes) || suggested },
+        body: { rule, minutes: ask ? Number(minutes) || suggested : suggested },
       });
       await look();
     } catch (err) {
@@ -78,25 +82,30 @@ export default function TimerCard({ options, editing }: CardProps) {
   return (
     <div className="card-timer">
       <div className="card-timer-row">
-        <input
-          type="number"
-          min={1}
-          max={1440}
-          value={minutes}
-          disabled={editing}
-          aria-label="In how many minutes"
-          onChange={(e) => setMinutes(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !editing) void start();
-          }}
-        />
-        <span className="meta">min</span>
+        {ask ? (
+          <>
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={minutes}
+              disabled={editing}
+              aria-label="In how many minutes"
+              onChange={(e) => setMinutes(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !editing) void start();
+              }}
+            />
+            <span className="meta">min</span>
+          </>
+        ) : null}
         <button className="btn primary grow" disabled={busy || editing} onClick={() => void start()}>
-          <Icon name="clock" size={14} /> {options.title || rule}
+          <Icon name="clock" size={14} />{" "}
+          {options.title || (ask ? rule : `${rule} in ${suggested} min`)}
         </button>
       </div>
 
-      {mine.length ? (
+      {feedback && mine.length ? (
         <div className="card-timer-waiting">
           {mine.map((w) => (
             <span key={w.id} className="badge good">

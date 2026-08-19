@@ -164,6 +164,17 @@ exactly what they say, and a bare number is pixels while anything else (`50%`,
     <hp-card kind="rule" project="<id>" rule="Start PC" width="220"></hp-card>
     <hp-card kind="terminal" project="<id>" machine="pc" width="60%" height="320"></hp-card>
 
+**What it looks like.** A card in a written page wears what the tag says, and
+only that — anything left out keeps the theme's answer:
+
+    <hp-card kind="rule" project="<id>" rule="Alles an"
+             background="#101018" color="#cdd6f4" radius="20"
+             border="1px solid #45475a" padding="18" shadow="0 2px 12px #0008">
+    </hp-card>
+
+The same knobs are in a card's settings for the cards that are not written by
+hand: corners, a colour of its own, a background, a border.
+
 For rows there are two classes, so no hand-written flexbox is needed:
 
     <div class="row">…</div>                          side by side, wrapping

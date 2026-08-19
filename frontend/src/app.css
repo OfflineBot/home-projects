@@ -737,11 +737,37 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .ran.bad { background: color-mix(in srgb, var(--ctp-red) 8%, var(--ctp-mantle)); }
 
+/* What a button said, over the button rather than under it: a press must not
+   move the page about. It fades on its own. */
+.said {
+  position: absolute; right: 8px; top: 6px; z-index: 2;
+  font-size: 12px; color: var(--ctp-green);
+  background: color-mix(in srgb, var(--ctp-green) 16%, var(--ctp-mantle));
+  border-radius: 8px; padding: 1px 7px; max-width: 80%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  animation: said-fade 2.6s ease forwards;
+}
+.said.bad { color: var(--ctp-red); background: color-mix(in srgb, var(--ctp-red) 16%, var(--ctp-mantle)); }
+@keyframes said-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.card-rule { position: relative; }
+
 /* A number, a button, and what is coming. */
 .card-timer { display: flex; flex-direction: column; gap: 8px; justify-content: center; height: 100%; }
 .card-timer-row { display: flex; align-items: center; gap: 8px; }
 .card-timer-row input { width: 72px; }
 .card-timer-waiting { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* A head on one line. */
+.page-head.tight {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 6px; padding-bottom: 0; border: none;
+}
+.page-head.tight h1 { font-size: 21px; margin: 0; }
+.page-tabs.compact { margin-bottom: 10px; }
+@media (max-width: 760px) { .hide-small { display: none; } }
 
 /* The one field renderer's own shapes: a choice with room for something not in
    the list, a colour that looks like one, and a list that is a list. */
@@ -1118,7 +1144,7 @@ main.main:has(.machine-terminal) { max-width: none; }
 .page-builder {
   position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px;
   border: 1px solid var(--ctp-surface1); border-radius: 14px; padding: 12px;
-  background: var(--ctp-mantle); max-height: calc(100dvh - 100px); overflow: auto;
+  background: var(--ctp-mantle);
 }
 .page-builder-tabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .page-builder-tab {
@@ -1156,7 +1182,7 @@ main.main:has(.machine-terminal) { max-width: none; }
 
 @media (max-width: 980px) {
   .building { grid-template-columns: minmax(0, 1fr); }
-  .page-builder { position: static; max-height: none; }
+  .page-builder { position: static; }
 }
 
 /* Sections and columns: a page built out of parts.
@@ -1336,6 +1362,16 @@ main.main:has(.machine-terminal) { max-width: none; }
    width on one used to be ignored and everything stacked. */
 .html-inline hp-card { display: block; }
 .html-inline hp-card > .html-slot { margin: 0; height: 100%; }
+/* A card wearing what the tag asked for. Anything not said keeps the theme's
+   answer, so <hp-card background="#101018"> changes one thing and no more. */
+.html-inline hp-card.dressed > .html-slot {
+  color: var(--card-ink, inherit);
+  background: var(--card-back, var(--ctp-mantle));
+  border: var(--card-edge, 1px solid var(--ctp-surface0));
+  border-radius: var(--card-radius, 12px);
+  padding: var(--card-pad, 12px 14px);
+  box-shadow: var(--card-shadow, none);
+}
 .html-inline hp-card .terminal { min-height: 220px; }
 /* Where things sit on a page: a top strip, a left side, the middle, a right
    side, a bottom strip. Any of the five may be left out — a side that is not

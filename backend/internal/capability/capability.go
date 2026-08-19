@@ -137,6 +137,16 @@ type AccountField struct {
 	Hint string `json:"hint,omitempty"`
 	// Options make the field a choice instead of a line to type into.
 	Options []Option `json:"options,omitempty"`
+	// Show says when this field applies at all, as a condition on another one:
+	//
+	//   "power"        while power has any value
+	//   "!account"     while account is empty
+	//   "power=on"     while power is exactly that ("on,toggle" for either)
+	//   "power!=off"   unless it is off
+	//
+	// A field that does not apply is not drawn and is not sent — offering a
+	// colour for a lamp that is being switched off is offering nonsense.
+	Show string `json:"show,omitempty"`
 	// From makes it a choice the interface fills in, because the answers are
 	// not known when the card is described: "accounts:wled" is every light
 	// account there is. Typing the name of one out of your head is not a

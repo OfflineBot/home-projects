@@ -14,11 +14,33 @@ import type { CardProps } from "../../components/board/cards";
 export default function RuleCard({ options }: CardProps) {
   const project = String(options.projectId ?? "");
   const rule = String(options.rule ?? "");
+  // What it said used to be a line underneath, so every press pushed the page
+  // about. It is a mark over the button now, and it can be switched off.
+  const feedback = String(options.feedback ?? "brief");
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState("");
   const [failed, setFailed] = useState(false);
 
   if (!project || !rule) return <div className="meta">This card has no rule yet.</div>;
+
+  if (feedback === "none") {
+    // Nothing to say: the lamp is the feedback.
+    return (
+      <div className="card-rule">
+        <button
+          className="btn primary"
+          disabled={busy}
+          onClick={() => {
+            void api(`/api/projects/${project}/automation/rules/${encodeURIComponent(rule)}/run`, { body: {} }).catch(
+              () => {},
+            );
+          }}
+        >
+          <Icon name="play" size={15} /> {options.title || rule}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="card-rule">
@@ -46,7 +68,11 @@ export default function RuleCard({ options }: CardProps) {
       >
         <Icon name="play" size={15} /> {options.title || rule}
       </button>
-      {said ? <div className={failed ? "meta bad" : "meta"}>{said}</div> : null}
+      {said ? (
+        <span className={failed ? "said bad" : "said"} title={said}>
+          {failed ? said : "✓"}
+        </span>
+      ) : null}
     </div>
   );
 }
