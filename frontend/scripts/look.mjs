@@ -170,6 +170,26 @@ if (await full.count()) {
   await shot("06-after-closing");
 }
 
+// ------------------------------------------------- what can be set on a card
+// Edit mode, then one card's settings: this is where how wide and how high a
+// card is are typed rather than dragged.
+await page.goto(`${URL}/groups/${group.slug}`, { waitUntil: "networkidle" });
+await page.waitForTimeout(2500);
+const edit = page.getByRole("button", { name: "Edit" }).first();
+if (await edit.count()) {
+  await edit.click();
+  await page.waitForTimeout(1200);
+  await shot("09-editing");
+  const settings = page.locator('button[aria-label="Settings for this card"]').first();
+  if (await settings.count()) {
+    await settings.click();
+    await page.waitForTimeout(1200);
+    const dialog = page.getByRole("dialog").first();
+    await shot("10-card-settings", dialog);
+    console.log("card settings:", (await dialog.innerText()).replace(/\n+/g, " | ").slice(0, 400));
+  }
+}
+
 // ------------------------------------------------------------- the calendar
 const cal = await api("/api/projects", { body: { title: "kalender", groupId: group.slug, preset: "calendar" } });
 await page.goto(`${URL}/p/${cal.id}?tab=calendar`, { waitUntil: "networkidle" });

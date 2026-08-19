@@ -48,6 +48,7 @@ export function Terminal({
   onLeave,
   title,
   asButton,
+  fontSize,
   editing,
 }: {
   /** /api/projects/:id/machines/:name */
@@ -61,6 +62,8 @@ export function Terminal({
   title?: string;
   /** A button on the board; the terminal itself opens over the page. */
   asButton?: boolean;
+  /** The size this card was set up with. The buttons in the bar still win. */
+  fontSize?: number;
   /**
    * The board is being arranged. Nothing is connected and nothing is asked —
    * laying out a page is not the moment to be asked for a machine's password.
@@ -82,7 +85,7 @@ export function Terminal({
   const [secret, setSecret] = useState("");
   // How large the type is. Remembered, because a terminal that is set up the
   // way somebody likes it and then forgets is worse than one that never asked.
-  const [size, setSize] = useState(kept);
+  const [size, setSize] = useState(() => kept() || fontSize || 0);
   // What the terminal actually came out as. Shown, because "it is too narrow"
   // is a different fault depending on whether that says 80 or 200.
   const [measured, setMeasured] = useState("");

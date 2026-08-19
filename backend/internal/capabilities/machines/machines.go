@@ -141,6 +141,8 @@ func (Capability) Cards() []capability.Card {
 			{Name: "machine", Label: "Which machine", Type: "text", Required: true},
 			{Name: "session", Label: "Which session", Type: "text",
 				Hint: "Empty lists them all and lets you start one."},
+			{Name: "fontSize", Label: "Type size", Type: "number", Placeholder: "13",
+				Hint: "Pixels. Empty means: one that suits the box."},
 			{Name: "as", Label: "As", Type: "select",
 				Options: []capability.Option{
 					{Value: "", Label: "open on the board"},

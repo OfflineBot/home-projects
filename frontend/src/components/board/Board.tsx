@@ -471,6 +471,7 @@ export default function Board({
         <CardSettings
           card={settling}
           kinds={kinds.data?.cards ?? []}
+          layout={current?.layout ?? "grid"}
           onClose={() => setSettling(null)}
           onSaved={() => {
             setSettling(null);
@@ -1045,6 +1046,11 @@ function TabSettings({
   );
 }
 
+function clampTo(value: number, low: number, high: number) {
+  if (Number.isNaN(value)) return low;
+  return Math.max(low, Math.min(high, value));
+}
+
 /** What a card's chosen look means in the page. */
 export function dress(style?: CardStyle) {
   const s = style ?? {};
@@ -1115,11 +1121,14 @@ function byGroup(projects: Project[]): [string, Project[]][] {
 function CardSettings({
   card,
   kinds,
+  layout,
   onClose,
   onSaved,
 }: {
   card: Card;
   kinds: CardKind[];
+  /** What the tab is: a grid counts in columns and rows, a free surface in pixels. */
+  layout: Tab["layout"];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1127,6 +1136,10 @@ function CardSettings({
   const [options, setOptions] = useState<Record<string, any>>(card.options ?? {});
   const [style, setStyle] = useState<CardStyle>(card.style ?? {});
   const [visibility, setVisibility] = useState(card.visibility);
+  // How big it is, in numbers. Dragging a corner is quick and imprecise; this
+  // is the other half of that, and the only way to say "exactly twelve columns"
+  // or "exactly 420 pixels" without pushing a mouse until it looks right.
+  const [size, setSize] = useState({ w: card.w, h: card.h });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const kind = kinds.find((k) => k.name === card.kind);
@@ -1147,7 +1160,7 @@ function CardSettings({
               try {
                 await api(`/api/boards/cards/${card.id}`, {
                   method: "PATCH",
-                  body: { options, style, visibility },
+                  body: { options, style, visibility, w: size.w, h: size.h },
                 });
                 onSaved();
               } catch (err) {
@@ -1215,6 +1228,67 @@ function CardSettings({
           onChange={(e) => setOptions({ ...options, title: e.target.value })}
         />
       </Field>
+      <Section title="How big" />
+      {layout === "free" ? (
+        <div className="row">
+          <Field label="Wide" hint="In pixels, on this free surface.">
+            <input
+              type="number"
+              min={40}
+              value={size.w}
+              onChange={(e) => setSize({ ...size, w: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="High" hint="In pixels.">
+            <input
+              type="number"
+              min={40}
+              value={size.h}
+              onChange={(e) => setSize({ ...size, h: Number(e.target.value) })}
+            />
+          </Field>
+        </div>
+      ) : (
+        <>
+          <div className="row">
+            <Field label="Wide" hint="Columns, out of twelve.">
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={size.w}
+                onChange={(e) => setSize({ ...size, w: clampTo(Number(e.target.value), 1, 12) })}
+              />
+            </Field>
+            <Field label="High" hint="Rows of about 92 pixels — and on a phone it keeps this height.">
+              <input
+                type="number"
+                min={1}
+                max={40}
+                value={size.h}
+                onChange={(e) => setSize({ ...size, h: clampTo(Number(e.target.value), 1, 40) })}
+              />
+            </Field>
+          </div>
+          <div className="row-buttons">
+            {[
+              { label: "a third", w: 4 },
+              { label: "half", w: 6 },
+              { label: "two thirds", w: 8 },
+              { label: "the whole width", w: 12 },
+            ].map((piece) => (
+              <button
+                key={piece.w}
+                className={size.w === piece.w ? "btn small primary" : "btn small ghost"}
+                onClick={() => setSize({ ...size, w: piece.w })}
+              >
+                {piece.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       <Section title="Look" />
       <div className="row">
         <Field label="Colour" optional>
@@ -1277,10 +1351,7 @@ function CardSettings({
       </label>
 
       <Section title="Who may see it" />
-      <Field
-        label="Who may see it"
-        hint="Never wider than what it shows."
-      >
+      <Field label="" hint="Never wider than what it shows.">
         <select
           value={visibility}
           onChange={(e) => setVisibility(e.target.value as Card["visibility"])}

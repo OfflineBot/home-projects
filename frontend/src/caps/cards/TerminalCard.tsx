@@ -25,6 +25,7 @@ export default function TerminalCard({ options, editing }: CardProps) {
       session={String(options.session ?? "") || undefined}
       byAccount={Boolean(known?.account)}
       asButton={String(options.as ?? "") === "button"}
+      fontSize={Number(options.fontSize) || 0}
       editing={editing}
       title={options.title ? String(options.title) : undefined}
     />

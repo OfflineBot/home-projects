@@ -82,9 +82,11 @@ person.
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
 
-**How wide, how tall.** A card is a block and fills the line unless it is told
-otherwise. `width` and `height` do exactly what they say; a bare number is
-pixels, anything else (`50%`, `20rem`) is taken as written:
+**How wide, how tall.** On a board a card's size is set in its own settings —
+columns and rows on a grid, pixels on a free surface — or by dragging its
+corner. In a written page it is the tag that says so: `width` and `height` do
+exactly what they say, and a bare number is pixels while anything else (`50%`,
+`20rem`) is taken as written:
 
     <hp-card kind="rule" project="<id>" rule="Start PC" width="220"></hp-card>
     <hp-card kind="terminal" project="<id>" machine="pc" width="60%" height="320"></hp-card>

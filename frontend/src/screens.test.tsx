@@ -380,6 +380,42 @@ describe("every screen draws something", () => {
     }
   });
 
+  it("a card is told how big it is, in numbers", async () => {
+    // Dragging a corner is quick and imprecise. This is the other half: the
+    // size typed in, and it has to be what the server ends up holding.
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "howbig " + Date.now() } });
+    const board = await api<{ tabs: { id: string }[] }>(`/api/boards?group=${group.slug}`);
+    const card = await api<{ id: string }>("/api/boards/cards", {
+      body: { tabId: board.tabs[0].id, kind: "heading", options: { title: "Wide one" }, x: 0, y: 0, w: 3, h: 1 },
+    });
+    try {
+      const GroupBoard = (await import("./components/board/Board")).default;
+      const c = await draw(<GroupBoard group={group.slug} />, /Wide one/i);
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
+      await waitFor(() => expect(c.querySelector(".grid-handle")).not.toBeNull());
+      fireEvent.click(
+        [...c.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Settings for this card")!,
+      );
+      const dialog = await waitFor(() => screen.getByRole("dialog"), { timeout: 8000 });
+      expect(dialog.textContent).toMatch(/How big/i);
+      // Typed, and by the quick button beside it.
+      const numbers = [...dialog.querySelectorAll('input[type="number"]')] as HTMLInputElement[];
+      fireEvent.change(numbers[1], { target: { value: "5" } });
+      fireEvent.click([...dialog.querySelectorAll("button")].find((b) => /the whole width/i.test(b.textContent ?? ""))!);
+      fireEvent.click([...dialog.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save")!);
+      await waitFor(async () => {
+        const after = await api<{ tabs: { cards: { id: string; w: number; h: number }[] }[] }>(
+          `/api/boards?group=${group.slug}`,
+        );
+        const mine = after.tabs[0].cards.find((x) => x.id === card.id);
+        expect([mine?.w, mine?.h]).toEqual([12, 5]);
+      }, { timeout: 8000 });
+    } finally {
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   it("a page decides how wide its cards are", async () => {
     // "keine Kontrolle wie breit? nur untereinander" — a written card is a
     // block, and without a width every page was one column.

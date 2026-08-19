@@ -995,6 +995,8 @@ main.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
    One header line: the board's name, its tabs, and what can be done to it.
    Everything else is the page itself. */
 .board-title { margin: 0 12px 0 0; font-size: 21px; }
+/* A row of quick choices under a pair of fields. */
+.row-buttons { display: flex; gap: 6px; flex-wrap: wrap; margin: -2px 0 10px; }
 .board-width { width: auto; font-size: 12.5px; padding: 4px 8px; }
 .board-bar { padding-bottom: 2px; border-bottom: 1px solid var(--ctp-surface0); margin-bottom: 4px; }
 .board-tab .icon-svg:last-child { opacity: .6; }
