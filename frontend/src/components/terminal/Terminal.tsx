@@ -141,6 +141,7 @@ export function Terminal({
 
   const start = async (name: string) => {
     setLine("");
+    setNote("");
     await call(`${base}/tmux-new`, { session: name });
     await list();
     setInside(name);
@@ -258,7 +259,13 @@ export function Terminal({
           <div className="terminal-sessions">
             {sessions.map((s) => (
               <div key={s.name} className="terminal-session">
-                <button className="terminal-session-open" onClick={() => setInside(s.name)}>
+                <button
+                  className="terminal-session-open"
+                  onClick={() => {
+                    setNote("");
+                    setInside(s.name);
+                  }}
+                >
                   <Icon name="code" size={15} />
                   <span className="grow mono">{s.name}</span>
                   <span className="meta">

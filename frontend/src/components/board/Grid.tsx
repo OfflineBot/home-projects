@@ -153,6 +153,9 @@ export function Grid({
               : {
                   gridColumn: `${card.x + 1} / span ${card.w}`,
                   gridRow: `${card.y + 1} / span ${card.h}`,
+                  // Carried for the phone, where the grid becomes one column
+                  // and a card would otherwise lose the height it was given.
+                  ["--rows" as string]: card.h,
                 }
           }
         >

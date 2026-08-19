@@ -613,7 +613,7 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
     transform: translateX(-100%); transition: transform .18s ease;
   }
   .sidebar.open { transform: none; }
-  .main { padding: 18px 16px 90px; }
+  main.main { padding: 18px 16px 90px; }
   .cal-day { min-height: 84px; }
 }
 .mobile-bar {
@@ -918,13 +918,14 @@ main.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
 
 /* Full screen: the terminal and nothing else. Escape leaves. */
 .terminal-backdrop {
-  position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 0.75);
-  display: grid; place-items: stretch; padding: 8px;
+  position: fixed; inset: 0; z-index: 80; background: var(--ctp-base);
+  display: grid; place-items: stretch; padding: 0;
 }
 .terminal.full {
-  height: 100%; background: var(--ctp-base); border: 1px solid var(--ctp-surface1);
-  border-radius: 14px; padding: 8px 10px;
+  height: 100%; background: var(--ctp-base); border: none;
+  border-radius: 0; padding: 6px 8px;
 }
+.terminal.full .terminal-screen { border-radius: 0; border-width: 1px 0 0; }
 .machine-terminal { margin-top: 12px; border-top: 1px solid var(--ctp-surface0); padding-top: 12px; height: 420px; }
 
 /* Flow: no grid, no coordinates — the cards follow one another and each says
@@ -956,10 +957,23 @@ main.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
     flex-direction: column;
     min-height: 0 !important;
   }
-  .grid-cell { grid-column: auto !important; grid-row: auto !important; min-height: 120px; }
+  .grid-cell {
+    grid-column: auto !important; grid-row: auto !important;
+    min-height: calc(var(--rows, 2) * 88px);
+    /* A flex column, so the card inside really takes that height: a percentage
+       height against a min-height resolves to nothing, which is how a terminal
+       told to be four rows tall ended up four lines of text on a phone. */
+    display: flex; flex-direction: column;
+  }
+  .grid-cell > .card { flex: 1; height: auto; display: flex; flex-direction: column; }
+  /* And the same one step further in: what the card holds fills the card. */
+  .grid-cell > .card > * { min-height: 0; }
+  .grid-cell > .card > .terminal,
+  .grid-cell > .card > .card-view,
+  .grid-cell > .card > .html-inline { flex: 1; }
   .flow-item { flex-basis: 100% !important; }
   .board-bar { gap: 6px; }
-  .terminal-backdrop { padding: 6px; }
+  .terminal-backdrop { padding: 0; }
 }
 
 /* Keeping a link: one line to add one, and the list under it. */

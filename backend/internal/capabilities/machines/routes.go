@@ -190,11 +190,17 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		}
 		answer := fiber.Map{"sessions": out}
 		if len(out) == 0 {
-			// tmux says "no server running on …" when there is nothing, which
-			// is worth passing on as it is rather than as an empty list.
-			answer["note"] = strings.TrimSpace(text)
-			if rerr != nil && strings.TrimSpace(text) == "" {
+			said := strings.TrimSpace(text)
+			switch {
+			case strings.Contains(said, "no server running"):
+				// That is tmux's way of saying "none yet". It is not a fault,
+				// and reading it as one — under a terminal that is working —
+				// is how it looked for a while.
+				answer["note"] = "No sessions on " + m.Name + " yet. Start one below."
+			case said == "" && rerr != nil:
 				answer["note"] = "tmux is not installed on " + m.Name
+			default:
+				answer["note"] = said
 			}
 		}
 		return ctx.JSON(answer)

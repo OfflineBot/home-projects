@@ -40,7 +40,13 @@ const shot = async (name, target) => {
 await page.goto(URL, { waitUntil: "networkidle" });
 await shot("01-visitor");
 // Signing in is a step of its own: the app is usable as a visitor, and the
-// form is behind the button at the bottom of the sidebar.
+// form is behind the button at the bottom of the sidebar — which on a phone is
+// behind the menu.
+const menu = page.locator('button[aria-label="Menu"]');
+if (await menu.isVisible().catch(() => false)) {
+  await menu.click();
+  await page.waitForTimeout(500);
+}
 await page.getByText("Sign in", { exact: true }).first().click();
 await page.waitForTimeout(1200);
 await shot("01b-login");
@@ -128,6 +134,13 @@ await shot("03-board");
 const terminal = page.locator(".terminal").first();
 if (await terminal.count()) {
   await shot("04-terminal-card", terminal);
+  const cell = await page.evaluate(() => {
+    const t = document.querySelector(".terminal");
+    const c = t?.closest(".grid-cell");
+    const box = (el) => (el ? `${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}` : "?");
+    return `cell ${box(c)} (min ${c ? getComputedStyle(c).minHeight : "?"}, --rows ${c ? getComputedStyle(c).getPropertyValue("--rows") : "?"})  card ${box(t?.closest(".card"))}  terminal ${box(t)}`;
+  });
+  console.log("card boxes:", cell);
   console.log("terminal says:", (await terminal.innerText()).split("\n").slice(0, 3).join(" | "));
 }
 
@@ -137,6 +150,16 @@ if (await full.count()) {
   await full.click();
   await page.waitForTimeout(4000);
   await shot("05-terminal-full");
+  const filled = await page.evaluate(() => {
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return "?";
+      const r = el.getBoundingClientRect();
+      return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)}`;
+    };
+    return `viewport ${window.innerWidth}x${window.innerHeight}  backdrop ${box(".terminal-backdrop")}  terminal ${box(".terminal.full")}  screen ${box(".terminal.full .terminal-screen")}  xterm ${box(".terminal.full .xterm-screen")}`;
+  });
+  console.log("full screen fills:", filled);
   const bar = await page.locator(".terminal.full .terminal-bar").innerText();
   console.log("bar in full screen:", bar.replace(/\n/g, " "));
   const buttons = await page.locator(".terminal.full .terminal-bar button").evaluateAll((bs) =>
