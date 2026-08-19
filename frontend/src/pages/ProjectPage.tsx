@@ -2,7 +2,6 @@ import { Suspense, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import FilesView from "../caps/FilesView";
 import { capabilityViews } from "../caps/index";
-import Board from "../components/board/Board";
 import { Icon } from "../components/Icon";
 import ProjectSettings from "../components/ProjectSettings";
 import { Copyable, ErrorBox, Field, Fold, Spinner, formatDate } from "../components/ui";
@@ -50,9 +49,11 @@ export default function ProjectPage() {
   if (loading && !project) return <Spinner />;
   if (!project) return <ErrorBox error={error} onRetry={reload} />;
 
+  // A page belongs to a group. A project is a thing on a page — its mail, its
+  // machines, its files — and giving it a page of its own as well meant two
+  // places to arrange the same cards and neither of them being the one you
+  // meant. Pages live in one place now.
   const tabs = [
-    // A project's own home page: what it is, arranged by whoever works in it.
-    { key: "board", title: "Board", icon: "grid" },
     ...project.capabilities
       .filter((name) => capabilityViews[name])
       .map((name) => ({ key: name, title: capabilityViews[name].tab, icon: capabilityViews[name].icon })),
@@ -121,11 +122,6 @@ export default function ProjectPage() {
       <Suspense fallback={<Spinner />}>
         {tab === "files" ? (
           <FilesView project={project} reload={reload} />
-        ) : tab === "board" ? (
-          <Board
-            project={project.id}
-            emptyNote="This project has no page yet — put what matters on it."
-          />
         ) : tab === "git" ? (
           <GitTab project={project} />
         ) : View ? (

@@ -170,6 +170,10 @@ func readRun(ctx *fiber.Ctx, env *capability.Env, id int64) *Run {
 // SharedRoutes carry the webhook: its own URL with a secret, callable from
 // outside without an account.
 func (c Capability) SharedRoutes(env *capability.Env, r fiber.Router) {
+	// Lights belong to the house, not to a project: they are reached through
+	// their account, from anywhere.
+	mountLightAccounts(env, r)
+
 	r.All("/hooks/:project/:rule", func(ctx *fiber.Ctx) error {
 		list, err := env.Store.ProjectsBySlug(ctx.UserContext(), ctx.Params("project"))
 		if err != nil || len(list) != 1 {

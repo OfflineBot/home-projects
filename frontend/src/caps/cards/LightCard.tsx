@@ -23,7 +23,13 @@ interface Light {
 export default function LightCard({ options, editing }: CardProps) {
   const project = String(options.projectId ?? "");
   const host = String(options.host ?? "");
-  const name = String(options.title ?? "") || host;
+  // A light account is the house's, not a project's: several lamps under one
+  // name, switched together, reachable from any page.
+  const account = String(options.account ?? "");
+  const name = String(options.title ?? "") || host || "Light";
+  const where = account
+    ? `/api/capabilities/automation/lights/${account}`
+    : `/api/projects/${project}/automation/light`;
   const [on, setOn] = useState<boolean | null>(null);
   const [bright, setBright] = useState(128);
   const [colour, setColour] = useState("#b4befe");
@@ -31,10 +37,10 @@ export default function LightCard({ options, editing }: CardProps) {
   const [busy, setBusy] = useState(false);
 
   const read = useCallback(async () => {
-    if (!project || !host) return;
+    if (!account && (!project || !host)) return;
     try {
       const answer = await api<{ light: Light; note?: string }>(
-        `/api/projects/${project}/automation/light?host=${encodeURIComponent(host)}`,
+        account ? where : `${where}?host=${encodeURIComponent(host)}`,
         { method: "GET" },
       );
       if (answer.light?.reachable) {
@@ -50,7 +56,7 @@ export default function LightCard({ options, editing }: CardProps) {
       setOn(null);
       setNote((err as Error).message);
     }
-  }, [project, host]);
+  }, [project, host, account, where]);
 
   useEffect(() => {
     void read();
@@ -63,10 +69,9 @@ export default function LightCard({ options, editing }: CardProps) {
   const send = async (body: Record<string, unknown>) => {
     setBusy(true);
     try {
-      const answer = await api<{ light: Light; note?: string }>(
-        `/api/projects/${project}/automation/light`,
-        { body: { host, ...body } },
-      );
+      const answer = await api<{ light: Light; note?: string }>(where, {
+        body: account ? body : { host, ...body },
+      });
       if (answer.light?.reachable) {
         setOn(answer.light.on);
         if (answer.light.brightness > 0) setBright(answer.light.brightness);
@@ -80,7 +85,7 @@ export default function LightCard({ options, editing }: CardProps) {
     }
   };
 
-  if (!project || !host) return <div className="meta">This card has no light yet.</div>;
+  if (!account && (!project || !host)) return <div className="meta">This card has no light yet.</div>;
 
   return (
     <div className={on ? "card-light lit" : "card-light"}>

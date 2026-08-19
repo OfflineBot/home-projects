@@ -1026,6 +1026,33 @@ def main() -> int:
     anon = Client(args.url)
     anon.call("GET", "/api/events", expect=401)
 
+    # ------------------------------------------------------- lights as accounts
+    # A light account is a name and its lamps — the bed, the desk, or every one
+    # in the house — kept where the other connections are and reachable from
+    # anywhere rather than from inside one project.
+    kinds_now = (c.call("GET", "/api/accounts") or {}).get("kinds", [])
+    check(any(k["name"] == "wled" for k in kinds_now), "lights are a kind of account")
+    check(not any(k["name"] == "wled" and k.get("secretLabel") for k in kinds_now),
+          "and one that asks for no password, because there is nothing to sign into")
+    lamps = c.call("POST", "/api/accounts", {
+        "kind": "wled", "title": f"sweep-lights-{stamp}",
+        "config": {"hosts": "127.0.0.1:9, 127.0.0.1:10"},
+    }, expect=201)
+    if lamps:
+        listed_lights = c.call("GET", "/api/capabilities/automation/lights") or {}
+        mine_lights = [l for l in listed_lights.get("lights", []) if l["id"] == lamps["id"]]
+        check(bool(mine_lights) and len(mine_lights[0]["hosts"]) == 2,
+              "an account holds as many lamps as it was given")
+        dark = c.call("GET", f"/api/capabilities/automation/lights/{lamps['id']}") or {}
+        check(dark.get("light", {}).get("reachable") is False and bool(dark.get("note")),
+              "a room that does not answer says so rather than failing")
+        c.call("POST", f"/api/capabilities/automation/lights/{lamps['id']}", {"power": "toggle"}, expect=502)
+        c.call("POST", f"/api/capabilities/automation/lights/{lamps['id']}", {}, expect=400)
+        c.call("GET", "/api/capabilities/automation/lights/not-an-account", expect=404)
+        # A visitor may not switch the house's lights.
+        Client(args.url).call("GET", "/api/capabilities/automation/lights", expect=401)
+        c.call("DELETE", f"/api/accounts/{lamps['id']}")
+
     # ---------------------------------------------------------------- lights
     # A lamp is a switch, not a rule: the card reads what the light is doing and
     # one press changes it. Nothing here has a WLED on the other end, so what is

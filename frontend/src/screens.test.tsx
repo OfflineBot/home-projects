@@ -442,12 +442,12 @@ describe("every screen draws something", () => {
       const GroupBoard = (await import("./components/board/Board")).default;
       const c = await draw(<GroupBoard group={group.slug} />, /Tall one/i);
       expect(c.querySelector(".board.fills")).not.toBeNull();
-      // And it can be switched off again from the bar it is switched on in.
+      // And it can be switched off again where it is switched on: the panel.
       fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      const button = await waitFor(() =>
-        [...c.querySelectorAll("button")].find((b) => /Fills the screen/i.test(b.textContent ?? ""))!,
-      );
-      fireEvent.click(button);
+      const panel = await waitFor(() => c.querySelector(".page-builder")!, { timeout: 8000 });
+      fireEvent.click([...panel.querySelectorAll("button")].find((b) => /Page/.test(b.textContent ?? ""))!);
+      const fill = await waitFor(() => panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+      fireEvent.click(fill);
       await waitFor(() => expect(c.querySelector(".board.fills")).toBeNull(), { timeout: 8000 });
     } finally {
       await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
@@ -623,11 +623,10 @@ describe("every screen draws something", () => {
   it("a tab can be set up", async () => {
     const c = await draw(<Dashboard />, /Dashboard/i);
     fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-    await waitFor(() =>
-      expect([...c.querySelectorAll("button")].some((b) => /This tab/i.test(b.textContent ?? ""))).toBe(true),
-    );
-    fireEvent.click([...c.querySelectorAll("button")].find((b) => /This tab/i.test(b.textContent ?? ""))!);
-    const dialog = await waitFor(() => screen.getByRole("dialog"));
+    // While building, pressing the tab you are on opens what it is.
+    const chip = await waitFor(() => c.querySelector<HTMLButtonElement>(".board-tab.on")!, { timeout: 8000 });
+    fireEvent.click(chip);
+    const dialog = await waitFor(() => screen.getByRole("dialog"), { timeout: 8000 });
     for (const label of ["Name", "Icon", "Cards are", "Page width"]) {
       expect(dialog.textContent).toContain(label);
     }

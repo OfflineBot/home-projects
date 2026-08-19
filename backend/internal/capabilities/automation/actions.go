@@ -51,7 +51,7 @@ func (Capability) Actions() []capability.Action {
 			Name:        "wled",
 			Title:       "WLED",
 			Description: "The lights: on, off, brightness, colour, an effect. Several at once.",
-			Params:      []string{"host", "power", "brightness", "color", "effect", "preset"},
+			Params:      []string{"account", "host", "power", "brightness", "color", "effect", "preset"},
 			Run:         runWLED,
 		},
 		{
@@ -78,9 +78,10 @@ func (Capability) Actions() []capability.Action {
 	}
 }
 
-// AccountKinds: the credentials the SSH action needs.
+// AccountKinds: what this capability has to be told once — where the lamps
+// are, and the credentials the SSH action needs.
 func (Capability) AccountKinds() []capability.AccountKind {
-	return []capability.AccountKind{{
+	return []capability.AccountKind{wledAccountKind(), {
 		Name:        "ssh",
 		Title:       "SSH",
 		Description: "A private key (or a password) for running commands on another machine.",
@@ -496,6 +497,25 @@ func runWLED(ctx context.Context, env *capability.Env, in capability.ActionInput
 	// hostname, which is a confusing way to fail.
 	named, _ := Read(ctx, env, in.Project)
 	hosts := []string{}
+	// An account is a roomful under one name, kept where the connections are.
+	// A rule may name one instead of listing addresses.
+	if account := strings.TrimSpace(param(in, "account")); account != "" {
+		all, err := env.Store.ListAccounts(ctx)
+		if err == nil {
+			for i := range all {
+				if all[i].Kind != "wled" {
+					continue
+				}
+				if !strings.EqualFold(all[i].Title, account) && all[i].ID.String() != account {
+					continue
+				}
+				hosts = append(hosts, hostsOfAccount(&all[i])...)
+			}
+		}
+		if len(hosts) == 0 {
+			return capability.ActionResult{}, fmt.Errorf("there is no light account called %q", account)
+		}
+	}
 	for _, raw := range strings.FieldsFunc(param(in, "host"), func(r rune) bool {
 		return r == '\n' || r == ',' || r == ' '
 	}) {
@@ -508,7 +528,7 @@ func runWLED(ctx context.Context, env *capability.Env, in capability.ActionInput
 		}
 	}
 	if len(hosts) == 0 {
-		return capability.ActionResult{}, fmt.Errorf("this action needs the address of a WLED")
+		return capability.ActionResult{}, fmt.Errorf("this action needs a light account or the address of a WLED")
 	}
 
 	state := map[string]any{}

@@ -9,9 +9,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/offlinebot/home-projects/backend/internal/auth"
 	"github.com/offlinebot/home-projects/backend/internal/capability"
 	"github.com/offlinebot/home-projects/backend/internal/files"
 	"github.com/offlinebot/home-projects/backend/internal/httpx"
+	"github.com/offlinebot/home-projects/backend/internal/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -131,6 +134,206 @@ func lampsOf(ctx *fiber.Ctx, env *capability.Env, raw string) []string {
 		out = append(out, wledHosts(spec.LightAt(host))...)
 	}
 	return out
+}
+
+// A WLED account: several lamps under one name, kept where the other
+// connections are kept rather than inside one project's file.
+//
+// That is what "all the bed lights" and "all the lights" are — a name and a
+// list of addresses. Nothing secret is involved, which is why this account has
+// no password: what it holds is where the lamps are, not how to get in.
+func wledAccountKind() capability.AccountKind {
+	return capability.AccountKind{
+		Name:        "wled",
+		Title:       "Lights (WLED)",
+		Description: "One address or twenty under one name — the bed, the desk, or every lamp in the house.",
+		Fields: []capability.AccountField{{
+			Name: "hosts", Label: "Addresses", Type: "textarea", Required: true,
+			Placeholder: "192.168.178.49, 192.168.178.53",
+			Hint:        "As many as belong together, separated by commas or new lines.",
+		}},
+		Test: testWLEDAccount,
+	}
+}
+
+// hostsOfAccount reads the addresses out of a wled account.
+func hostsOfAccount(a *model.Account) []string {
+	var cfg struct {
+		Hosts any `json:"hosts"`
+	}
+	_ = json.Unmarshal(a.Config, &cfg)
+	switch v := cfg.Hosts.(type) {
+	case string:
+		return wledHosts(v)
+	case []any:
+		out := []string{}
+		for _, one := range v {
+			if text, ok := one.(string); ok {
+				out = append(out, wledHosts(text)...)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// testWLEDAccount asks every lamp whether it is there. One that answers is
+// enough to call the account good — a lamp switched off at the wall should not
+// make the whole room a fault.
+func testWLEDAccount(ctx context.Context, env *capability.Env, a *model.Account, _ []byte) error {
+	hosts := hostsOfAccount(a)
+	if len(hosts) == 0 {
+		return fmt.Errorf("this account has no addresses")
+	}
+	missing := []string{}
+	for _, host := range hosts {
+		if _, err := wledRead(ctx, host); err != nil {
+			missing = append(missing, host)
+		}
+	}
+	if len(missing) == len(hosts) {
+		return fmt.Errorf("none of them answered: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// mountLightAccounts: the lamps of an account, switched without a project in
+// the middle. A light belongs to the house, not to a project.
+func mountLightAccounts(env *capability.Env, r fiber.Router) {
+	accountOf := func(ctx *fiber.Ctx) (*model.Account, []string, error) {
+		id, err := uuid.Parse(ctx.Params("account"))
+		if err != nil {
+			return nil, nil, httpx.NotFound("There is no such account.")
+		}
+		a, err := env.Store.AccountByID(ctx.UserContext(), id)
+		if err != nil || a.Kind != "wled" {
+			return nil, nil, httpx.NotFound("There is no light account with that id.")
+		}
+		return a, hostsOfAccount(a), nil
+	}
+
+	// Every light account there is, with how many lamps it holds.
+	r.Get("/lights", func(ctx *fiber.Ctx) error {
+		if !auth.From(ctx).IsUser() {
+			return httpx.Unauthorized("Sign in first.")
+		}
+		all, err := env.Store.ListAccounts(ctx.UserContext())
+		if err != nil {
+			return httpx.Internal("the accounts could not be read").WithCause(err)
+		}
+		out := []fiber.Map{}
+		for i := range all {
+			if all[i].Kind != "wled" {
+				continue
+			}
+			out = append(out, fiber.Map{
+				"id": all[i].ID, "title": all[i].Title, "hosts": hostsOfAccount(&all[i]),
+			})
+		}
+		return ctx.JSON(fiber.Map{"lights": out})
+	})
+
+	r.Get("/lights/:account", func(ctx *fiber.Ctx) error {
+		if !auth.From(ctx).IsUser() {
+			return httpx.Unauthorized("Sign in first.")
+		}
+		a, hosts, err := accountOf(ctx)
+		if err != nil {
+			return err
+		}
+		if len(hosts) == 0 {
+			return ctx.JSON(fiber.Map{"light": lightState{}, "note": a.Title + " has no addresses"})
+		}
+		state, rerr := wledRead(ctx.UserContext(), hosts[0])
+		if rerr != nil {
+			return ctx.JSON(fiber.Map{"light": lightState{}, "note": rerr.Error()})
+		}
+		return ctx.JSON(fiber.Map{"light": state, "title": a.Title, "lamps": len(hosts)})
+	})
+
+	r.Post("/lights/:account", func(ctx *fiber.Ctx) error {
+		if !auth.From(ctx).IsUser() {
+			return httpx.Unauthorized("Sign in first.")
+		}
+		a, hosts, err := accountOf(ctx)
+		if err != nil {
+			return err
+		}
+		var in lightWish
+		if err := ctx.BodyParser(&in); err != nil {
+			return httpx.BadRequest("that is not a light to switch")
+		}
+		state, err := wishToState(in)
+		if err != nil {
+			return err
+		}
+		failed := []string{}
+		for _, host := range hosts {
+			if werr := wledWrite(ctx.UserContext(), host, state); werr != nil {
+				failed = append(failed, host)
+			}
+		}
+		if len(failed) == len(hosts) {
+			return ctx.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+				"error": a.Title + ": none of them answered",
+			})
+		}
+		after, rerr := wledRead(ctx.UserContext(), hosts[0])
+		if rerr != nil {
+			return ctx.JSON(fiber.Map{"light": lightState{}, "note": rerr.Error()})
+		}
+		// A lamp that is out is worth saying, but the rest were switched.
+		note := ""
+		if len(failed) > 0 {
+			note = fmt.Sprintf("%d of %d did not answer", len(failed), len(hosts))
+		}
+		return ctx.JSON(fiber.Map{"light": after, "note": note, "lamps": len(hosts)})
+	})
+}
+
+// lightWish is what a caller asks of a lamp.
+type lightWish struct {
+	Host       string `json:"host"`
+	Power      string `json:"power"`
+	Brightness *int   `json:"brightness"`
+	Colour     string `json:"color"`
+}
+
+// wishToState turns that into what WLED understands.
+func wishToState(in lightWish) (map[string]any, error) {
+	state := map[string]any{}
+	switch strings.ToLower(strings.TrimSpace(in.Power)) {
+	case "on", "true", "1":
+		state["on"] = true
+	case "off", "false", "0":
+		state["on"] = false
+	case "toggle":
+		state["on"] = "t"
+	}
+	if in.Brightness != nil {
+		n := *in.Brightness
+		if n < 0 || n > 255 {
+			return nil, httpx.BadRequest("brightness is 0 to 255, not %d", n)
+		}
+		state["bri"] = n
+		if _, said := state["on"]; !said && n > 0 {
+			state["on"] = true
+		}
+	}
+	if colour := strings.TrimSpace(in.Colour); colour != "" {
+		rgb, err := parseColour(colour)
+		if err != nil {
+			return nil, httpx.BadRequest("%v", err)
+		}
+		state["seg"] = []any{map[string]any{"col": []any{rgb}}}
+		if _, said := state["on"]; !said {
+			state["on"] = true
+		}
+	}
+	if len(state) == 0 {
+		return nil, httpx.BadRequest("nothing to change — say on, off, toggle, a brightness or a colour")
+	}
+	return state, nil
 }
 
 // mountLights hangs the routes a light card needs off the project.

@@ -179,6 +179,8 @@ function AddPanel({
         />
       </Field>
 
+      <LightAccounts find={find} onAdd={onAdd} />
+
       {mine.map((p) => (
         <ProjectOffers key={p.id} project={p} find={find} onAdd={onAdd} />
       ))}
@@ -195,6 +197,50 @@ function AddPanel({
               <Icon name="plus" size={13} />
             </button>
           ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The light accounts: a name and its lamps, switched together.
+ *
+ * They are not a project's, so they are not among a project's offers — they
+ * belong to the house and are listed first, because "all the lights" is the
+ * thing anybody puts on a page before anything else.
+ */
+function LightAccounts({
+  find,
+  onAdd,
+}: {
+  find: string;
+  onAdd: (kind: string, options: Record<string, any>) => Promise<void>;
+}) {
+  const lights = useQuery<{ lights: { id: string; title: string; hosts: string[] }[] }>(
+    "/api/capabilities/automation/lights",
+  );
+  const list = (lights.data?.lights ?? []).filter(
+    (l) => !find || l.title.toLowerCase().includes(find.toLowerCase()),
+  );
+  if (!list.length) return null;
+  return (
+    <>
+      <h3 className="page-builder-heading">Lights</h3>
+      <div className="page-builder-blocks">
+        {list.map((light) => (
+          <button
+            key={light.id}
+            className="page-builder-block"
+            onClick={() => void onAdd("light", { account: light.id, title: light.title })}
+          >
+            <Icon name="lightbulb" size={15} />
+            <span className="grow">
+              {light.title}
+              <span className="meta"> · {light.hosts.length} lamps</span>
+            </span>
+            <Icon name="plus" size={13} />
+          </button>
+        ))}
       </div>
     </>
   );

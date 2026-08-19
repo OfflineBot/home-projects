@@ -82,8 +82,22 @@ person.
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
 
-**Lights.** A project's `automation.yaml` holds the lamps it can reach, and a
-name may carry a whole room:
+**Lights as accounts.** A light account is a name and its lamps — the bed, the
+desk, or every one in the house. It belongs to the house rather than to a
+project, needs no password, and is switched as one:
+
+    POST /api/accounts  {"kind": "wled", "title": "All the lights",
+                         "config": {"hosts": "192.168.178.49, 192.168.178.53"}}
+    GET  /api/capabilities/automation/lights           every light account
+    GET  /api/capabilities/automation/lights/<id>      what it is doing
+    POST /api/capabilities/automation/lights/<id>      {"power": "toggle"} | {"color": "#ff8800"}
+
+A rule reaches one by name: `{"run": "wled", "account": "All the lights",
+"power": "on"}`. And anything WLED can do that this does not is one `http`
+action away — its whole JSON API is a POST to `http://<lamp>/json/state`.
+
+**Lights in a project.** A project's `automation.yaml` may also hold lamps, and
+a name there may carry a whole room:
 
     lights:
       - name: Desk

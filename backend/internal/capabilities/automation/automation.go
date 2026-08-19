@@ -188,8 +188,10 @@ func (Capability) Cards() []capability.Card {
 		Name: "light", Title: "A light", Icon: "lightbulb", W: 2, H: 1,
 		Description: "A WLED light: says whether it is on, and one press changes it.",
 		Options: []capability.AccountField{
-			{Name: "projectId", Label: "Project", Type: "project", Required: true},
-			{Name: "host", Label: "Address", Type: "text", Required: true,
+			{Name: "account", Label: "Light account", Type: "text",
+				Hint: "A light account holds several lamps and is switched as one."},
+			{Name: "projectId", Label: "Project", Type: "project"},
+			{Name: "host", Label: "Address", Type: "text",
 				Placeholder: "192.168.178.60", Hint: "Several, separated by commas, are switched together."},
 			{Name: "title", Label: "Name", Type: "text", Placeholder: "Desk"},
 		},

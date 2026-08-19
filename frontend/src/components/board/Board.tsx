@@ -197,7 +197,11 @@ export default function Board({
   const current = tabs[Math.min(tab, Math.max(0, tabs.length - 1))];
   // A page being built has its own panel; the bar's buttons would be a second
   // set of the same thing.
-  const building = Boolean(editing && !exposed && current?.layout === "panes");
+  // Editing is the panel, whatever the tab is: a grid is dragged on the left
+  // and set up on the right, the same as a page of sections. Two ways of
+  // editing depending on the layout is how "nothing has changed" happens to
+  // somebody whose board is a grid.
+  const building = Boolean(editing && !exposed && current);
 
   /** Every variable there is, by "group/project.name" and by "project.name". */
   const value = useCallback(
@@ -417,169 +421,69 @@ export default function Board({
         </button>
       ) : null}
 
-      {current && current.layout === "panes" && editing && !exposed ? (
-        <div className="building">
-          <div className="building-page">
-            <Sections
-              sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
-              cards={current.cards}
-              editing
-              quiet
-              value={value}
-              projects={projects.data?.projects ?? []}
-              chosen={chosen}
-              onChoose={(card) => setChosen(card.id)}
-              onChange={(next) => void saveSections(current, next)}
-              onAdd={(section, column) => {
-                setPlacing({ section, column });
-                setChosen(null);
-              }}
-              onSettings={(card) => setChosen(card.id)}
-              onRemove={async (card) => {
-                await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
-                board.reload();
-              }}
-            />
-          </div>
-          <Builder
-            tab={current}
-            kinds={kinds.data?.cards ?? []}
-            projects={projects.data?.projects ?? []}
-            group={group}
-            project={project}
-            chosen={current.cards.find((c) => c.id === chosen) ?? null}
+      {(() => {
+        const canvas = (
+          <>
+        {current && current.layout === "panes" ? (
+          <Sections
             sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
-            onChoose={(card) => setChosen(card?.id ?? null)}
-            onSections={(next) => void saveSections(current, next)}
-            onAdd={async (kind, options) => {
-              const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
-              const made = await api<{ id: string }>("/api/boards/cards", {
-                body: {
-                  tabId: current.id,
-                  kind,
-                  options,
-                  x: 0,
-                  y: 0,
-                  w: fallback?.w ?? 4,
-                  h: fallback?.h ?? 2,
-                },
+            cards={current.cards}
+            editing={editing && !exposed}
+            value={value}
+            projects={projects.data?.projects ?? []}
+            onChange={async (next) => {
+              await api(`/api/boards/tabs/${current.id}`, {
+                method: "PATCH",
+                body: { style: { ...(current.style ?? {}), sections: next } },
               });
-              // Into the column that was aimed at, or the first one.
-              const next = arrange((current.style as TabStyle | undefined)?.sections, current.cards).map((s) => ({
-                ...s,
-                columns: s.columns.map((c) => [...c]),
-              }));
-              const si = Math.min(placing?.section ?? 0, next.length - 1);
-              const ci = Math.min(placing?.column ?? 0, next[si].columns.length - 1);
-              next[si].columns[ci].push(made.id);
-              await saveSections(current, next);
-              setChosen(made.id);
+              board.reload();
             }}
-            onChanged={() => board.reload()}
-            onDone={() => {
-              setEditing(false);
-              setChosen(null);
+            onAdd={(section, column) => {
+              setPlacing({ section, column });
+              setAdding(true);
+            }}
+            onSettings={(card) => setSettling(card)}
+            onRemove={async (card) => {
+              await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+              board.reload();
             }}
           />
-        </div>
-      ) : current && current.layout === "panes" ? (
-        <Sections
-          sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
-          cards={current.cards}
-          editing={editing && !exposed}
-          value={value}
-          projects={projects.data?.projects ?? []}
-          onChange={async (next) => {
-            await api(`/api/boards/tabs/${current.id}`, {
-              method: "PATCH",
-              body: { style: { ...(current.style ?? {}), sections: next } },
-            });
-            board.reload();
-          }}
-          onAdd={(section, column) => {
-            setPlacing({ section, column });
-            setAdding(true);
-          }}
-          onSettings={(card) => setSettling(card)}
-          onRemove={async (card) => {
-            await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
-            board.reload();
-          }}
-        />
-      ) : current && current.layout === "page" ? (
-        <PageTab
-          group={group}
-          tab={current}
-          editing={editing && !exposed}
-          value={value}
-          projects={projects.data?.projects ?? []}
-        />
-      ) : current && current.layout === "flow" ? (
-        <div className="flow">
-          {current.cards.map((card, i) => (
-            <div
-              key={card.id}
-              className="flow-item"
-              style={{ flexBasis: `calc(${Math.min(100, Math.round((card.w / 12) * 100))}% - 12px)` }}
-            >
-              {editing ? (
-                <div className="card-tools">
-                  <span className="widths">
-                    {WIDTHS.map((w) => (
-                      <button
-                        key={w.value}
-                        className={card.w === w.value ? "width on" : "width"}
-                        title={w.label}
-                        onClick={() => void setWidth(card, w.value)}
-                      >
-                        {w.short}
-                      </button>
-                    ))}
-                  </span>
-                  <button className="btn ghost icon" aria-label="Up" onClick={() => void shift(i, -1)}>
-                    <Icon name="chevronUp" size={13} />
-                  </button>
-                  <button className="btn ghost icon" aria-label="Down" onClick={() => void shift(i, 1)}>
-                    <Icon name="chevronDown" size={13} />
-                  </button>
-                  <button
-                    className="btn ghost icon"
-                    aria-label="Settings for this card"
-                    onClick={() => setSettling(card)}
-                  >
-                    <Icon name="settings" size={13} />
-                  </button>
-                  <button
-                    className="btn ghost icon"
-                    aria-label="Remove this card"
-                    onClick={async () => {
-                      await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
-                      board.reload();
-                    }}
-                  >
-                    <Icon name="x" size={14} />
-                  </button>
-                </div>
-              ) : null}
-              <CardBody card={card} value={value} projects={projects.data?.projects ?? []} editing={editing} />
-            </div>
-          ))}
-        </div>
-      ) : current ? (
-        <Grid
-          cards={current.cards.map((c) => ({ id: c.id, x: c.x, y: c.y, w: c.w, h: c.h }))}
-          editing={editing}
-          free={current.layout === "free"}
-          onChange={saveLayout}
-        >
-          {(placed) => {
-            const card = current.cards.find((c) => c.id === placed.id);
-            if (!card) return null;
-            const look = dress(card.style);
-            return (
-              <div className={`${look.className} card-${card.kind}`} style={look.style}>
+        ) : current && current.layout === "page" ? (
+          <PageTab
+            group={group}
+            tab={current}
+            editing={editing && !exposed}
+            value={value}
+            projects={projects.data?.projects ?? []}
+          />
+        ) : current && current.layout === "flow" ? (
+          <div className="flow">
+            {current.cards.map((card, i) => (
+              <div
+                key={card.id}
+                className="flow-item"
+                style={{ flexBasis: `calc(${Math.min(100, Math.round((card.w / 12) * 100))}% - 12px)` }}
+              >
                 {editing ? (
                   <div className="card-tools">
+                    <span className="widths">
+                      {WIDTHS.map((w) => (
+                        <button
+                          key={w.value}
+                          className={card.w === w.value ? "width on" : "width"}
+                          title={w.label}
+                          onClick={() => void setWidth(card, w.value)}
+                        >
+                          {w.short}
+                        </button>
+                      ))}
+                    </span>
+                    <button className="btn ghost icon" aria-label="Up" onClick={() => void shift(i, -1)}>
+                      <Icon name="chevronUp" size={13} />
+                    </button>
+                    <button className="btn ghost icon" aria-label="Down" onClick={() => void shift(i, 1)}>
+                      <Icon name="chevronDown" size={13} />
+                    </button>
                     <button
                       className="btn ghost icon"
                       aria-label="Settings for this card"
@@ -599,12 +503,103 @@ export default function Board({
                     </button>
                   </div>
                 ) : null}
-                <CardInner card={card} value={value} projects={projects.data?.projects ?? []} editing={editing} />
+                <CardBody card={card} value={value} projects={projects.data?.projects ?? []} editing={editing} />
               </div>
-            );
-          }}
-        </Grid>
-      ) : null}
+            ))}
+          </div>
+        ) : current ? (
+          <Grid
+            cards={current.cards.map((c) => ({ id: c.id, x: c.x, y: c.y, w: c.w, h: c.h }))}
+            editing={editing}
+            free={current.layout === "free"}
+            onChange={saveLayout}
+          >
+            {(placed) => {
+              const card = current.cards.find((c) => c.id === placed.id);
+              if (!card) return null;
+              const look = dress(card.style);
+              return (
+                <div className={`${look.className} card-${card.kind}`} style={look.style}>
+                  {editing ? (
+                    <div className="card-tools">
+                      <button
+                        className="btn ghost icon"
+                        aria-label="Settings for this card"
+                        onClick={() => setSettling(card)}
+                      >
+                        <Icon name="settings" size={13} />
+                      </button>
+                      <button
+                        className="btn ghost icon"
+                        aria-label="Remove this card"
+                        onClick={async () => {
+                          await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+                          board.reload();
+                        }}
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                  <CardInner card={card} value={value} projects={projects.data?.projects ?? []} editing={editing} />
+                </div>
+              );
+            }}
+          </Grid>
+        ) : null}
+          </>
+        );
+        if (!building || !current) return canvas;
+        return (
+          <div className="building">
+            <div className="building-page">{canvas}</div>
+            <Builder
+              tab={current}
+              kinds={kinds.data?.cards ?? []}
+              projects={projects.data?.projects ?? []}
+              group={group}
+              project={project}
+              chosen={current.cards.find((c) => c.id === chosen) ?? null}
+              sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
+              onChoose={(card) => setChosen(card?.id ?? null)}
+              onSections={(next) => void saveSections(current, next)}
+              onAdd={async (kind, options) => {
+                const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
+                const loose = current.layout === "free";
+                const made = await api<{ id: string }>("/api/boards/cards", {
+                  body: {
+                    tabId: current.id,
+                    kind,
+                    options,
+                    x: 0,
+                    y: Math.max(0, ...current.cards.map((c) => c.y + c.h)),
+                    w: loose ? (fallback?.w ?? 3) * 90 : (fallback?.w ?? 3),
+                    h: loose ? (fallback?.h ?? 2) * 92 : (fallback?.h ?? 2),
+                  },
+                });
+                if (current.layout === "panes") {
+                  const next = arrange((current.style as TabStyle | undefined)?.sections, current.cards).map((sec) => ({
+                    ...sec,
+                    columns: sec.columns.map((c) => [...c]),
+                  }));
+                  const si = Math.min(placing?.section ?? 0, next.length - 1);
+                  const ci = Math.min(placing?.column ?? 0, next[si].columns.length - 1);
+                  next[si].columns[ci].push(made.id);
+                  await saveSections(current, next);
+                } else {
+                  board.reload();
+                }
+                setChosen(made.id);
+              }}
+              onChanged={() => board.reload()}
+              onDone={() => {
+                setEditing(false);
+                setChosen(null);
+              }}
+            />
+          </div>
+        );
+      })()}
 
       {adding && board.data && current ? (
         <AddCard
