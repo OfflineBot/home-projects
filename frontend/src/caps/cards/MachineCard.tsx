@@ -56,7 +56,12 @@ export default function MachineCard({ options }: CardProps) {
         <span className="meta">{machine.up ? "up" : "not answering"}</span>
       </div>
       <div className="card-machine-foot">
-        {!machine.up && machine.mac ? (
+        {/* All three, always. They used to appear according to whether the
+            machine answered a port check — so a PC that was on but not
+            answering had no way to be shut down from its own card, while the
+            machines page offered it. What a button does is not a matter of
+            what a check thinks. */}
+        {machine.mac ? (
           <button
             className="btn small primary"
             disabled={busy === "wake"}
@@ -77,16 +82,12 @@ export default function MachineCard({ options }: CardProps) {
             <Icon name="zap" size={14} /> Wake
           </button>
         ) : null}
-        {machine.up ? (
-          <>
-            <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("shutdown")}>
-              Shut down
-            </button>
-            <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("reboot")}>
-              Restart
-            </button>
-          </>
-        ) : null}
+        <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("shutdown")}>
+          <Icon name="lock" size={13} /> Shut down
+        </button>
+        <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("reboot")}>
+          <Icon name="refresh" size={13} /> Restart
+        </button>
         <button className="btn ghost icon" aria-label="Check again" onClick={reload}>
           <Icon name="refresh" size={13} />
         </button>

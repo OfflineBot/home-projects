@@ -866,6 +866,7 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;
 }
 .terminal-bar .btn.icon { flex: none; padding: 4px 6px; }
+.terminal-measure { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .terminal-size { font-family: var(--mono); font-size: 11px; line-height: 1; }
 .terminal-size.big { font-size: 13.5px; }
 
@@ -892,11 +893,16 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .terminal-note { color: var(--ctp-peach); }
 .terminal-sessions { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
 .terminal-session {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 6px; width: 100%;
   background: var(--ctp-mantle); border: 1px solid var(--ctp-surface0); border-radius: 9px;
-  padding: 9px 12px; color: inherit; cursor: pointer;
+  padding: 4px 8px 4px 12px;
 }
 .terminal-session:hover { border-color: var(--ctp-blue); }
+.terminal-session-open {
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+  background: none; border: none; color: inherit; cursor: pointer;
+  padding: 6px 0; text-align: left; font: inherit;
+}
 .terminal-new { display: flex; gap: 8px; margin-top: 4px; }
 .terminal-new input { flex: 1; }
 

@@ -368,9 +368,24 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 		if err != nil {
 			return err
 		}
-		incoming, err := ics.ParseCalendar(body)
-		if err != nil {
-			return httpx.BadRequest("This file is not a calendar: %v", err)
+		// Two kinds of file: an iCalendar, or the JSON the old server wrote
+		// when it exported a calendar. Both are things people have lying
+		// around, so both are read here rather than in a converter somebody
+		// has to find first.
+		var incoming *ics.Component
+		if looksLikeOldExport(body) {
+			carried, err := eventsFromOldExport(body)
+			if err != nil {
+				return httpx.BadRequest("%v", err)
+			}
+			incoming = ics.NewCalendar("")
+			incoming.Children = carried
+		} else {
+			parsed, err := ics.ParseCalendar(body)
+			if err != nil {
+				return httpx.BadRequest("This file is not a calendar: %v", err)
+			}
+			incoming = parsed
 		}
 		author, email := capability.AuthorOf(ctx)
 		added := 0

@@ -37,6 +37,7 @@ export function Emulator({
   byAccount,
   size,
   onNeedsPassword,
+  onMeasured,
 }: {
   /** /api/projects/:id/machines/:name */
   base: string;
@@ -46,8 +47,12 @@ export function Emulator({
   /** Type size in pixels. 0 means: choose one that suits the box. */
   size?: number;
   onNeedsPassword?: () => void;
+  /** How wide and tall the terminal came out, in characters. */
+  onMeasured?: (cols: number, rows: number) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const told = useRef(onMeasured);
+  told.current = onMeasured;
   const host = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"opening" | "live" | "closed">("opening");
   const [attempt, setAttempt] = useState(0);
@@ -100,6 +105,7 @@ export function Emulator({
     const ws = new WebSocket(url.toString());
     ws.binaryType = "arraybuffer";
 
+    const later: number[] = [];
     let frame = 0;
     const fit = () => {
       cancelAnimationFrame(frame);
@@ -112,8 +118,11 @@ export function Emulator({
         } catch {
           return; // measured mid-layout; the next resize will do it
         }
-        if (ws.readyState === WebSocket.OPEN && xterm.cols > 0 && xterm.rows > 0) {
-          ws.send(JSON.stringify({ cols: xterm.cols, rows: xterm.rows }));
+        if (xterm.cols > 0 && xterm.rows > 0) {
+          told.current?.(xterm.cols, xterm.rows);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ cols: xterm.cols, rows: xterm.rows }));
+          }
         }
       });
     };
@@ -128,6 +137,11 @@ export function Emulator({
       setState("live");
       fit();
       xterm.focus();
+      // Again, a moment later. The size is sent while the other side is still
+      // signing in and starting tmux; if that one is missed the session stays
+      // at the size the pty was asked for, and the picture stays narrower than
+      // the window for as long as it is open. Saying it twice costs nothing.
+      later.push(window.setTimeout(fit, 600), window.setTimeout(fit, 2000));
     };
     ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) xterm.write(new Uint8Array(event.data));
@@ -146,6 +160,7 @@ export function Emulator({
 
     return () => {
       cancelAnimationFrame(frame);
+      for (const timer of later) window.clearTimeout(timer);
       watcher.disconnect();
       window.removeEventListener("resize", fit);
       typed.dispose();

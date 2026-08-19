@@ -728,6 +728,46 @@ def main() -> int:
     check(bool(graph) and "nodes" in graph and "edges" in graph,
           "a group can say what depends on what inside it")
 
+    # ------------------------------------- a calendar carried over from before
+    # The old server exported JSON, not iCalendar. A file like that is what
+    # somebody actually has after moving here, so the import takes it — with
+    # the four kinds of entry it had, which are the four kinds this one has.
+    carried = json.dumps({
+        "version": 1,
+        "exported_at": "2026-08-01T10:00:00Z",
+        "events": [
+            {"id": "11111111-1111-1111-1111-111111111111", "source": "private",
+             "title": "Zahnarzt", "location": "Ravensburg", "description": "",
+             "start_time": "2026-09-03T08:30:00Z", "end_time": "2026-09-03T09:15:00Z",
+             "entry_type": "appointment", "color": "#89b4fa"},
+            {"id": "22222222-2222-2222-2222-222222222222", "source": "private",
+             "title": "Praxisphase", "location": "", "description": "",
+             "start_time": "2026-10-01T00:00:00Z", "end_time": "2026-12-20T00:00:00Z",
+             "entry_type": "phase", "color": "#a6e3a1"},
+            {"id": "33333333-3333-3333-3333-333333333333", "source": "dhbw_manual",
+             "title": "Abgabe Studienarbeit", "location": "", "lecturer": "Prof. Meier",
+             "start_time": "2026-11-14T22:00:00Z", "end_time": "2026-11-14T22:00:00Z",
+             "entry_type": "deadline", "color": "#f38ba8"},
+        ],
+    }).encode()
+    brought = c.call("POST", f"/api/projects/{cal}/calendar/import", raw=carried,
+                     content_type="application/json")
+    check(bool(brought) and brought.get("imported") == 3, "a calendar exported by the old server can be brought in")
+    landed = c.call("GET", f"/api/projects/{cal}/calendar/events?from=2026-08-01&to=2027-01-31") or {}
+    titles = [e.get("summary") for e in landed.get("events", [])]
+    check("Zahnarzt" in titles and "Praxisphase" in titles,
+          "and its entries are in the calendar afterwards")
+    kinds_seen = {e.get("summary"): e.get("kind") for e in landed.get("events", [])}
+    check(kinds_seen.get("Praxisphase") == "phase" and kinds_seen.get("Abgabe Studienarbeit") == "deadline",
+          "with the kind of entry each one was")
+    # Twice does not double: the entries carry the id they had.
+    c.call("POST", f"/api/projects/{cal}/calendar/import", raw=carried, content_type="application/json")
+    again = c.call("GET", f"/api/projects/{cal}/calendar/events?from=2026-08-01&to=2027-01-31") or {}
+    check(len([e for e in again.get("events", []) if e.get("summary") == "Zahnarzt"]) == 1,
+          "and importing the same file twice does not double it")
+    c.call("POST", f"/api/projects/{cal}/calendar/import", raw=b"{\"nonsense\": true}",
+           content_type="application/json", expect=400)
+
     # ------------------------------------------------------------ schedulers
     sched = c.call("POST", "/api/schedulers", {
         "projectId": cal,
@@ -859,13 +899,17 @@ def main() -> int:
             break
         time.sleep(0.05)
     check(any(line.startswith(":") for line in heard), "the stream says hello before anything happens")
-    c.call("POST", f"/api/projects/{system}/automation/rules/check-self/run", expect=(200, 502))
-    for _ in range(60):
+    # A value that really is a different one: the same number written again is
+    # not news, and the stream is right not to mention it.
+    c.call("PUT", f"/api/projects/{system}/files/content",
+           {"path": "exports.json", "content": json.dumps({"streamed": stamp})})
+    for _ in range(80):
         if any("variable.changed" in line for line in heard):
             break
         time.sleep(0.1)
     check(any("variable.changed" in line for line in heard),
           "and a value that changed is said out loud, without asking again")
+    check(any("file.changed" in line for line in heard), "so is a file that was written")
 
     # It is a person's stream, not a machine's: a token is for asking.
     anon = Client(args.url)

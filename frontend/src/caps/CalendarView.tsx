@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { ErrorBox, Field, Modal, Spinner } from "../components/ui";
@@ -303,6 +303,7 @@ export function CalendarGrid({
             <Icon name="link" size={14} /> Subscribe
           </button>
         ) : null}
+        {showSubscription ? <ImportButton project={showSubscription} onDone={reload} onFailed={setActionError} /> : null}
         <NewEntryButton onPick={(k) => newEntry(k)} />
       </div>
 
@@ -930,6 +931,60 @@ function ListView({
 }
 
 // ------------------------------------------------------------------ dialog
+
+/**
+ * Bring a calendar in from a file.
+ *
+ * Two shapes are taken: an .ics from anywhere, and the .json the old home
+ * server wrote when it exported a calendar — that one is what somebody has
+ * lying around after moving here, and it would be a poor answer to say convert
+ * it yourself first.
+ */
+function ImportButton({
+  project,
+  onDone,
+  onFailed,
+}: {
+  project: string;
+  onDone: () => void;
+  onFailed: (error: Error) => void;
+}) {
+  const pick = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState("");
+  return (
+    <>
+      <input
+        ref={pick}
+        type="file"
+        accept=".ics,.json,text/calendar,application/json"
+        style={{ display: "none" }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setBusy(true);
+          try {
+            const answer = await api<{ imported: number }>(`/api/projects/${project}/calendar/import`, {
+              raw: await file.arrayBuffer(),
+              headers: { "Content-Type": file.name.endsWith(".json") ? "application/json" : "text/calendar" },
+            });
+            setSaid(`${answer.imported} brought in`);
+            onDone();
+          } catch (err) {
+            onFailed(err as Error);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <button className="btn small" disabled={busy} onClick={() => pick.current?.click()} title="An .ics file, or a calendar exported by the old home server">
+        <Icon name="upload" size={14} /> Import
+      </button>
+      {said ? <span className="meta">{said}</span> : null}
+    </>
+  );
+}
 
 function NewEntryButton({ onPick }: { onPick: (k: Kind) => void }) {
   const [open, setOpen] = useState(false);

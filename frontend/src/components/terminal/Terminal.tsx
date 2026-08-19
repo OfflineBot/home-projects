@@ -83,6 +83,9 @@ export function Terminal({
   // How large the type is. Remembered, because a terminal that is set up the
   // way somebody likes it and then forgets is worse than one that never asked.
   const [size, setSize] = useState(kept);
+  // What the terminal actually came out as. Shown, because "it is too narrow"
+  // is a different fault depending on whether that says 80 or 200.
+  const [measured, setMeasured] = useState("");
   const resize = (to: number) => {
     const next = Math.min(24, Math.max(9, to));
     setSize(next);
@@ -170,6 +173,7 @@ export function Terminal({
             <Icon name="refresh" size={14} />
           </button>
         ) : null}
+        {inside && measured ? <span className="meta terminal-measure">{measured}</span> : null}
         {inside ? (
           <>
             <button
@@ -203,13 +207,25 @@ export function Terminal({
         <button
           className="btn ghost icon"
           aria-label={full ? "Leave full screen" : "Full screen"}
-          title={full ? "Escape" : "Full screen"}
+          title={full ? "Back into the page" : "Full screen"}
           onClick={() => setFull(!full)}
         >
-          <Icon name={full ? "x" : "grid"} size={14} />
+          <Icon name={full ? "chevronDown" : "grid"} size={14} />
         </button>
-        {onLeave && !full ? (
-          <button className="btn ghost icon" aria-label="Close" onClick={onLeave}>
+        {/* Closing has to close. A terminal opened from a button used to leave
+            full screen and stay behind in a card the size of the button, with
+            no way out of it. */}
+        {onLeave || asButton ? (
+          <button
+            className="btn ghost icon"
+            aria-label="Close"
+            title="Close"
+            onClick={() => {
+              setFull(false);
+              setOpened(!asButton);
+              onLeave?.();
+            }}
+          >
             <Icon name="x" size={15} />
           </button>
         ) : null}
@@ -241,14 +257,29 @@ export function Terminal({
         ) : (
           <div className="terminal-sessions">
             {sessions.map((s) => (
-              <button key={s.name} className="terminal-session" onClick={() => setInside(s.name)}>
-                <Icon name="code" size={15} />
-                <span className="grow mono">{s.name}</span>
-                <span className="meta">
-                  {s.windows}w{s.attached ? " · attached" : ""}
-                </span>
-                <Icon name="chevronRight" size={14} />
-              </button>
+              <div key={s.name} className="terminal-session">
+                <button className="terminal-session-open" onClick={() => setInside(s.name)}>
+                  <Icon name="code" size={15} />
+                  <span className="grow mono">{s.name}</span>
+                  <span className="meta">
+                    {s.windows}w{s.attached ? " · attached" : ""}
+                  </span>
+                  <Icon name="chevronRight" size={14} />
+                </button>
+                {/* Ending one belongs where they are listed. Otherwise the only
+                    way to close a session is to attach to it and type exit. */}
+                <button
+                  className="btn ghost icon"
+                  aria-label={`End ${s.name}`}
+                  title="End this session"
+                  onClick={async () => {
+                    await call(`${base}/tmux/${encodeURIComponent(s.name)}/kill`);
+                    await list();
+                  }}
+                >
+                  <Icon name="trash" size={13} />
+                </button>
+              </div>
             ))}
             {sessions.length === 0 ? <p className="meta">{note || "No sessions."}</p> : null}
             <div className="terminal-new">
@@ -275,6 +306,7 @@ export function Terminal({
             password={secret}
             byAccount={byAccount}
             size={size}
+            onMeasured={(cols, rows) => setMeasured(`${cols}×${rows}`)}
             onNeedsPassword={() => setAsking(true)}
           />
           {note ? <div className="meta terminal-note">{note}</div> : null}
