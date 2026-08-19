@@ -1057,7 +1057,12 @@ def main() -> int:
     room = c.call("GET", f"/api/projects/{system}/automation/lights") or {}
     check(len(room.get("lights", [])) == 2 and len(room["lights"][1].get("hosts", [])) == 2,
           "a name can hold a whole room of lamps")
-    c.call("POST", f"/api/projects/{system}/automation/light", {"host": "Living room", "power": "off"}, expect=502)
+    # Asserting "it fails" is no check at all when the fault also fails: what
+    # matters is that each address is asked separately, which the message says.
+    room_said = c.call("POST", f"/api/projects/{system}/automation/light",
+                       {"host": "Living room", "power": "off"}, expect=502) or {}
+    check("," not in str(room_said.get("error", "")),
+          "a room of lamps is asked one lamp at a time, not as one long address")
     c.call("PUT", f"/api/projects/{system}/automation/lights",
            {"lights": [{"name": "Nowhere", "hosts": []}]}, expect=400)
     c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [{"name": "Desk", "host": "127.0.0.1:9"}]})

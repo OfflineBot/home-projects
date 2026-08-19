@@ -126,7 +126,9 @@ func lampsOf(ctx *fiber.Ctx, env *capability.Env, raw string) []string {
 	}
 	out := make([]string, 0, len(hosts))
 	for _, host := range hosts {
-		out = append(out, spec.LightAt(host))
+		// Split again after resolving: a name may stand for a whole room, and
+		// a room joined back into one string is one address nobody answers to.
+		out = append(out, wledHosts(spec.LightAt(host))...)
 	}
 	return out
 }
