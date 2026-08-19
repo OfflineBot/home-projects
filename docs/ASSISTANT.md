@@ -96,10 +96,16 @@ another and a calendar from a third:
      ]}}
 
 `shape` is one of `one`, `two`, `three`, `left` (narrow left), `right` (narrow
-right) or `quarters`. On a telephone the columns stand underneath each other in
-the order they are written — there is nothing to set for that. A card that no
-section mentions appears at the top of the first one, so nothing is lost by
-rearranging.
+right) or `quarters`. A section may also carry `"title"` for a heading above it
+and `"look": "band"` for a tinted strip across the page. On a telephone the
+columns stand underneath each other in the order they are written — there is
+nothing to set for that. A card that no section mentions appears at the top of
+the first one, so nothing is lost by rearranging.
+
+The plain parts of a page are cards too: `image` (an address, cover or
+contain), `clock`, `spacer` and `embed` (somebody else's page in a sandboxed
+frame), besides `text`, `heading`, `link`, `number`, `status`, `list` and the
+capability cards.
 
 **A tab that fills the screen.** `PATCH /api/boards/tabs/<id>` with
 `{"style": {"fill": true}}` makes the tab exactly as tall as the window, and

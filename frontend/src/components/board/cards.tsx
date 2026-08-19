@@ -1,4 +1,4 @@
-import { lazy, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, lazy, type ComponentType, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../Icon";
 import { formatDate } from "../ui";
@@ -149,6 +149,81 @@ function HistoryCard({ options, value }: CardProps) {
   );
 }
 
+
+/** A picture from an address — the simplest thing a page is made of. */
+function ImageCard({ options }: CardProps) {
+  const url = String(options.url ?? "");
+  const [broken, setBroken] = useState(false);
+  if (!url) return <div className="meta">This card has no picture yet.</div>;
+  if (broken) {
+    // A picture that will not load is not nothing: say which one, or the card
+    // is an empty box nobody can explain.
+    return <div className="meta">That picture could not be loaded: {url}</div>;
+  }
+  const image = (
+    <img className="card-image-img" src={url} alt={String(options.title ?? "")}
+         onError={() => setBroken(true)}
+         style={{ objectFit: String(options.fit ?? "cover") as "cover" | "contain" }} />
+  );
+  return (
+    <div className="card-image">
+      {options.link ? (
+        <a href={String(options.link)} target="_blank" rel="noreferrer">{image}</a>
+      ) : (
+        image
+      )}
+    </div>
+  );
+}
+
+/** The time, ticking. A page that shows the hour is a page you leave open. */
+function ClockCard({ options }: CardProps) {
+  const [now, setNow] = useState(() => new Date());
+  const seconds = String(options.seconds ?? "no") === "yes";
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), seconds ? 1000 : 20_000);
+    return () => clearInterval(timer);
+  }, [seconds]);
+  return (
+    <div className="card-clock">
+      <div className="card-clock-time">
+        {now.toLocaleTimeString(undefined, {
+          hour: "2-digit", minute: "2-digit", ...(seconds ? { second: "2-digit" } : {}),
+        })}
+      </div>
+      <div className="meta">
+        {options.title ? `${options.title} · ` : ""}
+        {now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
+      </div>
+    </div>
+  );
+}
+
+/** Room. With a line through it, or without. */
+function SpacerCard({ options }: CardProps) {
+  return <div className={String(options.line ?? "no") === "yes" ? "card-spacer ruled" : "card-spacer"} />;
+}
+
+/**
+ * Somebody else's page, in a frame that cannot reach this one: no session, no
+ * cookies, no scripts of ours. That is the price of showing a foreign page and
+ * it is worth saying rather than pretending it is the same as a card.
+ */
+function EmbedCard({ options }: CardProps) {
+  const url = String(options.url ?? "");
+  if (!/^https?:\/\//i.test(url)) return <div className="meta">This card has no address yet.</div>;
+  return (
+    <iframe
+      className="card-embed"
+      title={String(options.title ?? url)}
+      src={url}
+      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+      referrerPolicy="no-referrer"
+      loading="lazy"
+    />
+  );
+}
+
 // --------------------------------------------------------------- the registry
 
 export const cardViews: Record<string, CardView> = {
@@ -160,6 +235,10 @@ export const cardViews: Record<string, CardView> = {
   list: ListCard,
   project: ProjectCard,
   history: HistoryCard,
+  image: ImageCard,
+  clock: ClockCard,
+  spacer: SpacerCard,
+  embed: EmbedCard,
   html: lazy(() => import("./HtmlCard")),
   view: lazy(() => import("./ViewCard")),
   // A capability's cards are loaded only when one is actually on a board.

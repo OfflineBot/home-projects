@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { CardBody } from "./cards-body";
 import type { Project, Variable } from "../../lib/api";
@@ -28,6 +29,10 @@ export interface Section {
   shape: Shape;
   /** One list of card ids per column. */
   columns: string[][];
+  /** A heading above it, if it wants one. */
+  title?: string;
+  /** plain — nothing; band — a tinted strip the width of the page. */
+  look?: "plain" | "band";
 }
 
 export const SHAPES: { key: Shape; title: string; widths: number[] }[] = [
@@ -53,7 +58,7 @@ export function reshape(section: Section, shape: Shape): Section {
   for (let i = wanted; i < section.columns.length; i++) {
     columns[wanted - 1].push(...section.columns[i]);
   }
-  return { shape, columns };
+  return { shape, columns, title: section.title, look: section.look };
 }
 
 /**
@@ -61,7 +66,9 @@ export function reshape(section: Section, shape: Shape): Section {
  * once, whether or not the saved arrangement knows about it.
  */
 export function arrange(saved: Section[] | undefined, cards: Card[]): Section[] {
-  const sections: Section[] = (saved ?? []).map((s) => reshape({ shape: s.shape, columns: s.columns ?? [] }, s.shape));
+  const sections: Section[] = (saved ?? []).map((s) =>
+    reshape({ shape: s.shape, columns: s.columns ?? [], title: s.title, look: s.look }, s.shape),
+  );
   if (sections.length === 0) sections.push({ shape: "one", columns: [[]] });
 
   const known = new Set<string>();
@@ -144,38 +151,115 @@ export function Sections({
 }) {
   const byID = new Map(cards.map((c) => [c.id, c]));
 
+  // Dragging, with a pointer rather than with the HTML5 drag events: those do
+  // not exist on a telephone, and a page builder that can only be arranged
+  // with a mouse is half a page builder.
+  const [drag, setDrag] = useState<{ id: string; from: [number, number]; x: number; y: number } | null>(null);
+  const [over, setOver] = useState<{ section: number; column: number; index: number } | null>(null);
+  const columns = useRef(new Map<string, HTMLDivElement>());
+
   const change = (fn: (draft: Section[]) => void) => {
     const draft = sections.map((s) => ({ shape: s.shape, columns: s.columns.map((c) => [...c]) }));
     fn(draft);
     onChange(draft);
   };
 
-  const moveCard = (si: number, ci: number, index: number, byColumns: number, byPlaces: number) =>
-    change((draft) => {
-      const from = draft[si].columns[ci];
-      const [id] = from.splice(index, 1);
-      if (id === undefined) return;
-      const target = Math.max(0, Math.min(draft[si].columns.length - 1, ci + byColumns));
-      const into = draft[si].columns[target];
-      const at = byColumns !== 0 ? into.length : Math.max(0, Math.min(into.length, index + byPlaces));
-      into.splice(at, 0, id);
-    });
+  useEffect(() => {
+    if (!drag) return;
+    const move = (event: PointerEvent) => {
+      setDrag((d) => (d ? { ...d, x: event.clientX, y: event.clientY } : d));
+      // Which column is under the pointer, and where in it.
+      let found: { section: number; column: number; index: number } | null = null;
+      for (const [key, box] of columns.current) {
+        const rect = box.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right) continue;
+        if (event.clientY < rect.top - 40 || event.clientY > rect.bottom + 40) continue;
+        const [si, ci] = key.split(":").map(Number);
+        const kids = [...box.querySelectorAll<HTMLElement>(".sections-card")];
+        let index = kids.length;
+        for (let i = 0; i < kids.length; i++) {
+          const k = kids[i].getBoundingClientRect();
+          if (event.clientY < k.top + k.height / 2) {
+            index = i;
+            break;
+          }
+        }
+        found = { section: si, column: ci, index };
+        break;
+      }
+      setOver(found);
+    };
+    const up = () => {
+      setDrag(null);
+      setOver((target) => {
+        if (target && drag) {
+          change((draft) => {
+            const [fs, fc] = drag.from;
+            const from = draft[fs]?.columns[fc];
+            if (!from) return;
+            const at = from.indexOf(drag.id);
+            if (at < 0) return;
+            from.splice(at, 1);
+            const into = draft[target.section]?.columns[target.column];
+            if (!into) {
+              from.splice(at, 0, drag.id);
+              return;
+            }
+            // Moving down inside the same column: the list is one shorter now.
+            const index =
+              fs === target.section && fc === target.column && target.index > at
+                ? target.index - 1
+                : target.index;
+            into.splice(Math.max(0, Math.min(into.length, index)), 0, drag.id);
+          });
+        }
+        return null;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag?.id]);
 
   return (
     <div className="sections">
       {sections.map((section, si) => (
-        <div key={si} className="sections-section">
+        <div key={si} className={section.look === "band" ? "sections-section band" : "sections-section"}>
           {editing ? (
             <div className="sections-bar">
-              {SHAPES.map((shape) => (
-                <button
-                  key={shape.key}
-                  className={section.shape === shape.key ? "btn small primary" : "btn small ghost"}
-                  onClick={() => change((draft) => (draft[si] = reshape(draft[si], shape.key)))}
-                >
-                  {shape.title}
-                </button>
-              ))}
+              <select
+                className="sections-shape"
+                aria-label="Columns"
+                value={section.shape}
+                onChange={(e) => change((draft) => (draft[si] = reshape(draft[si], e.target.value as Shape)))}
+              >
+                {SHAPES.map((shape) => (
+                  <option key={shape.key} value={shape.key}>
+                    {shape.title}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="sections-name"
+                value={section.title ?? ""}
+                placeholder="a heading, if it wants one"
+                onChange={(e) => change((draft) => (draft[si].title = e.target.value))}
+              />
+              <button
+                className={section.look === "band" ? "btn small primary" : "btn small ghost"}
+                title="A tinted strip across the page"
+                onClick={() =>
+                  change((draft) => (draft[si].look = draft[si].look === "band" ? "plain" : "band"))
+                }
+              >
+                band
+              </button>
               <span className="grow" />
               <button
                 className="btn ghost icon"
@@ -211,51 +295,53 @@ export function Sections({
             </div>
           ) : null}
 
+          {section.title ? <h2 className="sections-title">{section.title}</h2> : null}
+
           <div className="sections-row">
             {section.columns.map((column, ci) => (
               <div
                 key={ci}
-                className="sections-col"
+                ref={(box) => {
+                  if (box) columns.current.set(`${si}:${ci}`, box);
+                  else columns.current.delete(`${si}:${ci}`);
+                }}
+                className={
+                  over && over.section === si && over.column === ci ? "sections-col over" : "sections-col"
+                }
                 style={{ flexGrow: widthsOf(section.shape)[ci], flexBasis: 0 }}
               >
                 {column.map((id, index) => {
                   const card = byID.get(id);
                   if (!card) return null;
+                  const landing = over && over.section === si && over.column === ci && over.index === index;
                   return (
-                    <div key={id} className="sections-card">
+                    <div
+                      key={id}
+                      className={[
+                        "sections-card",
+                        drag?.id === id ? "lifted" : "",
+                        landing ? "landing" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
                       {editing ? (
                         <div className="card-tools">
+                          {/* One handle to move it — with the mouse or a
+                              finger — and two buttons. The four arrows that
+                              used to be here were four ways of saying "drag
+                              me" without letting anybody. */}
                           <button
-                            className="btn ghost icon"
-                            aria-label="Left"
-                            disabled={ci === 0}
-                            onClick={() => moveCard(si, ci, index, -1, 0)}
+                            className="card-grip"
+                            aria-label={`Move ${card.options?.title ?? card.kind}`}
+                            title="Drag me"
+                            onPointerDown={(e) => {
+                              e.preventDefault();
+                              (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+                              setDrag({ id, from: [si, ci], x: e.clientX, y: e.clientY });
+                            }}
                           >
-                            <Icon name="chevronLeft" size={13} />
-                          </button>
-                          <button
-                            className="btn ghost icon"
-                            aria-label="Up"
-                            disabled={index === 0}
-                            onClick={() => moveCard(si, ci, index, 0, -1)}
-                          >
-                            <Icon name="chevronUp" size={13} />
-                          </button>
-                          <button
-                            className="btn ghost icon"
-                            aria-label="Down"
-                            disabled={index === column.length - 1}
-                            onClick={() => moveCard(si, ci, index, 0, 1)}
-                          >
-                            <Icon name="chevronDown" size={13} />
-                          </button>
-                          <button
-                            className="btn ghost icon"
-                            aria-label="Right"
-                            disabled={ci === section.columns.length - 1}
-                            onClick={() => moveCard(si, ci, index, 1, 0)}
-                          >
-                            <Icon name="chevronRight" size={13} />
+                            ⠿
                           </button>
                           <button
                             className="btn ghost icon"

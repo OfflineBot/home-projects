@@ -196,6 +196,36 @@ var coreCards = []Card{
 			{Name: "links", Label: "One per line: title | address", Type: "textarea",
 				Placeholder: "Moodle | https://moodle.dhbw-ravensburg.de"},
 		}},
+	{Name: "image", Title: "A picture", Icon: "camera", W: 4, H: 3,
+		Description: "A picture from an address, filling its card or fitted into it.",
+		Options: []AccountField{
+			{Name: "url", Label: "Address", Type: "url", Required: true, Placeholder: "https://…/photo.jpg"},
+			{Name: "fit", Label: "How it sits", Type: "select", Options: []Option{
+				{Value: "cover", Label: "fills the card, cropped"},
+				{Value: "contain", Label: "whole picture, letterboxed"},
+			}},
+			{Name: "link", Label: "Goes to", Type: "url", Hint: "Optional: pressing it opens this."},
+		}},
+	{Name: "clock", Title: "The time", Icon: "clock", W: 3, H: 2,
+		Description: "The time and the date, as they are now.",
+		Options: []AccountField{
+			{Name: "title", Label: "Name", Type: "text", Placeholder: "Zuhause"},
+			{Name: "seconds", Label: "With seconds", Type: "select", Options: []Option{
+				{Value: "no", Label: "no"}, {Value: "yes", Label: "yes"},
+			}},
+		}},
+	{Name: "spacer", Title: "A gap", Icon: "more", W: 12, H: 1,
+		Description: "Nothing, with a line through it or without — for giving a page room to breathe.",
+		Options: []AccountField{
+			{Name: "line", Label: "With a line", Type: "select", Options: []Option{
+				{Value: "no", Label: "no"}, {Value: "yes", Label: "yes"},
+			}},
+		}},
+	{Name: "embed", Title: "Another page", Icon: "globe", W: 6, H: 5,
+		Description: "Somebody else's page, in a frame of its own. It cannot reach this one.",
+		Options: []AccountField{
+			{Name: "url", Label: "Address", Type: "url", Required: true, Placeholder: "https://…"},
+		}},
 	{Name: "view", Title: "A project, right here", Icon: "box", W: 6, H: 5,
 		Description: "One of a project's views on the board itself — its mail, its calendar, its files.",
 		Options: []AccountField{

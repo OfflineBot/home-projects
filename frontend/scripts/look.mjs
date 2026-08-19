@@ -185,6 +185,8 @@ if (sectionTab) {
   const rule = await put("rule", { projectId: pc.id, rule: "Licht an", title: "Licht an" });
   const text = await put("text", { text: "## Zuhause\n\nEine Seite aus mehreren Projekten." });
   const term = await put("terminal", { projectId: pc.id, machine: "srv", as: "button", title: "Terminal" });
+  const clock = await put("clock", { title: "Zuhause", seconds: "yes" });
+  const picture = await put("image", { url: "https://placehold.co/600x300/1e1e2e/cdd6f4/png?text=Zuhause", fit: "cover" });
   await api(`/api/boards/tabs/${sectionTab}`, {
     method: "PATCH",
     body: {
@@ -192,8 +194,9 @@ if (sectionTab) {
       style: {
         width: "wide",
         sections: [
-          { shape: "one", columns: [[text]] },
-          { shape: "three", columns: [[machine], [light, rule], [term]] },
+          { shape: "left", columns: [[clock], [text]], look: "band" },
+          { shape: "three", columns: [[machine], [light, rule], [term]], title: "Zuhause" },
+          { shape: "one", columns: [[picture]] },
         ],
       },
     },
@@ -204,6 +207,31 @@ if (sectionTab) {
   if (await tabButton.count()) await tabButton.click();
   await page.waitForTimeout(3500);
   await shot("14-sections");
+
+  // Dragging: the card in the first column is carried to the third, with a
+  // pointer, the way a person does it.
+  const before = await api(`/api/boards?group=${group.slug}`);
+  const beforeCols = before.tabs.find((t) => t.id === sectionTab)?.style?.sections?.[1]?.columns;
+  await page.getByRole("button", { name: "Edit" }).first().click();
+  await page.waitForTimeout(1200);
+  const grip = page.locator(".sections-section").nth(1).locator(".card-grip").first();
+  const target = page.locator(".sections-section").nth(1).locator(".sections-col").nth(2);
+  if ((await grip.count()) && (await target.count())) {
+    const from = await grip.boundingBox();
+    const to = await target.boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + 20, { steps: 12 });
+    await page.waitForTimeout(300);
+    await shot("16-dragging");
+    await page.mouse.up();
+    await page.waitForTimeout(2500);
+    const after = await api(`/api/boards?group=${group.slug}`);
+    const afterCols = after.tabs.find((t) => t.id === sectionTab)?.style?.sections?.[1]?.columns;
+    console.log("dragged:", JSON.stringify(beforeCols), "→", JSON.stringify(afterCols));
+  }
+  await page.getByRole("button", { name: "Done" }).first().click().catch(() => {});
+  await page.waitForTimeout(800);
   console.log(
     "sections:",
     await page.evaluate(() => {

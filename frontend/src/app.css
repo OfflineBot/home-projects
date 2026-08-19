@@ -707,6 +707,17 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   .mail-list, .mail-read { max-height: none; }
 }
 
+/* The plainer cards a page is made of. */
+.card-image { height: 100%; overflow: hidden; border-radius: 8px; }
+.card-image, .card-image a { display: block; height: 100%; }
+.card-image-img { width: 100%; height: 100%; display: block; border-radius: 8px; }
+.card-clock { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.card-clock-time { font-size: 34px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.card-spacer { height: 100%; min-height: 8px; }
+.card-spacer.ruled { border-top: 1px solid var(--ctp-surface1); margin-top: 50%; }
+.card-embed { width: 100%; height: 100%; min-height: 160px; border: none; border-radius: 8px; background: var(--ctp-crust); }
+.card-image.card, .card-embed.card { padding: 0; }
+
 /* The lamps a project can reach, and the switches for them. */
 .lights-block {
   border: 1px solid var(--ctp-surface0); border-radius: 12px;
@@ -1065,9 +1076,29 @@ main.main:has(.machine-terminal) { max-width: none; }
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   border: 1px dashed var(--ctp-surface1); border-radius: 10px; padding: 6px 8px;
 }
+.sections-title { font-size: 20px; margin: 0 0 2px; }
+.sections-section.band {
+  background: color-mix(in srgb, var(--ctp-blue) 7%, var(--ctp-mantle));
+  border-radius: 14px; padding: 16px 18px;
+}
+.sections-shape { width: auto; font-size: 12.5px; padding: 4px 8px; }
+.sections-name { flex: 1; min-width: 140px; font-size: 13px; padding: 4px 8px; }
 .sections-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .sections-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.sections-card { position: relative; }
+.sections-card { position: relative; transition: opacity .12s ease; }
+/* Being dragged, and where it would land. */
+.sections-card.lifted { opacity: .35; }
+.sections-card.landing::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -7px; height: 3px;
+  background: var(--ctp-blue); border-radius: 2px;
+}
+.sections-col.over { outline: 1px dashed var(--ctp-blue); outline-offset: 6px; border-radius: 10px; }
+.card-grip {
+  background: var(--ctp-surface1); color: var(--ctp-subtext1); border: none;
+  border-radius: 6px; padding: 1px 6px; font-size: 12px; line-height: 1.5;
+  cursor: grab; touch-action: none;
+}
+.card-grip:active { cursor: grabbing; }
 .sections-card .card { height: auto; }
 .add-here.in-column { padding: 10px; margin: 0; font-size: 13px; }
 @media (max-width: 760px) {

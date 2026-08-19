@@ -408,10 +408,8 @@ describe("every screen draws something", () => {
 
       // The shape is changed from the section's own bar, and it sticks.
       fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      const three = await waitFor(() =>
-        [...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "three")!,
-      );
-      fireEvent.click(three);
+      const shape = await waitFor(() => c.querySelector<HTMLSelectElement>(".sections-shape")!);
+      fireEvent.change(shape, { target: { value: "three" } });
       await waitFor(async () => {
         const after = await api<{ tabs: { id: string; style?: { sections?: { shape: string }[] } }[] }>(
           `/api/boards?group=${group.slug}`,
