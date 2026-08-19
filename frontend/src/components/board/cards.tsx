@@ -246,6 +246,7 @@ export const cardViews: Record<string, CardView> = {
   terminal: lazy(() => import("../../caps/cards/TerminalCard")),
   rule: lazy(() => import("../../caps/cards/RuleCard")),
   light: lazy(() => import("../../caps/cards/LightCard")),
+  timer: lazy(() => import("../../caps/cards/TimerCard")),
   agenda: lazy(() => import("../../caps/cards/AgendaCard")),
   "links-list": lazy(() => import("../../caps/cards/LinksCard")),
 };

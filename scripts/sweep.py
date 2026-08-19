@@ -1086,7 +1086,28 @@ def main() -> int:
     still = c.call("GET", f"/api/projects/{system}/automation/lights") or {}
     check(len(still.get("lights", [])) == 1, "and editing the rules leaves the lights alone")
 
+    # Something to happen later: asked for, visible while it waits, callable off.
+    c.call("POST", f"/api/projects/{system}/automation/later",
+           {"rule": "nothing", "minutes": 5}, expect=404)
+    c.call("POST", f"/api/projects/{system}/automation/later", {"rule": "check-self"}, expect=400)
+    c.call("POST", f"/api/projects/{system}/automation/later",
+           {"rule": "check-self", "minutes": 3000}, expect=400)
+    soon = c.call("POST", f"/api/projects/{system}/automation/later",
+                  {"rule": "check-self", "minutes": 30}, expect=201)
+    check(bool(soon) and soon["waiting"]["rule"] == "check-self", "a rule can be asked for later")
+    coming = c.call("GET", f"/api/projects/{system}/automation/later") or {}
+    check(len(coming.get("waiting", [])) == 1, "and it is visible while it waits")
+    c.call("DELETE", f"/api/projects/{system}/automation/later/{soon['waiting']['id']}")
+    check(len((c.call("GET", f"/api/projects/{system}/automation/later") or {}).get("waiting", [])) == 0,
+          "and can be called off one at a time")
+    for _ in range(3):
+        c.call("POST", f"/api/projects/{system}/automation/later",
+               {"rule": "check-self", "minutes": 45}, expect=201)
+    stopped = c.call("DELETE", f"/api/projects/{system}/automation/later") or {}
+    check(stopped.get("stopped") == 3, "or all at once, which is the button that matters")
+
     kinds = c.call("GET", "/api/boards/cards") or {}
+    check(any(k["name"] == "timer" for k in kinds.get("cards", [])), "the timer is a kind of card")
     check(any(k["name"] == "light" for k in kinds.get("cards", [])),
           "a light is a kind of card the board knows")
     # Every address a project's rules already speak to is offered as a switch.

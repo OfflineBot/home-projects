@@ -97,6 +97,18 @@ and `POST /api/projects/<id>/automation/light` with
 `{"host": "Living room", "power": "toggle"}`, which switches all of them at
 once. Anything that is not a known name is taken to be an address.
 
+**Something later.** A rule can be asked for with a delay rather than put on a
+schedule — "everything on in five minutes" is asked for by hand, happens once,
+and has to be callable off:
+
+    POST   /api/projects/<id>/automation/later   {"rule": "Alles an", "minutes": 5}
+    GET    /api/projects/<id>/automation/later   what is waiting, and when
+    DELETE /api/projects/<id>/automation/later/<id>   one of them
+    DELETE /api/projects/<id>/automation/later        the lot
+
+The `timer` card is that with a box to type into: a number of minutes, one
+button, what is waiting underneath and a stop beside it.
+
 **A page out of parts.** A tab whose `layout` is `panes` is built the way a
 page builder builds one: sections down the page, columns across a section,
 cards in a column. The arrangement is in the tab's style and the cards are

@@ -183,7 +183,7 @@ func (Capability) Cards() []capability.Card {
 			{Name: "rule", Label: "Which rule", Type: "text", Required: true,
 				Hint: "The name it has in that project's rules."},
 		},
-	}, {
+	}, timerCard(), {
 		// A lamp is not a rule: it has a state, and a switch should show it.
 		Name: "light", Title: "A light", Icon: "lightbulb", W: 2, H: 1,
 		Description: "A WLED light: says whether it is on, and one press changes it.",
@@ -212,6 +212,7 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 			Options: map[string]any{"projectId": p.ID.String(), "rule": r.Name, "title": r.Name},
 		})
 	}
+	out = append(out, timerOffers(p, spec)...)
 	// Every lamp this project knows is offered as a switch: the ones written
 	// down by name first, then any address that only appears in a rule.
 	named := map[string]bool{}
@@ -400,6 +401,23 @@ func Start(ctx context.Context, env *capability.Env) {
 				return
 			case now := <-ticker.C:
 				engine.tick(context.Background(), now)
+			}
+		}
+	}()
+
+	// The timers get their own, faster clock. A schedule is a minute thing —
+	// "*/5 * * * *" cannot mean anything finer — but "in three minutes" that
+	// happens up to a minute late is a promise half kept, and ten seconds of
+	// looking costs one indexed statement.
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				engine.runDue(context.Background(), now)
 			}
 		}
 	}()

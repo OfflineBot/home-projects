@@ -26,6 +26,7 @@ func dueNow(spec string, now time.Time) bool {
 // Routes are mounted under /api/projects/:project/automation
 func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 	mountLights(env, r)
+	mountLater(env, r)
 
 	r.Get("/rules", func(ctx *fiber.Ctx) error {
 		if err := capability.RequireRead(ctx); err != nil {

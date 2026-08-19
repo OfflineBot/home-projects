@@ -737,6 +737,12 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .ran.bad { background: color-mix(in srgb, var(--ctp-red) 8%, var(--ctp-mantle)); }
 
+/* A number, a button, and what is coming. */
+.card-timer { display: flex; flex-direction: column; gap: 8px; justify-content: center; height: 100%; }
+.card-timer-row { display: flex; align-items: center; gap: 8px; }
+.card-timer-row input { width: 72px; }
+.card-timer-waiting { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 /* The lamps a project can reach, and the switches for them. */
 .lights-block {
   border: 1px solid var(--ctp-surface0); border-radius: 12px;
