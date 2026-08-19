@@ -1088,6 +1088,59 @@ main.main:has(.machine-terminal) { max-width: none; }
 .board.width-wide .html-inline,
 .board.width-wide .board-page { max-width: none; }
 
+/* Building a page: the page on the left, everything about it on the right.
+
+   The panel is a column beside the page rather than a dialog over it, so what
+   is being built is visible the whole time and looks exactly like what it will
+   be. On a phone there is no room beside anything, so it sits underneath. */
+.building { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+.building-page { min-width: 0; }
+/* Its own name: .builder was taken by the rule builder, whose flex-wrap sent
+   this panel's contents into a second column off the side of the screen. */
+.page-builder {
+  position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px;
+  border: 1px solid var(--ctp-surface1); border-radius: 14px; padding: 12px;
+  background: var(--ctp-mantle); max-height: calc(100dvh - 100px); overflow: auto;
+}
+.page-builder-tabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.page-builder-tab {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+  background: none; border: none; border-radius: 8px; padding: 5px 8px;
+  color: var(--ctp-subtext0); cursor: pointer;
+}
+.page-builder-tab.on { background: var(--ctp-surface0); color: var(--ctp-text); }
+.page-builder-tab:disabled { opacity: .45; cursor: default; }
+.page-builder-body { display: flex; flex-direction: column; gap: 8px; }
+.page-builder-heading {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ctp-overlay1); margin: 8px 0 2px;
+}
+.page-builder-blocks { display: flex; flex-direction: column; gap: 4px; }
+.page-builder-block {
+  display: flex; align-items: center; gap: 8px; text-align: left; font: inherit;
+  font-size: 13px; background: var(--ctp-base); color: inherit; cursor: pointer;
+  border: 1px solid var(--ctp-surface0); border-radius: 9px; padding: 7px 9px;
+}
+.page-builder-block:hover { border-color: var(--ctp-blue); }
+.page-builder-section { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.page-builder-section input { flex: 1; min-width: 0; font-size: 13px; padding: 4px 8px; }
+.page-builder-section select { width: auto; font-size: 12.5px; padding: 4px 6px; }
+.page-builder-remove { margin-top: 10px; align-self: flex-start; }
+
+/* While building, a card says it can be chosen, and says when it is. */
+.building .sections-card { cursor: pointer; }
+.building .sections-card::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 12px;
+  border: 1px solid transparent; pointer-events: none;
+}
+.building .sections-card:hover::after { border-color: var(--ctp-surface2); }
+.building .sections-card.chosen::after { border-color: var(--ctp-blue); border-width: 2px; }
+
+@media (max-width: 980px) {
+  .building { grid-template-columns: minmax(0, 1fr); }
+  .page-builder { position: static; max-height: none; }
+}
+
 /* Sections and columns: a page built out of parts.
 
    A section is a row of columns; a column is a stack of cards. On a screen the

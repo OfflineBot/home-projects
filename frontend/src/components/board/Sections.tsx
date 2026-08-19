@@ -138,6 +138,9 @@ export function Sections({
   onAdd,
   onSettings,
   onRemove,
+  chosen,
+  onChoose,
+  quiet,
 }: {
   sections: Section[];
   cards: Card[];
@@ -148,6 +151,11 @@ export function Sections({
   onAdd: (section: number, column: number) => void;
   onSettings: (card: Card) => void;
   onRemove: (card: Card) => void;
+  /** Which card the panel is showing, when a page is being built. */
+  chosen?: string | null;
+  onChoose?: (card: Card) => void;
+  /** The bars and buttons live in the panel instead. */
+  quiet?: boolean;
 }) {
   const byID = new Map(cards.map((c) => [c.id, c]));
 
@@ -231,7 +239,7 @@ export function Sections({
     <div className="sections">
       {sections.map((section, si) => (
         <div key={si} className={section.look === "band" ? "sections-section band" : "sections-section"}>
-          {editing ? (
+          {editing && !quiet ? (
             <div className="sections-bar">
               <select
                 className="sections-shape"
@@ -321,16 +329,20 @@ export function Sections({
                         "sections-card",
                         drag?.id === id ? "lifted" : "",
                         landing ? "landing" : "",
+                        chosen === id ? "chosen" : "",
                       ]
                         .filter(Boolean)
                         .join(" ")}
+                      onClickCapture={(e) => {
+                        if (!editing || !onChoose) return;
+                        // Choosing a card should not press what is on it.
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onChoose(card);
+                      }}
                     >
                       {editing ? (
                         <div className="card-tools">
-                          {/* One handle to move it — with the mouse or a
-                              finger — and two buttons. The four arrows that
-                              used to be here were four ways of saying "drag
-                              me" without letting anybody. */}
                           <button
                             className="card-grip"
                             aria-label={`Move ${card.options?.title ?? card.kind}`}
@@ -338,25 +350,30 @@ export function Sections({
                             onPointerDown={(e) => {
                               e.preventDefault();
                               (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+                              onChoose?.(card);
                               setDrag({ id, from: [si, ci], x: e.clientX, y: e.clientY });
                             }}
                           >
                             ⠿
                           </button>
-                          <button
-                            className="btn ghost icon"
-                            aria-label="Settings for this card"
-                            onClick={() => onSettings(card)}
-                          >
-                            <Icon name="settings" size={13} />
-                          </button>
-                          <button
-                            className="btn ghost icon"
-                            aria-label="Remove this card"
-                            onClick={() => onRemove(card)}
-                          >
-                            <Icon name="x" size={14} />
-                          </button>
+                          {quiet ? null : (
+                            <>
+                              <button
+                                className="btn ghost icon"
+                                aria-label="Settings for this card"
+                                onClick={() => onSettings(card)}
+                              >
+                                <Icon name="settings" size={13} />
+                              </button>
+                              <button
+                                className="btn ghost icon"
+                                aria-label="Remove this card"
+                                onClick={() => onRemove(card)}
+                              >
+                                <Icon name="x" size={14} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       ) : null}
                       <CardBody card={card} value={value} projects={projects} editing={editing} />
@@ -365,7 +382,7 @@ export function Sections({
                 })}
                 {editing ? (
                   <button className="add-here in-column" onClick={() => onAdd(si, ci)}>
-                    <Icon name="plus" size={14} /> Add here
+                    <Icon name="plus" size={14} /> {quiet ? "Here" : "Add here"}
                   </button>
                 ) : null}
               </div>
@@ -374,7 +391,7 @@ export function Sections({
         </div>
       ))}
 
-      {editing ? (
+      {editing && !quiet ? (
         <button
           className="add-here"
           onClick={() => onChange([...sections, { shape: "two", columns: [[], []] }])}

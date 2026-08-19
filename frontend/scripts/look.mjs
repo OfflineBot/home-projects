@@ -213,7 +213,24 @@ if (sectionTab) {
   const before = await api(`/api/boards?group=${group.slug}`);
   const beforeCols = before.tabs.find((t) => t.id === sectionTab)?.style?.sections?.[1]?.columns;
   await page.getByRole("button", { name: "Edit" }).first().click();
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(4000);
+  await shot("17-building");
+  console.log(
+    "panel:",
+    await page.evaluate(() => {
+      const b = document.querySelector(".page-builder");
+      if (!b) return "none";
+      const r = b.getBoundingClientRect();
+      const box = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return `${sel}: none`;
+        const q = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return `${sel} ${Math.round(q.width)}x${Math.round(q.height)}@${Math.round(q.x)},${Math.round(q.y)} ${cs.display}/${cs.visibility}/${cs.opacity}`;
+      };
+      return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)}  ${box(".page-builder-body")}  ${box(".page-builder-block")}  blocks ${document.querySelectorAll(".page-builder-block").length}`;
+    }),
+  );
   const grip = page.locator(".sections-section").nth(1).locator(".card-grip").first();
   const target = page.locator(".sections-section").nth(1).locator(".sections-col").nth(2);
   if ((await grip.count()) && (await target.count())) {

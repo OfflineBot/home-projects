@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
-import { Empty, ErrorBox, Field, Modal, Section, Spinner, useAsk } from "../ui";
-import { colorVar } from "../../lib/theme";
+import { Empty, ErrorBox, Field, Modal, Spinner, useAsk } from "../ui";
 import { api, type Project, type Variable } from "../../lib/api";
 import { useMeta, useQuery, useSession } from "../../lib/store";
 import { useLive } from "../../lib/live";
 import { Grid, type Placed } from "./Grid";
 import { CardBody, CardInner, dress } from "./cards-body";
+import { CardSettings } from "./CardSettings";
 import { Sections, arrange, fromGrid, type Section as PaneSection } from "./Sections";
+import { Builder } from "./Builder";
 import { CodeArea } from "../CodeArea";
 import HtmlCard from "./HtmlCard";
 
@@ -59,7 +60,7 @@ interface BoardData {
   tabs: Tab[];
 }
 
-interface CardKind {
+export interface CardKind {
   name: string;
   title: string;
   icon: string;
@@ -130,6 +131,18 @@ export default function Board({
   });
 
   const ask = useAsk();
+  // One place writes an arrangement, whoever asked for the change.
+  const saveSections = useCallback(
+    async (of: Tab, next: PaneSection[]) => {
+      await api(`/api/boards/tabs/${of.id}`, {
+        method: "PATCH",
+        body: { style: { ...(of.style ?? {}), sections: next } },
+      });
+      board.reload();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   // A tab that fills the screen is exactly as tall as what is left of the
   // window below it. That is a measurement, not a number somebody guessed: the
   // bars above it are different heights on a phone, on a project page and on a
@@ -172,6 +185,9 @@ export default function Board({
   // Which column of which section the next card belongs in, when it was asked
   // for from there rather than from the bar.
   const [placing, setPlacing] = useState<{ section: number; column: number } | null>(null);
+  // Which card the builder panel is showing. A page is built by choosing a
+  // thing and changing it, not by covering it with buttons.
+  const [chosen, setChosen] = useState<string | null>(null);
   const [settling, setSettling] = useState<Card | null>(null);
   const [tabSettings, setTabSettings] = useState<Tab | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -179,6 +195,9 @@ export default function Board({
 
   const tabs = board.data?.tabs ?? [];
   const current = tabs[Math.min(tab, Math.max(0, tabs.length - 1))];
+  // A page being built has its own panel; the bar's buttons would be a second
+  // set of the same thing.
+  const building = Boolean(editing && !exposed && current?.layout === "panes");
 
   /** Every variable there is, by "group/project.name" and by "project.name". */
   const value = useCallback(
@@ -277,7 +296,7 @@ export default function Board({
 
         <span className="grow" />
 
-        {session.user && !exposed ? (
+        {session.user && !exposed && !building ? (
           editing ? (
             <>
               <button className="btn small" onClick={() => setAdding(true)}>
@@ -392,13 +411,78 @@ export default function Board({
         </Empty>
       ) : null}
 
-      {editing && current && current.cards.length > 0 && current.layout !== "page" ? (
+      {editing && current && current.cards.length > 0 && current.layout !== "page" && !building ? (
         <button className="add-here" onClick={() => setAdding(true)}>
           <Icon name="plus" size={16} /> Add a card
         </button>
       ) : null}
 
-      {current && current.layout === "panes" ? (
+      {current && current.layout === "panes" && editing && !exposed ? (
+        <div className="building">
+          <div className="building-page">
+            <Sections
+              sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
+              cards={current.cards}
+              editing
+              quiet
+              value={value}
+              projects={projects.data?.projects ?? []}
+              chosen={chosen}
+              onChoose={(card) => setChosen(card.id)}
+              onChange={(next) => void saveSections(current, next)}
+              onAdd={(section, column) => {
+                setPlacing({ section, column });
+                setChosen(null);
+              }}
+              onSettings={(card) => setChosen(card.id)}
+              onRemove={async (card) => {
+                await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+                board.reload();
+              }}
+            />
+          </div>
+          <Builder
+            tab={current}
+            kinds={kinds.data?.cards ?? []}
+            projects={projects.data?.projects ?? []}
+            group={group}
+            project={project}
+            chosen={current.cards.find((c) => c.id === chosen) ?? null}
+            sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
+            onChoose={(card) => setChosen(card?.id ?? null)}
+            onSections={(next) => void saveSections(current, next)}
+            onAdd={async (kind, options) => {
+              const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
+              const made = await api<{ id: string }>("/api/boards/cards", {
+                body: {
+                  tabId: current.id,
+                  kind,
+                  options,
+                  x: 0,
+                  y: 0,
+                  w: fallback?.w ?? 4,
+                  h: fallback?.h ?? 2,
+                },
+              });
+              // Into the column that was aimed at, or the first one.
+              const next = arrange((current.style as TabStyle | undefined)?.sections, current.cards).map((s) => ({
+                ...s,
+                columns: s.columns.map((c) => [...c]),
+              }));
+              const si = Math.min(placing?.section ?? 0, next.length - 1);
+              const ci = Math.min(placing?.column ?? 0, next[si].columns.length - 1);
+              next[si].columns[ci].push(made.id);
+              await saveSections(current, next);
+              setChosen(made.id);
+            }}
+            onChanged={() => board.reload()}
+            onDone={() => {
+              setEditing(false);
+              setChosen(null);
+            }}
+          />
+        </div>
+      ) : current && current.layout === "panes" ? (
         <Sections
           sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
           cards={current.cards}
@@ -1189,10 +1273,6 @@ function TabSettings({
   );
 }
 
-function clampTo(value: number, low: number, high: number) {
-  if (Number.isNaN(value)) return low;
-  return Math.max(low, Math.min(high, value));
-}
 
 /** A card's own view, wherever the card sits. */
 /** The projects, under the groups they are in. */
@@ -1206,249 +1286,3 @@ function byGroup(projects: Project[]): [string, Project[]][] {
 }
 
 /** What a card shows, and who may see it. */
-function CardSettings({
-  card,
-  kinds,
-  layout,
-  onClose,
-  onSaved,
-}: {
-  card: Card;
-  kinds: CardKind[];
-  /** What the tab is: a grid counts in columns and rows, a free surface in pixels. */
-  layout: Tab["layout"];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const meta = useMeta();
-  const [options, setOptions] = useState<Record<string, any>>(card.options ?? {});
-  const [style, setStyle] = useState<CardStyle>(card.style ?? {});
-  const [visibility, setVisibility] = useState(card.visibility);
-  // How big it is, in numbers. Dragging a corner is quick and imprecise; this
-  // is the other half of that, and the only way to say "exactly twelve columns"
-  // or "exactly 420 pixels" without pushing a mouse until it looks right.
-  const [size, setSize] = useState({ w: card.w, h: card.h });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const kind = kinds.find((k) => k.name === card.kind);
-
-  return (
-    <Modal
-      title={kind?.title ?? card.kind}
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button
-            className="btn primary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                await api(`/api/boards/cards/${card.id}`, {
-                  method: "PATCH",
-                  body: { options, style, visibility, w: size.w, h: size.h },
-                });
-                onSaved();
-              } catch (err) {
-                setError(err as Error);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Save
-          </button>
-        </>
-      }
-    >
-      <ErrorBox error={error} />
-      {(kind?.options ?? []).map((option) =>
-        option.type === "code" ? (
-          <Field key={option.name} label={option.label} hint={option.hint}>
-            <CodeArea
-              value={options[option.name] ?? ""}
-              onChange={(text) => setOptions({ ...options, [option.name]: text })}
-            />
-          </Field>
-        ) : option.type === "select" ? (
-          <Field key={option.name} label={option.label} hint={option.hint}>
-            <select
-              value={options[option.name] ?? ""}
-              onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-            >
-              {(option.options ?? []).map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        ) : (
-          <Field key={option.name} label={option.label} hint={option.hint}>
-            {option.type === "textarea" ? (
-              <textarea
-                value={options[option.name] ?? ""}
-                style={{ minHeight: 90 }}
-                onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-              />
-            ) : (
-              <input
-                value={options[option.name] ?? ""}
-                onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-              />
-            )}
-          </Field>
-        ),
-      )}
-
-      {card.kind === "html" ? (
-        <Field label="How it looks">
-          <div className="html-preview">
-            <HtmlCard options={options} value={() => undefined} projects={[]} editing={false} />
-          </div>
-        </Field>
-      ) : null}
-      <Field label="Title">
-        <input
-          value={options.title ?? ""}
-          onChange={(e) => setOptions({ ...options, title: e.target.value })}
-        />
-      </Field>
-      <Section title="How big" />
-      {layout === "free" ? (
-        <div className="row">
-          <Field label="Wide" hint="In pixels, on this free surface.">
-            <input
-              type="number"
-              min={40}
-              value={size.w}
-              onChange={(e) => setSize({ ...size, w: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="High" hint="In pixels.">
-            <input
-              type="number"
-              min={40}
-              value={size.h}
-              onChange={(e) => setSize({ ...size, h: Number(e.target.value) })}
-            />
-          </Field>
-        </div>
-      ) : (
-        <>
-          <div className="row">
-            <Field label="Wide" hint="Columns, out of twelve.">
-              <input
-                type="number"
-                min={1}
-                max={12}
-                value={size.w}
-                onChange={(e) => setSize({ ...size, w: clampTo(Number(e.target.value), 1, 12) })}
-              />
-            </Field>
-            <Field label="High" hint="Rows of about 92 pixels — and on a phone it keeps this height.">
-              <input
-                type="number"
-                min={1}
-                max={40}
-                value={size.h}
-                onChange={(e) => setSize({ ...size, h: clampTo(Number(e.target.value), 1, 40) })}
-              />
-            </Field>
-          </div>
-          <div className="row-buttons">
-            {[
-              { label: "a third", w: 4 },
-              { label: "half", w: 6 },
-              { label: "two thirds", w: 8 },
-              { label: "the whole width", w: 12 },
-            ].map((piece) => (
-              <button
-                key={piece.w}
-                className={size.w === piece.w ? "btn small primary" : "btn small ghost"}
-                onClick={() => setSize({ ...size, w: piece.w })}
-              >
-                {piece.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      <Section title="Look" />
-      <div className="row">
-        <Field label="Colour" optional>
-          <div className="swatches">
-            <button
-              className={!style.color ? "swatch selected" : "swatch"}
-              title="none"
-              style={{ background: "var(--ctp-surface1)" }}
-              onClick={() => setStyle({ ...style, color: undefined })}
-            />
-            {(meta?.colors ?? []).map((name) => (
-              <button
-                key={name}
-                className={style.color === name ? "swatch selected" : "swatch"}
-                style={{ background: colorVar(name) }}
-                title={name}
-                onClick={() => setStyle({ ...style, color: name })}
-              />
-            ))}
-          </div>
-        </Field>
-      </div>
-      <div className="row">
-        <Field label="Background">
-          <select
-            value={style.background ?? "plain"}
-            onChange={(e) => setStyle({ ...style, background: e.target.value as CardStyle["background"] })}
-          >
-            <option value="plain">plain</option>
-            <option value="tinted">tinted</option>
-            <option value="bare">none</option>
-          </select>
-        </Field>
-        <Field label="Text">
-          <select
-            value={style.size ?? "normal"}
-            onChange={(e) => setStyle({ ...style, size: e.target.value as CardStyle["size"] })}
-          >
-            <option value="normal">normal</option>
-            <option value="large">large</option>
-          </select>
-        </Field>
-        <Field label="Aligned">
-          <select
-            value={style.align ?? "left"}
-            onChange={(e) => setStyle({ ...style, align: e.target.value as CardStyle["align"] })}
-          >
-            <option value="left">left</option>
-            <option value="center">centred</option>
-          </select>
-        </Field>
-      </div>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={style.border !== false}
-          onChange={(e) => setStyle({ ...style, border: e.target.checked })}
-        />
-        <span>A line around it</span>
-      </label>
-
-      <Section title="Who may see it" />
-      <Field label="" hint="Never wider than what it shows.">
-        <select
-          value={visibility}
-          onChange={(e) => setVisibility(e.target.value as Card["visibility"])}
-        >
-          <option value="private">Private — only signed in</option>
-          <option value="public">Public — anyone who opens the page</option>
-          <option value="password">Password — once its project has been unlocked</option>
-        </select>
-      </Field>
-    </Modal>
-  );
-}

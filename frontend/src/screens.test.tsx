@@ -406,9 +406,12 @@ describe("every screen draws something", () => {
       expect(columns[0].textContent).toMatch(/Nicht platziert/);
       expect(loose).toBeTruthy();
 
-      // The shape is changed from the section's own bar, and it sticks.
+      // Building it: the page stays as it is and everything about it is in the
+      // panel beside it. The shape of a section is changed there, and it sticks.
       fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      const shape = await waitFor(() => c.querySelector<HTMLSelectElement>(".sections-shape")!);
+      const panel = await waitFor(() => c.querySelector(".page-builder")!, { timeout: 8000 });
+      fireEvent.click([...panel.querySelectorAll("button")].find((b) => /Page/.test(b.textContent ?? ""))!);
+      const shape = await waitFor(() => panel.querySelector<HTMLSelectElement>(".page-builder-section select")!);
       fireEvent.change(shape, { target: { value: "three" } });
       await waitFor(async () => {
         const after = await api<{ tabs: { id: string; style?: { sections?: { shape: string }[] } }[] }>(
