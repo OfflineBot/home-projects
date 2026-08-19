@@ -331,6 +331,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
 }
 .list-row:last-child { border-bottom: none; }
 .list-row:hover { background: var(--ctp-surface0); text-decoration: none; }
+/* "Take what is left." Used in every bar in this app — a title on one side,
+   the buttons on the other — and for a long time it did nothing at all,
+   because the only rules for it were the two below. Everything huddled on the
+   left, in the terminal's bar most visibly. In a box that is not a flex
+   container this changes nothing. */
+.grow { flex: 1; min-width: 0; }
+
 .list-row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-row .meta { color: var(--ctp-overlay1); font-size: 12.5px; white-space: nowrap; }
 

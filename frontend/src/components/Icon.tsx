@@ -86,8 +86,11 @@ export function Icon({
       className={className}
       aria-hidden="true"
     >
-      {d.split("M").filter(Boolean).map((segment, i) => (
-        <path key={i} d={"M" + segment} />
+      {/* Split before each absolute move, keeping it. Splitting on "M" and
+          putting one back turned every path that begins with a relative "m" —
+          all four chevrons — into "Mm…", which draws nothing at all. */}
+      {d.split(/(?=M)/).filter(Boolean).map((segment, i) => (
+        <path key={i} d={segment} />
       ))}
     </svg>
   );

@@ -65,3 +65,16 @@ client is:
 Both faults that made the terminal unusable — a proxy that dropped the upgrade,
 and a size message that was sent too early to be heard — would have been caught
 there and nowhere else.
+
+And nothing above can see. `frontend/scripts/look.mjs` opens the app in a real
+browser, builds a board with the awkward cards on it and takes pictures:
+
+    cd frontend && npm i && npx playwright install chromium
+    HP_PASSWORD=… SHOTS=/tmp/shots HP_SSH_KEY=~/.ssh/id_ed25519 \
+      HP_SSH_WHO=you@machine node scripts/look.mjs
+
+It found four faults on its first run that nothing else had: a terminal asking
+for a password the machine had an account for, two cards on one account
+colliding, every bar in the app huddled against the left because a class had no
+rule behind it, and ten icons that drew nothing because their path was cut in
+the wrong place.

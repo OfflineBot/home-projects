@@ -150,6 +150,33 @@ func (s *Store) ReserveAttempt(ctx context.Context, id uuid.UUID) ([]byte, error
 	return secret, nil
 }
 
+// SecretOf hands back the stored secret without reserving anything.
+//
+// Only for kinds that cannot be locked out: a key on the home network is used
+// by whoever needs it, whenever, and two at once is normal rather than a
+// danger. Everything that can be locked goes through ReserveAttempt instead.
+func (s *Store) SecretOf(ctx context.Context, id uuid.UUID) ([]byte, error) {
+	var secret []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT secret_enc FROM accounts
+		WHERE id=$1 AND secret_enc IS NOT NULL AND needs_secret=false`, id).Scan(&secret)
+	if err != nil {
+		if errors.Is(norm(err), ErrNotFound) {
+			return nil, ErrNoSecret
+		}
+		return nil, norm(err)
+	}
+	return secret, nil
+}
+
+// NoteAccountError records that an attempt failed, without touching the secret
+// and without the in-flight marker.
+func (s *Store) NoteAccountError(ctx context.Context, id uuid.UUID, reason string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE accounts SET state='error', last_error=$2, updated_at=now() WHERE id=$1`, id, reason)
+	return norm(err)
+}
+
 // ConfirmSuccess is called only for an unambiguous "signed in".
 func (s *Store) ConfirmSuccess(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
