@@ -156,83 +156,76 @@ export default function ProjectPage() {
   );
 }
 
-/** What project.yaml declares: the project's own variables and buttons. */
+/**
+ * What project.yaml declares: the project's own buttons, and the values it
+ * reports.
+ *
+ * It used to explain itself first — a heading, a sentence about project.yaml
+ * being versioned, another about what a button does. None of that is news to
+ * the person looking at their own project, and it filled the bottom of every
+ * page. What is left is the part that does something.
+ */
 function ToolPanel({ project, spec }: { project: Project; spec: any }) {
   const { data, reload } = useQuery<{ variables: any[] }>(`/api/projects/${project.id}/variables`);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
   const actions: { name: string; run: string }[] = spec.actions ?? [];
-  if (!actions.length && !spec.variables) return null;
+  const values = data?.variables ?? [];
+  if (!actions.length && values.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 28 }}>
-      <h2 style={{ fontSize: 17 }}>
-        <Icon name="wrench" size={16} /> This project as a tool
-      </h2>
-      <p style={{ color: "var(--ctp-subtext0)", marginTop: 0 }}>
-        Declared in <code className="mono">project.yaml</code> — versioned and copied along with the project.
-      </p>
+    <div className="tool-strip">
       <ErrorBox error={error} />
-      <div className="grid-2">
-        <div className="tile">
-          <h3>Variables</h3>
-          <table className="data">
-            <tbody>
-              {(data?.variables ?? []).map((v) => (
-                <tr key={v.name}>
-                  <td>{v.name}</td>
-                  <td>
-                    {v.error ? (
-                      <span style={{ color: "var(--ctp-red)" }}>{v.error}</span>
-                    ) : (
-                      <strong>{formatValue(v.value)}</strong>
-                    )}{" "}
-                    <span style={{ color: "var(--ctp-subtext0)" }}>{v.unit}</span>
-                  </td>
-                  <td className="meta">{formatDate(v.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button className="btn small" onClick={reload}>
-            <Icon name="refresh" size={14} /> Refresh
+      {actions.length ? (
+        <div className="tool-buttons">
+          {actions.map((a) => (
+            <button
+              key={a.name}
+              className="btn small"
+              disabled={busy === a.name}
+              onClick={async () => {
+                setBusy(a.name);
+                setError(null);
+                try {
+                  await api(`/api/projects/${project.id}/automation/rules/${encodeURIComponent(a.name)}/run`, {
+                    method: "POST",
+                  });
+                } catch (err) {
+                  setError(err as Error);
+                } finally {
+                  setBusy(null);
+                  reload();
+                }
+              }}
+            >
+              <Icon name="play" size={13} /> {a.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {values.length ? (
+        <Fold title="Values" hint={`${values.length}`}>
+        <div className="tool-values">
+          {values.map((v) => (
+            <span key={v.name} className="tool-value" title={formatDate(v.updatedAt)}>
+              <span className="meta">{v.name}</span>{" "}
+              {v.error ? (
+                <span style={{ color: "var(--ctp-red)" }}>{v.error}</span>
+              ) : (
+                <strong>
+                  {formatValue(v.value)}
+                  {v.unit ? ` ${v.unit}` : ""}
+                </strong>
+              )}
+            </span>
+          ))}
+          <button className="btn ghost icon" aria-label="Check again" onClick={reload}>
+            <Icon name="refresh" size={13} />
           </button>
         </div>
-        {actions.length ? (
-          <div className="tile">
-            <h3>Buttons</h3>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {actions.map((a) => (
-                <button
-                  key={a.name}
-                  className="btn"
-                  disabled={busy === a.name}
-                  onClick={async () => {
-                    setBusy(a.name);
-                    setError(null);
-                    try {
-                      await api(`/api/projects/${project.id}/automation/rules/${encodeURIComponent(a.name)}/run`, {
-                        method: "POST",
-                      });
-                    } catch (err) {
-                      setError(err as Error);
-                    } finally {
-                      setBusy(null);
-                      reload();
-                    }
-                  }}
-                >
-                  <Icon name="play" size={14} /> {a.name}
-                </button>
-              ))}
-            </div>
-            <div className="sub">
-              A button runs the action it names. The same buttons can sit on the dashboard.
-            </div>
-          </div>
-        ) : null}
-      </div>
+        </Fold>
+      ) : null}
     </div>
   );
 }

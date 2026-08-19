@@ -104,7 +104,14 @@ export async function api<T = any>(path: string, options: Options = {}): Promise
     let detail: unknown;
     try {
       const payload = await response.json();
-      if (payload?.error) {
+      if (typeof payload?.error === "string") {
+        // Some answers carry the failure beside the thing that failed — a rule
+        // that ran and did not work comes back with its run and one sentence.
+        // Without this the page could only say "502 Bad Gateway", which tells
+        // nobody anything.
+        message = payload.error;
+        detail = payload;
+      } else if (payload?.error) {
         code = payload.error.code ?? code;
         message = payload.error.message ?? message;
         detail = payload.error.detail;

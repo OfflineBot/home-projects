@@ -491,12 +491,20 @@ func runHTTPMany(ctx context.Context, in capability.ActionInput, addresses []str
 // names every time. On/off, brightness, a colour, one of the effects: that is
 // what a person wants from a lamp, and the rest is still reachable the long way.
 func runWLED(ctx context.Context, env *capability.Env, in capability.ActionInput) (capability.ActionResult, error) {
+	// A rule may name a lamp rather than an address — the same names the cards
+	// use. Without this a rule that said "Desk" tried to resolve Desk as a
+	// hostname, which is a confusing way to fail.
+	named, _ := Read(ctx, env, in.Project)
 	hosts := []string{}
 	for _, raw := range strings.FieldsFunc(param(in, "host"), func(r rune) bool {
 		return r == '\n' || r == ',' || r == ' '
 	}) {
-		if host := strings.TrimSpace(raw); host != "" {
-			hosts = append(hosts, host)
+		host := strings.TrimSpace(raw)
+		if host == "" {
+			continue
+		}
+		for _, resolved := range wledHosts(named.LightAt(host)) {
+			hosts = append(hosts, resolved)
 		}
 	}
 	if len(hosts) == 0 {
@@ -566,8 +574,11 @@ func runWLED(ctx context.Context, env *capability.Env, in capability.ActionInput
 		req.Header.Set("Content-Type", "application/json")
 		resp, derr := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 		if derr != nil {
+			// The dial error underneath says "dial tcp: lookup … server
+			// misbehaving", which tells nobody anything they can act on. The
+			// log has it; the sentence does not need it.
 			return capability.ActionResult{Output: strings.Join(done, "\n")},
-				fmt.Errorf("%s is not answering: %w", host, derr)
+				fmt.Errorf("%s is not answering", host)
 		}
 		resp.Body.Close()
 		if resp.StatusCode >= 300 {

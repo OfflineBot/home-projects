@@ -1049,6 +1049,18 @@ def main() -> int:
     c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [
         {"name": "Desk", "host": "127.0.0.1:9"},
     ]})
+    # A name may hold a roomful: switching it switches all of them at once.
+    c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [
+        {"name": "Desk", "host": "127.0.0.1:9"},
+        {"name": "Living room", "hosts": ["127.0.0.1:9", "127.0.0.1:10"]},
+    ]})
+    room = c.call("GET", f"/api/projects/{system}/automation/lights") or {}
+    check(len(room.get("lights", [])) == 2 and len(room["lights"][1].get("hosts", [])) == 2,
+          "a name can hold a whole room of lamps")
+    c.call("POST", f"/api/projects/{system}/automation/light", {"host": "Living room", "power": "off"}, expect=502)
+    c.call("PUT", f"/api/projects/{system}/automation/lights",
+           {"lights": [{"name": "Nowhere", "hosts": []}]}, expect=400)
+    c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [{"name": "Desk", "host": "127.0.0.1:9"}]})
     named = c.call("GET", f"/api/projects/{system}/automation/lights") or {}
     check(named.get("lights", [{}])[0].get("name") == "Desk", "a light can be written down by name")
     by_name = c.call("GET", f"/api/projects/{system}/automation/light?host=Desk")

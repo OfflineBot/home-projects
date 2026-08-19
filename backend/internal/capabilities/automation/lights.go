@@ -165,7 +165,7 @@ func mountLights(env *capability.Env, r fiber.Router) {
 			if strings.TrimSpace(l.Name) == "" {
 				return httpx.BadRequest("light %d has no name", i+1)
 			}
-			if strings.TrimSpace(l.Host) == "" {
+			if len(l.Addresses()) == 0 {
 				return httpx.BadRequest("%s has no address", l.Name)
 			}
 		}

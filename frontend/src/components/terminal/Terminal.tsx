@@ -170,14 +170,15 @@ export function Terminal({
             <Icon name="chevronLeft" size={15} />
           </button>
         ) : null}
-        <strong className="mono terminal-title">{shown}</strong>
+        <strong className="mono terminal-title" title={measured ? `${measured} characters` : undefined}>
+          {shown}
+        </strong>
         <span className="grow" />
         {!inside ? (
           <button className="btn ghost icon" aria-label="Refresh" onClick={() => void list()}>
             <Icon name="refresh" size={14} />
           </button>
         ) : null}
-        {inside && measured ? <span className="meta terminal-measure">{measured}</span> : null}
         {inside ? (
           <>
             <button

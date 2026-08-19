@@ -44,7 +44,7 @@ export default function LightCard({ options, editing }: CardProps) {
         setNote("");
       } else {
         setOn(null);
-        setNote(answer.note || "not answering");
+        setNote("not answering");
       }
     } catch (err) {
       setOn(null);
@@ -72,7 +72,7 @@ export default function LightCard({ options, editing }: CardProps) {
         if (answer.light.brightness > 0) setBright(answer.light.brightness);
         if (answer.light.color) setColour(answer.light.color);
         setNote("");
-      } else setNote(answer.note || "not answering");
+      } else setNote("not answering");
     } catch (err) {
       setNote((err as Error).message);
     } finally {

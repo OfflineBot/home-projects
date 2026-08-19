@@ -107,10 +107,26 @@ type Spec struct {
 	Lights []Light `yaml:"lights,omitempty" json:"lights,omitempty"`
 }
 
-// Light is one lamp, by name.
+// Light is one lamp — or a roomful of them under one name.
+//
+// A name may carry as many addresses as it likes, and switching it switches
+// all of them at once. That is what a room is: "the living room" is four WLEDs
+// nobody wants to press one at a time.
 type Light struct {
-	Name string `yaml:"name" json:"name"`
-	Host string `yaml:"host" json:"host"`
+	Name  string   `yaml:"name" json:"name"`
+	Host  string   `yaml:"host,omitempty" json:"host,omitempty"`
+	Hosts []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+}
+
+// Addresses is everything this name reaches, however it was written down.
+func (l Light) Addresses() []string {
+	out := []string{}
+	for _, raw := range append([]string{l.Host}, l.Hosts...) {
+		for _, host := range wledHosts(raw) {
+			out = append(out, host)
+		}
+	}
+	return out
 }
 
 // LightAt finds a lamp by name — that is what a card carries instead of an
@@ -122,7 +138,7 @@ func (s *Spec) LightAt(name string) string {
 	}
 	for _, l := range s.Lights {
 		if strings.EqualFold(strings.TrimSpace(l.Name), strings.TrimSpace(name)) {
-			return l.Host
+			return strings.Join(l.Addresses(), ",")
 		}
 	}
 	return name
@@ -200,12 +216,18 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 	// down by name first, then any address that only appears in a rule.
 	named := map[string]bool{}
 	for _, l := range spec.Lights {
-		if strings.TrimSpace(l.Name) == "" || strings.TrimSpace(l.Host) == "" {
+		if strings.TrimSpace(l.Name) == "" || len(l.Addresses()) == 0 {
 			continue
 		}
-		named[l.Host] = true
+		for _, host := range l.Addresses() {
+			named[host] = true
+		}
+		detail := "on, off, colour"
+		if len(l.Addresses()) > 1 {
+			detail = fmt.Sprintf("%d lamps at once", len(l.Addresses()))
+		}
 		out = append(out, capability.Offer{
-			Card: "light", Title: l.Name, Icon: "lightbulb", Detail: "on, off, colour", W: 2, H: 1,
+			Card: "light", Title: l.Name, Icon: "lightbulb", Detail: detail, W: 2, H: 1,
 			Options: map[string]any{"projectId": p.ID.String(), "host": l.Name, "title": l.Name},
 		})
 	}

@@ -56,16 +56,29 @@ const LABELS: Record<string, string> = {
  * here; cards and rules use the name. The switches are on the page too, because
  * the first thing anybody wants after writing down a lamp is to see it come on.
  */
+interface Lamp {
+  name: string;
+  host?: string;
+  /** A name may hold a roomful: switching it switches all of them at once. */
+  hosts?: string[];
+}
+
+/** Everything one name reaches, however it was written down. */
+function addressesOf(lamp: Lamp): string[] {
+  return [lamp.host ?? "", ...(lamp.hosts ?? [])]
+    .flatMap((raw) => raw.split(/[\s,]+/))
+    .map((h) => h.trim())
+    .filter(Boolean);
+}
+
 function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) => void }) {
-  const { data, reload } = useQuery<{ lights: { name: string; host: string }[] }>(
-    `/api/projects/${project.id}/automation/lights`,
-  );
-  const [draft, setDraft] = useState<{ name: string; host: string }[] | null>(null);
+  const { data, reload } = useQuery<{ lights: Lamp[] }>(`/api/projects/${project.id}/automation/lights`);
+  const [draft, setDraft] = useState<Lamp[] | null>(null);
   const [busy, setBusy] = useState("");
   const [said, setSaid] = useState("");
   const lights = draft ?? data?.lights ?? [];
 
-  const save = async (next: { name: string; host: string }[]) => {
+  const save = async (next: Lamp[]) => {
     try {
       await api(`/api/projects/${project.id}/automation/lights`, { method: "PUT", body: { lights: next } });
       setDraft(null);
@@ -83,7 +96,7 @@ function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) 
         `/api/projects/${project.id}/automation/light`,
         { body: { host: light.name, ...body } },
       );
-      setSaid(answer.light?.reachable ? `${light.name}: ${answer.light.on ? "on" : "off"}` : (answer.note ?? ""));
+      setSaid(answer.light?.reachable ? `${light.name}: ${answer.light.on ? "on" : "off"}` : `${light.name}: not answering`);
     } catch (err) {
       setSaid((err as Error).message);
     } finally {
@@ -97,7 +110,7 @@ function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) 
         <strong className="grow">Lights</strong>
         {said ? <span className="meta">{said}</span> : null}
         {!project.readOnly ? (
-          <button className="btn small" onClick={() => setDraft([...lights, { name: "", host: "" }])}>
+          <button className="btn small" onClick={() => setDraft([...lights, { name: "", hosts: [] }])}>
             <Icon name="plus" size={13} /> A light
           </button>
         ) : null}
@@ -105,7 +118,8 @@ function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) 
 
       {lights.length === 0 && draft === null ? (
         <p className="meta">
-          None yet. A light is a name and the address of its WLED — after that the cards and the rules use the name.
+          None yet. A light is a name and one or more WLED addresses — a whole room under one name if you like.
+          After that the cards and the rules use the name.
         </p>
       ) : null}
 
@@ -122,10 +136,16 @@ function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) 
               />
               <input
                 className="mono"
-                value={light.host}
-                placeholder="192.168.178.60"
+                value={addressesOf(light).join(", ")}
+                placeholder="192.168.178.60, 192.168.178.49 — as many as belong together"
                 onChange={(e) =>
-                  setDraft(draft.map((l, j) => (j === i ? { ...l, host: e.target.value } : l)))
+                  setDraft(
+                    draft.map((l, j) =>
+                      j === i
+                        ? { name: l.name, hosts: e.target.value.split(/[\s,]+/).map((h) => h.trim()).filter(Boolean) }
+                        : l,
+                    ),
+                  )
                 }
               />
               <button
@@ -140,7 +160,11 @@ function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) 
             <>
               <Icon name="lightbulb" size={15} />
               <strong>{light.name}</strong>
-              <span className="meta mono grow">{light.host}</span>
+              <span className="meta mono grow">
+                {addressesOf(light).length > 1
+                  ? `${addressesOf(light).length} lamps · ${addressesOf(light).join(", ")}`
+                  : addressesOf(light)[0]}
+              </span>
               <button className="btn small" disabled={busy === light.name} onClick={() => void send(light, { power: "on" })}>
                 on
               </button>
@@ -168,7 +192,10 @@ function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) 
 
       {draft ? (
         <div className="lights-row">
-          <button className="btn small primary" onClick={() => void save(draft.filter((l) => l.name && l.host))}>
+          <button
+            className="btn small primary"
+            onClick={() => void save(draft.filter((l) => l.name && addressesOf(l).length > 0))}
+          >
             Save
           </button>
           <button className="btn small" onClick={() => setDraft(null)}>
@@ -195,6 +222,7 @@ export default function AutomationView({ project }: { project: Project; reload: 
   );
   const [editing, setEditing] = useState<Rule | null>(null);
   const [showLog, setShowLog] = useState<string | null>(null);
+  const [said, setSaid] = useState<{ rule: string; text: string; log: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<Error | null>(null);
 
@@ -216,10 +244,21 @@ export default function AutomationView({ project }: { project: Project; reload: 
         `/api/projects/${project.id}/automation/rules/${encodeURIComponent(rule.name)}/run`,
         { method: "POST" },
       );
-      if (result.error) setActionError(new Error(result.error));
-      setShowLog(result.run?.log ?? null);
+      // Not the log. Pressing a button is not a debugging session: it says
+      // what happened in one line, and the log is a click away for the day
+      // something is wrong.
+      const status = result.run?.status === "error" ? "did not work" : "done";
+      setSaid({
+        rule: rule.name,
+        text: result.error || result.run?.message || status,
+        log: result.run?.log ?? "",
+        bad: Boolean(result.error) || result.run?.status === "error",
+      });
     } catch (err) {
-      setActionError(err as Error);
+      // A rule that fails is an ordinary outcome, not a fault of the page. The
+      // run came back with the failure, so the log is there too.
+      const detail = (err as { detail?: { run?: { log?: string } } }).detail;
+      setSaid({ rule: rule.name, text: (err as Error).message, log: detail?.run?.log ?? "", bad: true });
     } finally {
       setBusy(null);
       runs.reload();
@@ -233,10 +272,28 @@ export default function AutomationView({ project }: { project: Project; reload: 
       {data?.warning ? <div className="warning">{data.warning}</div> : null}
       {loading && !data ? <Spinner /> : null}
 
+      {said ? (
+        <div className={said.bad ? "ran bad" : "ran"}>
+          <Icon name={said.bad ? "alert" : "check"} size={14} />
+          <strong>{said.rule}</strong>
+          <span className="grow">{said.text}</span>
+          {said.log ? (
+            <button className="btn ghost small" onClick={() => setShowLog(said.log)}>
+              what it did
+            </button>
+          ) : null}
+          <button className="btn ghost icon" aria-label="Hide" onClick={() => setSaid(null)}>
+            <Icon name="x" size={13} />
+          </button>
+        </div>
+      ) : null}
+
       <Lights project={project} onFailed={setActionError} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <strong style={{ flex: 1 }}>{data?.rules.length ?? 0} rules</strong>
+        <strong style={{ flex: 1 }}>
+          {data?.rules.length ?? 0} {data?.rules.length === 1 ? "rule" : "rules"}
+        </strong>
         {!project.readOnly ? (
           <button
             className="btn"

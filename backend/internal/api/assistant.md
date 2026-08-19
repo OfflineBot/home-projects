@@ -82,6 +82,21 @@ person.
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
 
+**Lights.** A project's `automation.yaml` holds the lamps it can reach, and a
+name may carry a whole room:
+
+    lights:
+      - name: Desk
+        host: 192.168.178.60
+      - name: Living room
+        hosts: [192.168.178.49, 192.168.178.50, 192.168.178.51]
+
+`GET`/`PUT /api/projects/<id>/automation/lights` reads and replaces that list.
+Everything else uses the name — the `light` card, the `wled` action in a rule,
+and `POST /api/projects/<id>/automation/light` with
+`{"host": "Living room", "power": "toggle"}`, which switches all of them at
+once. Anything that is not a known name is taken to be an address.
+
 **A page out of parts.** A tab whose `layout` is `panes` is built the way a
 page builder builds one: sections down the page, columns across a section,
 cards in a column. The arrangement is in the tab's style and the cards are
