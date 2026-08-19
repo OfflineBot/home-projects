@@ -7,7 +7,7 @@ import { useMeta, useQuery, useSession } from "../../lib/store";
 import { useLive } from "../../lib/live";
 import { Grid, type Placed } from "./Grid";
 import { CardBody, CardInner, dress } from "./cards-body";
-import { Sections, arrange, type Section as PaneSection } from "./Sections";
+import { Sections, arrange, fromGrid, type Section as PaneSection } from "./Sections";
 import { CodeArea } from "../CodeArea";
 import HtmlCard from "./HtmlCard";
 
@@ -239,7 +239,11 @@ export default function Board({
     <div className={`board width-${look.width}${look.fill ? " fills" : ""}`} ref={surface}>
       <div className="board-bar">
         {title ? <h1 className="board-title">{title}</h1> : null}
-        <div className="board-tabs">
+        {/* One tab is not a choice. The group page already has its own row of
+            tabs above this one, and a second row underneath it saying "Board"
+            again is chrome pretending to be a decision. While arranging it
+            stays, because that is where another tab is added. */}
+        <div className={tabs.length > 1 || editing ? "board-tabs" : "board-tabs hidden"}>
           {tabs.map((t, i) => (
             <button
               key={t.id}
@@ -300,6 +304,28 @@ export default function Board({
                   <option value="normal">normal</option>
                   <option value="narrow">narrow</option>
                 </select>
+              ) : null}
+              {/* The way over: what is on the grid becomes sections, in the
+                  arrangement it already has. Nothing is retyped and nothing is
+                  lost — that is the difference between a new layout and a new
+                  layout somebody can actually move to. */}
+              {current && current.layout !== "panes" && current.layout !== "page" && current.cards.length > 0 ? (
+                <button
+                  className="btn small ghost"
+                  title="The rows become sections and the cards keep their places"
+                  onClick={async () => {
+                    await api(`/api/boards/tabs/${current.id}`, {
+                      method: "PATCH",
+                      body: {
+                        layout: "panes",
+                        style: { ...(current.style ?? {}), sections: fromGrid(current.cards) },
+                      },
+                    });
+                    board.reload();
+                  }}
+                >
+                  <Icon name="box" size={13} /> Turn into sections
+                </button>
               ) : null}
               {current && !project ? (
                 <button

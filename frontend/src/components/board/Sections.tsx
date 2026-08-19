@@ -79,6 +79,48 @@ export function arrange(saved: Section[] | undefined, cards: Card[]): Section[] 
   return sections;
 }
 
+/**
+ * The same cards, as sections.
+ *
+ * A board that was arranged on a grid is not thrown away to become a page: the
+ * rows it already has are the sections, and what stood side by side in a row
+ * stands side by side in a column. The shape of each section is read from how
+ * wide the cards were — two equal cards are two columns, a narrow one beside a
+ * wide one is a sidebar.
+ */
+export function fromGrid(cards: Card[]): Section[] {
+  const placed = [...cards].sort((a, b) => a.y - b.y || a.x - b.x);
+  const bands: Card[][] = [];
+  let bottom = -1;
+  for (const card of placed) {
+    if (bands.length === 0 || card.y >= bottom) {
+      bands.push([card]);
+      bottom = card.y + Math.max(1, card.h);
+      continue;
+    }
+    bands[bands.length - 1].push(card);
+    bottom = Math.max(bottom, card.y + Math.max(1, card.h));
+  }
+  return bands.map((band) => {
+    const row = [...band].sort((a, b) => a.x - b.x);
+    const shape: Shape =
+      row.length <= 1
+        ? "one"
+        : row.length === 2
+          ? row[0].w === row[1].w
+            ? "two"
+            : row[0].w < row[1].w
+              ? "left"
+              : "right"
+          : row.length === 3
+            ? "three"
+            : "quarters";
+    const columns: string[][] = widthsOf(shape).map(() => []);
+    row.forEach((card, i) => columns[Math.min(i, columns.length - 1)].push(card.id));
+    return { shape, columns };
+  });
+}
+
 export function Sections({
   sections,
   cards,

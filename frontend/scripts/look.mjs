@@ -263,6 +263,22 @@ if (await edit.count()) {
   await edit.click();
   await page.waitForTimeout(1200);
   await shot("09-editing");
+  // The way over from a grid: what is arranged stays arranged.
+  const over = page.getByRole("button", { name: /Turn into sections/i }).first();
+  if (await over.count()) {
+    await over.click();
+    await page.waitForTimeout(3000);
+    await shot("15-turned-into-sections");
+    console.log(
+      "turned:",
+      await page.evaluate(() => {
+        const rows = [...document.querySelectorAll(".sections-section")];
+        return rows
+          .map((r) => [...r.querySelectorAll(".sections-col")].map((c) => Math.round(c.getBoundingClientRect().width)).join("+"))
+          .join("  |  ");
+      }),
+    );
+  }
   const settings = page.locator('button[aria-label="Settings for this card"]').first();
   if (await settings.count()) {
     await settings.click();
