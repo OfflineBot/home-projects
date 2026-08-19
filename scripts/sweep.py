@@ -154,6 +154,95 @@ def ws_handshake(base: str, path: str, cookies: str = "") -> int:
         return 0
 
 
+def ws_pty_size(base: str, path: str, cookies: str, password: str, cols: int, rows: int) -> str:
+    """Open the terminal for real and ask tmux how wide it thinks it is.
+
+    This is the whole path in one measurement: the upgrade through the proxy,
+    the sign-in as the first message, ssh, tmux, and the size the browser sends
+    afterwards. A terminal that is "too narrow" is a wrong answer here, and
+    nothing short of really attaching would have caught either of the two
+    faults that made it so.
+    """
+    import base64 as _b64
+    import os as _os
+    import socket as _socket
+    import struct as _struct
+    from urllib.parse import urlparse as _urlparse
+
+    parts = _urlparse(base)
+    host, port = parts.hostname or "127.0.0.1", parts.port or 80
+    key = _b64.b64encode(_os.urandom(16)).decode()
+    head = (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
+            + (f"Cookie: {cookies}\r\n" if cookies else "") + "\r\n")
+
+    def send(sock, payload: bytes, opcode: int) -> None:
+        mask = _os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        n = len(payload)
+        if n < 126:
+            header = _struct.pack("!BB", 0x80 | opcode, 0x80 | n)
+        else:
+            header = _struct.pack("!BBH", 0x80 | opcode, 0x80 | 126, n)
+        sock.sendall(header + mask + masked)
+
+    def collect(sock, rest: bytes, seconds: float) -> bytes:
+        sock.settimeout(seconds)
+        out, buf = b"", rest
+        while True:
+            try:
+                piece = sock.recv(65536)
+                if not piece:
+                    break
+                buf += piece
+            except Exception:
+                break
+            while len(buf) >= 2:
+                first, second = buf[0], buf[1]
+                length, at = second & 0x7F, 2
+                if length == 126:
+                    if len(buf) < 4:
+                        break
+                    length, at = _struct.unpack("!H", buf[2:4])[0], 4
+                elif length == 127:
+                    if len(buf) < 10:
+                        break
+                    length, at = _struct.unpack("!Q", buf[2:10])[0], 10
+                if len(buf) < at + length:
+                    break
+                out += buf[at:at + length]
+                buf = buf[at + length:]
+                if first & 0x0F == 0x8:
+                    return out
+        return out
+
+    with _socket.create_connection((host, port), timeout=30) as sock:
+        sock.sendall(head.encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf and len(buf) < 8192:
+            piece = sock.recv(1024)
+            if not piece:
+                return "no answer"
+            buf += piece
+        if b" 101 " not in buf.split(b"\r\n", 1)[0]:
+            return "no upgrade: " + buf.split(b"\r\n", 1)[0].decode("utf-8", "replace")
+        rest = buf.split(b"\r\n\r\n", 1)[1]
+        # The sign-in goes first, exactly as the browser does it — unless the
+        # machine has an account, in which case nothing is asked.
+        if password:
+            send(sock, json.dumps({"password": password}).encode(), 1)
+        send(sock, json.dumps({"cols": cols, "rows": rows}).encode(), 1)
+        early = collect(sock, rest, 5)
+        send(sock, b' tmux display-message -p "SIZE=#{client_width}x#{client_height}"\r', 2)
+        text = (early + collect(sock, b"", 6)).decode("utf-8", "replace")
+    # The command is echoed back before its answer, so the line that looks like
+    # a size is the answer and the one with the braces still in it is the echo.
+    import re as _re
+    sizes = _re.findall(r"SIZE=(\d+x\d+)", text)
+    return sizes[-1] if sizes else "nothing came back"
+
+
 def check(condition: bool, message: str) -> None:
     global ok_count
     if condition:
@@ -1521,6 +1610,39 @@ def main() -> int:
             check(not any(x["name"] == name for x in gone.get("sessions", [])), "and it can be closed again")
         else:
             print("  (no HP_SSH — the parts that need a real machine were not measured)")
+        # ---------------------------------------- the terminal, really attached
+        # With a key there is nothing to type in, so this can run unattended:
+        #   HP_SSH_KEY=~/.ssh/id_ed25519 HP_SSH_WHO=user@host python3 scripts/sweep.py
+        # It is the only check that goes the whole way — through the proxy's
+        # upgrade, ssh, tmux — and it asks tmux itself how wide it thinks its
+        # client is. Both faults that made the terminal unusable would have
+        # been caught here and nowhere else.
+        key_file = os.path.expanduser(os.environ.get("HP_SSH_KEY", ""))
+        who = os.environ.get("HP_SSH_WHO", "")
+        if key_file and os.path.exists(key_file) and "@" in who:
+            key_user, key_host = who.split("@", 1)
+            keyed = c.call("POST", "/api/accounts", {
+                "kind": "machine", "title": f"sweep-key-{stamp}",
+                "config": {"user": key_user, "host": key_host, "port": "22"},
+                "secret": open(key_file).read(),
+            }, expect=201)
+            if keyed:
+                c.call("PUT", f"/api/projects/{pcs['id']}/machines", {"machines": [{
+                    "name": "keyed", "host": key_host, "port": 22, "user": key_user,
+                    "account": keyed["title"],
+                }]})
+                jar = "; ".join(f"{cookie.name}={cookie.value}" for cookie in c.jar)
+                measured = ws_pty_size(
+                    args.url,
+                    f"/api/projects/{pcs['id']}/machines/keyed/pty?session=sweep-pty&token={c.token}",
+                    jar, "", 203, 51)
+                check(measured == "203x51",
+                      f"a terminal is as wide as the browser says it is (tmux said {measured})")
+                c.call("POST", f"/api/projects/{pcs['id']}/machines/keyed/tmux/sweep-pty/kill", {})
+                c.call("DELETE", f"/api/accounts/{keyed['id']}")
+        else:
+            print("  (no HP_SSH_KEY — the terminal was not attached for real)")
+
         if machine_account:
             c.call("DELETE", f"/api/accounts/{machine_account['id']}")
         c.call("DELETE", f"/api/projects/{pcs['id']}?confirm={pcs['slug']}")

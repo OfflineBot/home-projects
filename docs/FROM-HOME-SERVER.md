@@ -54,3 +54,14 @@ are worked through in this order.
 `scripts/sweep.py` measures the server end to end, `frontend/src/*.test.tsx`
 draws every screen against it, and `make test` runs the Go tests. Nothing in
 this table is ticked off without one of the three saying so.
+
+The terminal is the one thing that cannot be measured against nothing: it needs
+a machine to attach to. Give the sweep a key and it goes the whole way — through
+the proxy's upgrade, ssh, tmux — and asks tmux itself how wide it thinks its
+client is:
+
+    HP_SSH_KEY=~/.ssh/id_ed25519 HP_SSH_WHO=you@machine python3 scripts/sweep.py
+
+Both faults that made the terminal unusable — a proxy that dropped the upgrade,
+and a size message that was sent too early to be heard — would have been caught
+there and nowhere else.
