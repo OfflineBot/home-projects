@@ -78,7 +78,22 @@ export default function HtmlCard({ options, value, projects, editing }: CardProp
         node.style.width = size(options.width);
         node.style.boxSizing = "border-box";
       }
-      if (options.height) node.style.height = size(options.height);
+      if (options.height) {
+        node.style.height = size(options.height);
+        // A percentage is a percentage *of something*. If what the card sits in
+        // has no height of its own — which is the normal case for a page that
+        // grows with its content — then "100%" resolves to nothing at all and
+        // the card comes out at its smallest. In that case the window is the
+        // honest answer: 100% becomes 100vh, half becomes 50vh.
+        if (options.height.trim().endsWith("%")) {
+          const parent = node.parentElement;
+          const roomy = parent && getComputedStyle(parent).height !== "auto" && parent.clientHeight > 40;
+          if (!roomy) {
+            const share = parseFloat(options.height) || 100;
+            node.style.height = `calc(${share}vh - 90px)`;
+          }
+        }
+      }
       // A card brought from the page keeps its own box; the page decides where.
       node.innerHTML = "";
       return { node, kind, options };

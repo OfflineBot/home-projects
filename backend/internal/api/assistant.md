@@ -82,6 +82,13 @@ person.
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
 
+**A tab that fills the screen.** `PATCH /api/boards/tabs/<id>` with
+`{"style": {"fill": true}}` makes the tab exactly as tall as the window, and
+the cards divide that height between them instead of counting rows of 92
+pixels: a card four rows tall where the deepest is eight is half the screen, on
+any screen. That is the mode for something left open — a terminal, a wall
+display. Without it the tab is as tall as it needs to be and the page scrolls.
+
 **How wide, how tall.** On a board a card's size is set in its own settings —
 columns and rows on a grid, pixels on a free surface — or by dragging its
 corner. In a written page it is the tag that says so: `width` and `height` do

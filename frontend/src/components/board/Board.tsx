@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { Empty, ErrorBox, Field, Modal, Section, Spinner, useAsk } from "../ui";
 import { colorVar } from "../../lib/theme";
@@ -129,6 +129,34 @@ export default function Board({
   });
 
   const ask = useAsk();
+  // A tab that fills the screen is exactly as tall as what is left of the
+  // window below it. That is a measurement, not a number somebody guessed: the
+  // bars above it are different heights on a phone, on a project page and on a
+  // group page.
+  const surface = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const fit = () => {
+      const box = surface.current;
+      if (!box) return;
+      if (!box.classList.contains("fills")) {
+        box.style.removeProperty("height");
+        return;
+      }
+      const room = window.innerHeight - box.getBoundingClientRect().top - 18;
+      box.style.height = `${Math.max(240, room)}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    // Not everything that renders this has one — a test environment does not —
+    // and a board must not fall over for the want of a nicety.
+    const watcher = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    watcher?.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", fit);
+      watcher?.disconnect();
+    };
+  });
+
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -196,7 +224,7 @@ export default function Board({
   const look = tabStyle(current);
 
   return (
-    <div className={`board width-${look.width}`}>
+    <div className={`board width-${look.width}${look.fill ? " fills" : ""}`} ref={surface}>
       <div className="board-bar">
         {title ? <h1 className="board-title">{title}</h1> : null}
         <div className="board-tabs">
@@ -260,6 +288,21 @@ export default function Board({
                   <option value="normal">normal</option>
                   <option value="narrow">narrow</option>
                 </select>
+              ) : null}
+              {current && !project ? (
+                <button
+                  className={look.fill ? "btn small primary" : "btn small ghost"}
+                  title="This tab is exactly as tall as the window, and the cards share that height"
+                  onClick={async () => {
+                    await api(`/api/boards/tabs/${current.id}`, {
+                      method: "PATCH",
+                      body: { style: { ...(current.style ?? {}), fill: !look.fill } },
+                    });
+                    board.reload();
+                  }}
+                >
+                  <Icon name="grid" size={13} /> Fills the screen
+                </button>
               ) : null}
               {current ? (
                 <button className="btn small ghost" onClick={() => setTabSettings(current)}>
@@ -878,12 +921,19 @@ const WIDTHS = [
 export interface TabStyle {
   width?: "narrow" | "normal" | "wide";
   background?: "plain" | "bare";
+  /**
+   * The tab is exactly as tall as the window, and the cards share that height
+   * between them instead of being measured in rows of 92 pixels. A card that
+   * is four of the eight rows on the tab is half the screen, on any screen.
+   * This is the mode for something you leave open: a terminal, a wall display.
+   */
+  fill?: boolean;
 }
 
 function tabStyle(tab?: Tab): Required<TabStyle> {
   const s = (tab?.style ?? {}) as TabStyle;
   // Wide unless the tab says otherwise: a board is for the screen it is on.
-  return { width: s.width ?? "wide", background: s.background ?? "plain" };
+  return { width: s.width ?? "wide", background: s.background ?? "plain", fill: s.fill ?? false };
 }
 
 /**
@@ -1029,6 +1079,15 @@ function TabSettings({
             <option value="flow">one after another</option>
             <option value="free">wherever you put them</option>
             <option value="page">one page of HTML — cards may stand in it</option>
+          </select>
+        </Field>
+        <Field label="Height">
+          <select
+            value={style.fill ? "screen" : "auto"}
+            onChange={(e) => setStyle({ ...style, fill: e.target.value === "screen" })}
+          >
+            <option value="auto">as tall as it needs — the page scrolls</option>
+            <option value="screen">fills the screen — the cards share the height</option>
           </select>
         </Field>
         <Field label="Page width">

@@ -1039,6 +1039,26 @@ main.main:has(.machine-terminal) { max-width: none; }
 .board.width-wide .html-inline,
 .board.width-wide .board-page { max-width: none; }
 
+/* A tab that fills the screen.
+
+   The height is set on the board itself, measured against the window; from
+   there everything shares it. The rows of the grid stop being 92 pixels each
+   and become equal fractions of what there is, so a card four rows tall on a
+   tab whose tallest card is eight rows is half the screen — on a phone and on
+   a 4K monitor alike. Nothing scrolls except what is inside a card. */
+.board.fills { min-height: 0; }
+.board.fills .grid-area {
+  flex: 1; min-height: 0 !important;
+  grid-auto-rows: minmax(0, 1fr);
+  grid-template-rows: repeat(var(--tallest, 6), minmax(0, 1fr));
+}
+.board.fills .grid-cell { min-height: 0; }
+.board.fills .card { height: 100%; overflow: auto; }
+.board.fills .free-area,
+.board.fills .flow,
+.board.fills .board-page { flex: 1; min-height: 0; overflow: auto; }
+.board.fills .board-page > .html-inline { height: 100%; }
+
 /* In edit mode the grid shows itself: twelve columns behind the cards, so
    placing one is aiming rather than guessing. */
 .grid-area.editing {

@@ -170,6 +170,25 @@ if (await full.count()) {
   await shot("06-after-closing");
 }
 
+// ------------------------------------------------ a tab that fills the screen
+await api(`/api/boards/tabs/${tab}`, {
+  method: "PATCH",
+  body: { style: { width: "wide", fill: true } },
+});
+await page.goto(`${URL}/groups/${group.slug}`, { waitUntil: "networkidle" });
+await page.waitForTimeout(6000);
+await shot("13-fills-the-screen");
+console.log(
+  "filling:",
+  await page.evaluate(() => {
+    const b = document.querySelector(".board");
+    const t = document.querySelector(".terminal");
+    const r = (el) => (el ? `${Math.round(el.getBoundingClientRect().height)}` : "?");
+    return `window ${window.innerHeight}  board ${r(b)} (top ${Math.round(b.getBoundingClientRect().top)})  terminal ${r(t)}  bottom ${Math.round(b.getBoundingClientRect().bottom)}`;
+  }),
+);
+await api(`/api/boards/tabs/${tab}`, { method: "PATCH", body: { style: { width: "wide" } } });
+
 // ---------------------------------------------- the machines page of a project
 await page.goto(`${URL}/p/${pc.id}?tab=machines`, { waitUntil: "networkidle" });
 await page.waitForTimeout(2500);

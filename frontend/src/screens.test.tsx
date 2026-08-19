@@ -380,6 +380,36 @@ describe("every screen draws something", () => {
     }
   });
 
+  it("a tab can be as tall as the window", async () => {
+    // The height is a measurement in the browser, which jsdom has none of. What
+    // is checked here is the part that decides it: the tab carries the choice,
+    // and the board wears it.
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "fills " + Date.now() } });
+    const board = await api<{ tabs: { id: string }[] }>(`/api/boards?group=${group.slug}`);
+    await api("/api/boards/cards", {
+      body: { tabId: board.tabs[0].id, kind: "heading", options: { title: "Tall one" }, x: 0, y: 0, w: 12, h: 1 },
+    });
+    await api(`/api/boards/tabs/${board.tabs[0].id}`, {
+      method: "PATCH",
+      body: { style: { width: "wide", fill: true } },
+    });
+    try {
+      const GroupBoard = (await import("./components/board/Board")).default;
+      const c = await draw(<GroupBoard group={group.slug} />, /Tall one/i);
+      expect(c.querySelector(".board.fills")).not.toBeNull();
+      // And it can be switched off again from the bar it is switched on in.
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
+      const button = await waitFor(() =>
+        [...c.querySelectorAll("button")].find((b) => /Fills the screen/i.test(b.textContent ?? ""))!,
+      );
+      fireEvent.click(button);
+      await waitFor(() => expect(c.querySelector(".board.fills")).toBeNull(), { timeout: 8000 });
+    } finally {
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   it("a card is told how big it is, in numbers", async () => {
     // Dragging a corner is quick and imprecise. This is the other half: the
     // size typed in, and it has to be what the server ends up holding.

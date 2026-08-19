@@ -134,6 +134,9 @@ export function Grid({
               gridAutoRows: `${ROW_HEIGHT}px`,
               gap: GAP,
               minHeight: rows * (ROW_HEIGHT + GAP),
+              // How many rows deep this tab goes. A tab that fills the screen
+              // divides its height by this instead of counting pixels.
+              ["--tallest" as string]: rows,
             }
       }
     >
