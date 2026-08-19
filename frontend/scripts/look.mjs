@@ -170,6 +170,51 @@ if (await full.count()) {
   await shot("06-after-closing");
 }
 
+// ------------------------------------------------- a page built out of parts
+// Sections down, columns across: the arrangement lives in the tab, the cards
+// are the same cards.
+const built = await api(`/api/boards/${(await api(`/api/boards?group=${group.slug}`)).id}/tabs`, {
+  body: { title: "Zusammen" },
+});
+const sectionTab = built.id ?? built.tabs?.slice(-1)[0]?.id;
+if (sectionTab) {
+  const put = async (kind, options) =>
+    (await api("/api/boards/cards", { body: { tabId: sectionTab, kind, options, x: 0, y: 0, w: 4, h: 2 } })).id;
+  const machine = await put("machine", { projectId: pc.id, machine: "srv", title: "Server" });
+  const light = await put("light", { projectId: pc.id, host: "192.168.178.60", title: "Licht" });
+  const rule = await put("rule", { projectId: pc.id, rule: "Licht an", title: "Licht an" });
+  const text = await put("text", { text: "## Zuhause\n\nEine Seite aus mehreren Projekten." });
+  const term = await put("terminal", { projectId: pc.id, machine: "srv", as: "button", title: "Terminal" });
+  await api(`/api/boards/tabs/${sectionTab}`, {
+    method: "PATCH",
+    body: {
+      layout: "panes",
+      style: {
+        width: "wide",
+        sections: [
+          { shape: "one", columns: [[text]] },
+          { shape: "three", columns: [[machine], [light, rule], [term]] },
+        ],
+      },
+    },
+  });
+  await page.goto(`${URL}/groups/${group.slug}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+  const tabButton = page.getByRole("button", { name: /Zusammen/ }).first();
+  if (await tabButton.count()) await tabButton.click();
+  await page.waitForTimeout(3500);
+  await shot("14-sections");
+  console.log(
+    "sections:",
+    await page.evaluate(() => {
+      const cols = [...document.querySelectorAll(".sections-col")];
+      return `${document.querySelectorAll(".sections-section").length} sections, columns ${cols
+        .map((c) => Math.round(c.getBoundingClientRect().width))
+        .join("/")}`;
+    }),
+  );
+}
+
 // ------------------------------------------------ a tab that fills the screen
 await api(`/api/boards/tabs/${tab}`, {
   method: "PATCH",

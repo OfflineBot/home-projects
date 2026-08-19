@@ -1039,6 +1039,30 @@ main.main:has(.machine-terminal) { max-width: none; }
 .board.width-wide .html-inline,
 .board.width-wide .board-page { max-width: none; }
 
+/* Sections and columns: a page built out of parts.
+
+   A section is a row of columns; a column is a stack of cards. On a screen the
+   columns stand beside each other in the proportions the section was given; on
+   a telephone they are underneath each other, in the order they are written,
+   and that needs no rule of its own — it is what a column does when there is
+   no room beside it. */
+.sections { display: flex; flex-direction: column; gap: 18px; }
+.sections-section { display: flex; flex-direction: column; gap: 8px; }
+.sections-bar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  border: 1px dashed var(--ctp-surface1); border-radius: 10px; padding: 6px 8px;
+}
+.sections-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.sections-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sections-card { position: relative; }
+.sections-card .card { height: auto; }
+.add-here.in-column { padding: 10px; margin: 0; font-size: 13px; }
+@media (max-width: 760px) {
+  /* One under the other, at full width, in the order they were written. */
+  .sections-row { display: block; }
+  .sections-col + .sections-col { margin-top: 12px; }
+}
+
 /* A tab that fills the screen.
 
    The height is set on the board itself, measured against the window; from
@@ -1054,6 +1078,7 @@ main.main:has(.machine-terminal) { max-width: none; }
 }
 .board.fills .grid-cell { min-height: 0; }
 .board.fills .card { height: 100%; overflow: auto; }
+.board.fills .sections,
 .board.fills .free-area,
 .board.fills .flow,
 .board.fills .board-page { flex: 1; min-height: 0; overflow: auto; }

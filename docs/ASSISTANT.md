@@ -82,6 +82,25 @@ person.
 that card's option, with `project` standing for the project id. The tag is
 replaced by the working card — buttons press, terminals open, numbers update.
 
+**A page out of parts.** A tab whose `layout` is `panes` is built the way a
+page builder builds one: sections down the page, columns across a section,
+cards in a column. The arrangement is in the tab's style and the cards are
+ordinary cards, so one page can hold a light from one project, a machine from
+another and a calendar from a third:
+
+    PATCH /api/boards/tabs/<id>
+    {"layout": "panes",
+     "style": {"sections": [
+       {"shape": "one",   "columns": [["<card-id>"]]},
+       {"shape": "three", "columns": [["<id>"], ["<id>", "<id>"], ["<id>"]]}
+     ]}}
+
+`shape` is one of `one`, `two`, `three`, `left` (narrow left), `right` (narrow
+right) or `quarters`. On a telephone the columns stand underneath each other in
+the order they are written — there is nothing to set for that. A card that no
+section mentions appears at the top of the first one, so nothing is lost by
+rearranging.
+
 **A tab that fills the screen.** `PATCH /api/boards/tabs/<id>` with
 `{"style": {"fill": true}}` makes the tab exactly as tall as the window, and
 the cards divide that height between them instead of counting rows of 92

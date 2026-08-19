@@ -380,6 +380,50 @@ describe("every screen draws something", () => {
     }
   });
 
+  it("a page can be built out of sections and columns", async () => {
+    // The thing a page builder does: several projects on one page, in columns
+    // on a screen and underneath each other on a telephone.
+    const group = await api<{ slug: string }>("/api/groups", { body: { title: "sections " + Date.now() } });
+    const board = await api<{ tabs: { id: string }[] }>(`/api/boards?group=${group.slug}`);
+    const tab = board.tabs[0].id;
+    const put = async (kind: string, options: Record<string, unknown>) =>
+      (await api<{ id: string }>("/api/boards/cards", { body: { tabId: tab, kind, options, x: 0, y: 0, w: 4, h: 2 } })).id;
+    const left = await put("heading", { title: "Links" });
+    const right = await put("heading", { title: "Rechts" });
+    const loose = await put("heading", { title: "Nicht platziert" });
+    await api(`/api/boards/tabs/${tab}`, {
+      method: "PATCH",
+      body: { layout: "panes", style: { sections: [{ shape: "two", columns: [[left], [right]] }] } },
+    });
+    try {
+      const GroupBoard = (await import("./components/board/Board")).default;
+      const c = await draw(<GroupBoard group={group.slug} />, /Links/i);
+      const columns = c.querySelectorAll(".sections-col");
+      expect(columns.length).toBe(2);
+      expect(columns[0].textContent).toMatch(/Links/);
+      expect(columns[1].textContent).toMatch(/Rechts/);
+      // A card nobody placed is not lost: it stands at the top of the first one.
+      expect(columns[0].textContent).toMatch(/Nicht platziert/);
+      expect(loose).toBeTruthy();
+
+      // The shape is changed from the section's own bar, and it sticks.
+      fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
+      const three = await waitFor(() =>
+        [...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "three")!,
+      );
+      fireEvent.click(three);
+      await waitFor(async () => {
+        const after = await api<{ tabs: { id: string; style?: { sections?: { shape: string }[] } }[] }>(
+          `/api/boards?group=${group.slug}`,
+        );
+        expect(after.tabs[0].style?.sections?.[0]?.shape).toBe("three");
+      }, { timeout: 8000 });
+    } finally {
+      await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
+      cleanup();
+    }
+  });
+
   it("a tab can be as tall as the window", async () => {
     // The height is a measurement in the browser, which jsdom has none of. What
     // is checked here is the part that decides it: the tab carries the choice,

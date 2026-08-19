@@ -891,6 +891,28 @@ def main() -> int:
     # The lecture timetable the old server kept: a scheduler kind like any
     # other. Whether the university answers is not this test's business — that
     # it is offered, can be set up, and says what it is missing, is.
+    # A page built out of parts: sections down, columns across, the same cards.
+    parts_board = c.call("GET", f"/api/boards?group={gslug}") or {}
+    parts_tab = parts_board["tabs"][0]["id"] if parts_board.get("tabs") else None
+    if parts_tab:
+        one = c.call("POST", "/api/boards/cards", {
+            "tabId": parts_tab, "kind": "heading", "options": {"title": "Left"}}, expect=201)
+        two = c.call("POST", "/api/boards/cards", {
+            "tabId": parts_tab, "kind": "heading", "options": {"title": "Right"}}, expect=201)
+        if one and two:
+            c.call("PATCH", f"/api/boards/tabs/{parts_tab}", {
+                "layout": "panes",
+                "style": {"sections": [{"shape": "two", "columns": [[one["id"]], [two["id"]]]}]},
+            })
+            back = c.call("GET", f"/api/boards?group={gslug}") or {}
+            tab_now = back["tabs"][0]
+            check(tab_now.get("layout") == "panes", "a tab can be built out of sections")
+            check(tab_now.get("style", {}).get("sections", [{}])[0].get("shape") == "two",
+                  "and the arrangement is kept with the tab")
+            c.call("PATCH", f"/api/boards/tabs/{parts_tab}", {"layout": "grid", "style": {}})
+            for gone in (one, two):
+                c.call("DELETE", f"/api/boards/cards/{gone['id']}")
+
     kinds = (c.call("GET", "/api/schedulers") or {}).get("kinds", [])
     check(any(k["name"] == "timetable" for k in kinds), "the timetable is one of the scheduler kinds")
     plan = c.call("POST", "/api/schedulers", {

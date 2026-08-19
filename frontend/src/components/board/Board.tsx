@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { Empty, ErrorBox, Field, Modal, Section, Spinner, useAsk } from "../ui";
 import { colorVar } from "../../lib/theme";
@@ -6,9 +6,10 @@ import { api, type Project, type Variable } from "../../lib/api";
 import { useMeta, useQuery, useSession } from "../../lib/store";
 import { useLive } from "../../lib/live";
 import { Grid, type Placed } from "./Grid";
+import { CardBody, CardInner, dress } from "./cards-body";
+import { Sections, arrange, type Section as PaneSection } from "./Sections";
 import { CodeArea } from "../CodeArea";
 import HtmlCard from "./HtmlCard";
-import { cardViews } from "./cards";
 
 /**
  * A board: tabs of cards, arranged by whoever owns it.
@@ -46,7 +47,7 @@ export interface Tab {
   icon: string;
   style?: TabStyle;
   /** How its cards lie — or "page", where the tab is one document. */
-  layout?: "grid" | "flow" | "free" | "page";
+  layout?: "grid" | "flow" | "free" | "page" | "panes";
   position: number;
   cards: Card[];
 }
@@ -160,6 +161,9 @@ export default function Board({
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState(0);
   const [adding, setAdding] = useState(false);
+  // Which column of which section the next card belongs in, when it was asked
+  // for from there rather than from the bar.
+  const [placing, setPlacing] = useState<{ section: number; column: number } | null>(null);
   const [settling, setSettling] = useState<Card | null>(null);
   const [tabSettings, setTabSettings] = useState<Tab | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -360,7 +364,31 @@ export default function Board({
         </button>
       ) : null}
 
-      {current && current.layout === "page" ? (
+      {current && current.layout === "panes" ? (
+        <Sections
+          sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
+          cards={current.cards}
+          editing={editing && !exposed}
+          value={value}
+          projects={projects.data?.projects ?? []}
+          onChange={async (next) => {
+            await api(`/api/boards/tabs/${current.id}`, {
+              method: "PATCH",
+              body: { style: { ...(current.style ?? {}), sections: next } },
+            });
+            board.reload();
+          }}
+          onAdd={(section, column) => {
+            setPlacing({ section, column });
+            setAdding(true);
+          }}
+          onSettings={(card) => setSettling(card)}
+          onRemove={async (card) => {
+            await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
+            board.reload();
+          }}
+        />
+      ) : current && current.layout === "page" ? (
         <PageTab
           group={group}
           tab={current}
@@ -467,7 +495,10 @@ export default function Board({
           group={group}
           project={project}
           blocks={reported.data?.groups ?? []}
-          onClose={() => setAdding(false)}
+          onClose={() => {
+            setAdding(false);
+            setPlacing(null);
+          }}
           onAdd={async (kind, options, size) => {
             const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
             const loose = current.layout === "free";
@@ -476,7 +507,7 @@ export default function Board({
             const y = loose
               ? Math.max(0, ...current.cards.map((c) => c.y + c.h)) + 16
               : Math.max(0, ...current.cards.map((c) => c.y + c.h));
-            await api("/api/boards/cards", {
+            const made = await api<{ id: string }>("/api/boards/cards", {
               body: {
                 tabId: current.id,
                 kind,
@@ -487,6 +518,22 @@ export default function Board({
                 h: loose ? ((size?.h ?? fallback?.h ?? 2) * 92) : (size?.h ?? fallback?.h ?? 2),
               },
             });
+            // Asked for from a column, it goes into that column rather than
+            // wherever the tab happens to put loose cards.
+            if (placing && current.layout === "panes") {
+              const sections = arrange((current.style as TabStyle | undefined)?.sections, current.cards).map((s) => ({
+                shape: s.shape,
+                columns: s.columns.map((c) => [...c]),
+              }));
+              const section = sections[Math.min(placing.section, sections.length - 1)];
+              const column = section.columns[Math.min(placing.column, section.columns.length - 1)];
+              column.push(made.id);
+              await api(`/api/boards/tabs/${current.id}`, {
+                method: "PATCH",
+                body: { style: { ...(current.style ?? {}), sections } },
+              });
+            }
+            setPlacing(null);
             setAdding(false);
             board.reload();
           }}
@@ -919,6 +966,8 @@ const WIDTHS = [
 
 /** How wide a tab's page is, and what sits behind it. */
 export interface TabStyle {
+  /** The arrangement of a "panes" tab: sections down, columns across. */
+  sections?: PaneSection[];
   width?: "narrow" | "normal" | "wide";
   background?: "plain" | "bare";
   /**
@@ -930,7 +979,7 @@ export interface TabStyle {
   fill?: boolean;
 }
 
-function tabStyle(tab?: Tab): Required<TabStyle> {
+function tabStyle(tab?: Tab): Required<Omit<TabStyle, "sections">> {
   const s = (tab?.style ?? {}) as TabStyle;
   // Wide unless the tab says otherwise: a board is for the screen it is on.
   return { width: s.width ?? "wide", background: s.background ?? "plain", fill: s.fill ?? false };
@@ -961,7 +1010,7 @@ function TabSettings({
   const meta = useMeta();
   const [title, setTitle] = useState(tab.title);
   const [icon, setIcon] = useState(tab.icon || "grid");
-  const [layout, setLayout] = useState<"grid" | "flow" | "free" | "page">(tab.layout ?? "grid");
+  const [layout, setLayout] = useState<Tab["layout"]>(tab.layout ?? "grid");
   const [style, setStyle] = useState<TabStyle>((tab.style ?? {}) as TabStyle);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -1074,10 +1123,11 @@ function TabSettings({
           label="Cards are"
           hint="A page is HTML you write yourself — cards can stand inside it with <hp-card>."
         >
-          <select value={layout} onChange={(e) => setLayout(e.target.value as "grid" | "flow")}>
+          <select value={layout} onChange={(e) => setLayout(e.target.value as Tab["layout"])}>
             <option value="grid">placed on a grid</option>
             <option value="flow">one after another</option>
             <option value="free">wherever you put them</option>
+            <option value="panes">sections and columns — like building a page</option>
             <option value="page">one page of HTML — cards may stand in it</option>
           </select>
         </Field>
@@ -1110,62 +1160,7 @@ function clampTo(value: number, low: number, high: number) {
   return Math.max(low, Math.min(high, value));
 }
 
-/** What a card's chosen look means in the page. */
-export function dress(style?: CardStyle) {
-  const s = style ?? {};
-  return {
-    className: [
-      "card",
-      s.background === "tinted" ? "tinted" : "",
-      s.background === "bare" ? "bare" : "",
-      s.border === false ? "borderless" : "",
-      s.size === "large" ? "large" : "",
-      s.align === "center" ? "centred" : "",
-    ]
-      .filter(Boolean)
-      .join(" "),
-    style: s.color ? ({ ["--card-color" as string]: `var(--ctp-${s.color})` } as const) : undefined,
-  };
-}
-
 /** A card's own view, wherever the card sits. */
-function CardBody(props: {
-  card: Card;
-  value: (variable: string, groupId?: string) => Variable | undefined;
-  projects: Project[];
-  editing: boolean;
-}) {
-  const look = dress(props.card.style);
-  return (
-    <div className={`${look.className} card-${props.card.kind}`} style={look.style}>
-      <CardInner {...props} />
-    </div>
-  );
-}
-
-function CardInner({
-  card,
-  value,
-  projects,
-  editing,
-}: {
-  card: Card;
-  value: (variable: string, groupId?: string) => Variable | undefined;
-  projects: Project[];
-  editing: boolean;
-}) {
-  const View = cardViews[card.kind];
-  return (
-    <Suspense fallback={<Spinner />}>
-      {View ? (
-        <View options={card.options ?? {}} value={value} projects={projects} editing={editing} />
-      ) : (
-        <div className="meta">No card of kind “{card.kind}” is installed.</div>
-      )}
-    </Suspense>
-  );
-}
-
 /** The projects, under the groups they are in. */
 function byGroup(projects: Project[]): [string, Project[]][] {
   const out = new Map<string, Project[]>();
