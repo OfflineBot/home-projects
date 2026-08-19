@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, type AccountKind } from "../lib/api";
 import { ErrorBox, Field, Modal, useGuarded } from "./ui";
+import { Fields } from "./Fields";
 
 /**
  * Making an account, wherever the need for one comes up.
@@ -25,7 +26,7 @@ export default function NewAccount({
   const offered = only?.length ? kinds.filter((k) => only.includes(k.name)) : kinds;
   const [kindName, setKindName] = useState(offered[0]?.name ?? "");
   const [title, setTitle] = useState("");
-  const [config, setConfig] = useState<Record<string, string>>({});
+  const [config, setConfig] = useState<Record<string, any>>({});
   const [secret, setSecret] = useState("");
   const [provider, setProvider] = useState("");
   const [error, setError] = useState<Error | null>(null);
@@ -97,29 +98,9 @@ export default function NewAccount({
       <Field label="Name">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind?.title} />
       </Field>
-      {kind?.fields.map((f) => (
-        <Field key={f.name} label={f.label} hint={f.hint} required={f.required} optional={!f.required}>
-          {f.options?.length ? (
-            <select
-              value={config[f.name] ?? String(f.default ?? f.options[0].value)}
-              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
-            >
-              {f.options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type={f.type === "password" ? "password" : f.type === "number" ? "number" : "text"}
-              placeholder={f.placeholder}
-              value={config[f.name] ?? ""}
-              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
-            />
-          )}
-        </Field>
-      ))}
+      {/* One renderer for every setting there is — see components/Fields. */}
+      <Fields specs={kind?.fields ?? []} values={config} onChange={setConfig} />
+
       {kind?.secretLabel ? (
         <Field
           label={kind.secretLabel}

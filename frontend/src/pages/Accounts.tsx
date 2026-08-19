@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
+import { Fields } from "../components/Fields";
 import { Empty, ErrorBox, Field, formatDate, Modal, Spinner, useAsk, useGuarded } from "../components/ui";
 import NewAccount from "../components/NewAccount";
 import { api, type Account, type AccountKind } from "../lib/api";
@@ -13,6 +14,15 @@ import { useQuery, useSession } from "../lib/store";
  * that does not end in a confirmed sign-in deletes it, and nothing tries
  * again on its own.
  */
+
+/**
+ * A list of lines, with a button.
+ *
+ * Some things are a list — the addresses of the lamps in a room, for instance —
+ * and a box you type commas into is a list pretending to be a sentence. One
+ * line each, a cross to take one away, a button to add another.
+ */
+
 export default function Accounts() {
   const ask = useAsk();
   const session = useSession();
@@ -266,9 +276,9 @@ function EditAccount({
 }) {
   const guarded = useGuarded();
   const [title, setTitle] = useState(account.title);
-  const [config, setConfig] = useState<Record<string, string>>(
-    Object.fromEntries(Object.entries(account.config ?? {}).map(([k, v]) => [k, String(v ?? "")])),
-  );
+  // Kept as it is: a list of addresses is a list, and turning every value into
+  // a string on the way in is how it became one long line again.
+  const [config, setConfig] = useState<Record<string, any>>({ ...(account.config ?? {}) });
   const [provider, setProvider] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
@@ -335,29 +345,9 @@ function EditAccount({
         <p className="hint">{kind.providers.find((p) => p.name === provider)?.note}</p>
       ) : null}
 
-      {(kind?.fields ?? []).map((f) => (
-        <Field key={f.name} label={f.label} hint={f.hint} required={f.required} optional={!f.required}>
-          {f.options?.length ? (
-            <select
-              value={config[f.name] ?? String(f.default ?? f.options[0].value)}
-              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
-            >
-              {f.options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type={f.type === "password" ? "password" : f.type === "number" ? "number" : "text"}
-              placeholder={f.placeholder}
-              value={config[f.name] ?? ""}
-              onChange={(e) => setConfig({ ...config, [f.name]: e.target.value })}
-            />
-          )}
-        </Field>
-      ))}
+      {/* One renderer for every setting there is — see components/Fields. */}
+      <Fields specs={kind?.fields ?? []} values={config} onChange={setConfig} />
+
       <p className="meta">The password is not shown and is not touched by this.</p>
     </Modal>
   );

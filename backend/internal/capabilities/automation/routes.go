@@ -173,6 +173,7 @@ func (c Capability) SharedRoutes(env *capability.Env, r fiber.Router) {
 	// Lights belong to the house, not to a project: they are reached through
 	// their account, from anywhere.
 	mountLightAccounts(env, r)
+	mountEffects(r)
 
 	r.All("/hooks/:project/:rule", func(ctx *fiber.Ctx) error {
 		list, err := env.Store.ProjectsBySlug(ctx.UserContext(), ctx.Params("project"))

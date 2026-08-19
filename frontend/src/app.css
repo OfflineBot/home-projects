@@ -743,6 +743,24 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .card-timer-row input { width: 72px; }
 .card-timer-waiting { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
+/* The one field renderer's own shapes: a choice with room for something not in
+   the list, a colour that looks like one, and a list that is a list. */
+.choice { display: flex; align-items: center; gap: 6px; }
+.choice select { flex: 1; min-width: 0; }
+.choice-own { display: flex; align-items: center; gap: 6px; }
+.choice-own input { flex: 1; min-width: 0; }
+.colour-field { display: flex; align-items: center; gap: 8px; }
+.colour-field input[type="color"] {
+  width: 34px; height: 28px; padding: 0; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--ctp-surface1); background: none;
+}
+.colour-field input.mono { flex: 1; min-width: 0; }
+
+/* A list of lines, with a button: one address per row. */
+.lines { display: flex; flex-direction: column; gap: 6px; }
+.lines-row { display: flex; align-items: center; gap: 6px; }
+.lines-row input { flex: 1; min-width: 0; }
+
 /* The lamps a project can reach, and the switches for them. */
 .lights-block {
   border: 1px solid var(--ctp-surface0); border-radius: 12px;

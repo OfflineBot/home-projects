@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ErrorBox, Field, Modal, Section } from "../ui";
-import { CodeArea } from "../CodeArea";
+import { Fields } from "../Fields";
 import { colorVar } from "../../lib/theme";
 import { api } from "../../lib/api";
 import { useMeta } from "../../lib/store";
@@ -51,44 +51,8 @@ export function CardFields({
   return (
     <>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      {(kind?.options ?? []).map((option) =>
-        option.type === "code" ? (
-          <Field key={option.name} label={option.label} hint={option.hint}>
-            <CodeArea
-              value={options[option.name] ?? ""}
-              onChange={(text) => setOptions({ ...options, [option.name]: text })}
-            />
-          </Field>
-        ) : option.type === "select" ? (
-          <Field key={option.name} label={option.label} hint={option.hint}>
-            <select
-              value={options[option.name] ?? ""}
-              onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-            >
-              {(option.options ?? []).map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        ) : (
-          <Field key={option.name} label={option.label} hint={option.hint}>
-            {option.type === "textarea" ? (
-              <textarea
-                value={options[option.name] ?? ""}
-                style={{ minHeight: 90 }}
-                onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-              />
-            ) : (
-              <input
-                value={options[option.name] ?? ""}
-                onChange={(e) => setOptions({ ...options, [option.name]: e.target.value })}
-              />
-            )}
-          </Field>
-        ),
-      )}
+      {/* The card's own settings, drawn by the one renderer. */}
+      <Fields specs={kind?.options ?? []} values={options} onChange={setOptions} />
 
       {card.kind === "html" ? (
         <Field label="How it looks">

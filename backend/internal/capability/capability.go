@@ -137,6 +137,11 @@ type AccountField struct {
 	Hint string `json:"hint,omitempty"`
 	// Options make the field a choice instead of a line to type into.
 	Options []Option `json:"options,omitempty"`
+	// From makes it a choice the interface fills in, because the answers are
+	// not known when the card is described: "accounts:wled" is every light
+	// account there is. Typing the name of one out of your head is not a
+	// choice, it is a memory test.
+	From string `json:"from,omitempty"`
 }
 
 // Option is one entry of a field that is a choice.
@@ -319,11 +324,16 @@ type AccountKind struct {
 
 // Action is one entry in the automation action registry.
 type Action struct {
-	Name        string                                                                    `json:"name"`
-	Title       string                                                                    `json:"title"`
-	Description string                                                                    `json:"description"`
-	Params      []string                                                                  `json:"params"`
-	Run         func(ctx context.Context, env *Env, in ActionInput) (ActionResult, error) `json:"-"`
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	// Params are the names an action understands. Fields say what each of them
+	// is — a colour is a colour, an effect is one of a list, a machine is one
+	// of the accounts — so that the form drawing them does not have to keep its
+	// own table of which parameter is really a choice.
+	Params []string                                                                  `json:"params"`
+	Fields []AccountField                                                            `json:"fields,omitempty"`
+	Run    func(ctx context.Context, env *Env, in ActionInput) (ActionResult, error) `json:"-"`
 }
 
 type ActionInput struct {

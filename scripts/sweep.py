@@ -1030,6 +1030,19 @@ def main() -> int:
     # A light account is a name and its lamps — the bed, the desk, or every one
     # in the house — kept where the other connections are and reachable from
     # anywhere rather than from inside one project.
+    # Every action says what its parameters are, so one renderer can draw them
+    # all: a colour is a colour, an effect is a choice, a machine is an account.
+    described = (c.call("GET", "/api/meta") or {}).get("actions", [])
+    wled_action = next((a for a in described if a["name"] == "wled"), {})
+    fields_of = {f["name"]: f for f in wled_action.get("fields", [])}
+    check(fields_of.get("color", {}).get("type") == "color", "a colour is described as a colour")
+    check(fields_of.get("effect", {}).get("from") == "wled:effects", "an effect is a choice the server fills in")
+    check(fields_of.get("account", {}).get("from") == "accounts:wled", "and the lights are chosen from the accounts")
+    effects = c.call("GET", "/api/capabilities/automation/wled/effects") or {}
+    check(len(effects.get("effects", [])) > 50 and effects["effects"][0] == "Solid",
+          "the effects a lamp can play are a list this server knows")
+    Client(args.url).call("GET", "/api/capabilities/automation/wled/effects", expect=401)
+
     kinds_now = (c.call("GET", "/api/accounts") or {}).get("kinds", [])
     check(any(k["name"] == "wled" for k in kinds_now), "lights are a kind of account")
     check(not any(k["name"] == "wled" and k.get("secretLabel") for k in kinds_now),

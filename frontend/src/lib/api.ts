@@ -335,6 +335,8 @@ export interface AccountField {
   default?: unknown;
   hint?: string;
   options?: FieldOption[];
+  /** Where the choices come from when the server fills them in: "accounts:wled". */
+  from?: string;
 }
 
 export interface Provider {
@@ -429,7 +431,14 @@ export interface Meta {
   presets: Preset[];
   schedulerKinds: SchedulerKind[];
   accountKinds: AccountKind[];
-  actions: { name: string; title: string; description: string; params: string[] }[];
+  actions: {
+    name: string;
+    title: string;
+    description: string;
+    params: string[];
+    /** What each parameter is, so a form does not have to guess. */
+    fields?: AccountField[];
+  }[];
   colors: string[];
   icons: string[];
   publicUrl: string;

@@ -148,9 +148,9 @@ func wledAccountKind() capability.AccountKind {
 		Title:       "Lights (WLED)",
 		Description: "One address or twenty under one name — the bed, the desk, or every lamp in the house.",
 		Fields: []capability.AccountField{{
-			Name: "hosts", Label: "Addresses", Type: "textarea", Required: true,
-			Placeholder: "192.168.178.49, 192.168.178.53",
-			Hint:        "As many as belong together, separated by commas or new lines.",
+			Name: "hosts", Label: "Addresses", Type: "list", Required: true,
+			Placeholder: "192.168.178.49",
+			Hint:        "One lamp per line. As many as belong together — a bed, a desk, the whole house.",
 		}},
 		Test: testWLEDAccount,
 	}
