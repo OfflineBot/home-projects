@@ -147,7 +147,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-section { margin-top: 14px; padding: 0 11px 4px; font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--ctp-overlay0); }
 
-.main { padding: 32px 36px 96px; max-width: 1500px; width: 100%; }
+main.main { padding: 32px 36px 96px; max-width: 1500px; width: 100%; }
+/* Text wants a limit; a wide board does not. Without this the page's own
+   1500 pixels were the second cap nobody could see from the board settings. */
+main.main:has(.board.width-wide) { max-width: none; }
 
 .page-head {
   margin-bottom: 26px;
@@ -851,7 +854,7 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .folder-head:hover { color: var(--ctp-text); }
 /* A board handed to somebody: no chrome around it. */
-.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
+main.main.exposed { max-width: 1200px; margin: 0 auto; padding: 24px 18px; }
 
 /* ---------------------------------------------------------------- terminal
    One terminal, in three places: the machines page, a card on a board, a tag in
@@ -978,16 +981,35 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
    One header line: the board's name, its tabs, and what can be done to it.
    Everything else is the page itself. */
 .board-title { margin: 0 12px 0 0; font-size: 21px; }
+.board-width { width: auto; font-size: 12.5px; padding: 4px 8px; }
 .board-bar { padding-bottom: 2px; border-bottom: 1px solid var(--ctp-surface0); margin-bottom: 4px; }
 .board-tab .icon-svg:last-child { opacity: .6; }
 
-/* How wide the page is. Narrow reads like a document; wide fills the screen. */
+/* How wide the board is.
+   
+   Wide is the default and means wide: nothing is capped, and the page around
+   it gives up its own limit too (see .main below). A board is the thing you
+   look at all day on the screen you have — 1240 pixels of a 1920 screen was
+   the complaint, and it was a fair one.
+   
+   Narrow and normal are for a board that reads like a document. They apply to
+   every layout, not only the grid: a page of HTML and a free surface are
+   boards as much as a grid is. */
 .board.width-narrow .grid-area,
-.board.width-narrow .flow { max-width: 760px; }
+.board.width-narrow .flow,
+.board.width-narrow .free-area,
+.board.width-narrow .html-inline,
+.board.width-narrow .board-page { max-width: 760px; }
 .board.width-normal .grid-area,
-.board.width-normal .flow { max-width: 1240px; }
+.board.width-normal .flow,
+.board.width-normal .free-area,
+.board.width-normal .html-inline,
+.board.width-normal .board-page { max-width: 1240px; }
 .board.width-wide .grid-area,
-.board.width-wide .flow { max-width: none; }
+.board.width-wide .flow,
+.board.width-wide .free-area,
+.board.width-wide .html-inline,
+.board.width-wide .board-page { max-width: none; }
 
 /* In edit mode the grid shows itself: twelve columns behind the cards, so
    placing one is aiming rather than guessing. */
@@ -1048,7 +1070,10 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 .code-area .cm-scroller { font-family: var(--mono); font-size: 12.5px; }
 
 /* A tab that is one page: the source and what it becomes, side by side. */
-.page-tab { padding: 4px 2px; }
+/* The board as one page. Called board-page and not page-tab: the tabs above a
+   project are page-tab, and this quietly inherited their look — a container
+   sixty pixels wide with a tab's underline on it. */
+.board-page { padding: 4px 2px; width: 100%; }
 .page-editor { display: flex; flex-direction: column; gap: 10px; }
 .page-editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .page-editor-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
@@ -1106,23 +1131,23 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
    either way, which is the point.
 
    The sides are 260 pixels unless the layout says otherwise:
-   <div class="layout" style="--side:180px">. On a narrow screen it all becomes
+   <div class="sides" style="--side:180px">. On a narrow screen it all becomes
    one column, in the order it is written. */
-.html-inline .layout {
+.html-inline .sides {
   display: grid; gap: 12px; align-items: start;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "top top top" "left main right" "bottom bottom bottom";
 }
-.html-inline .layout > .top { grid-area: top; }
-.html-inline .layout > .left { grid-area: left; width: var(--side, 260px); }
-.html-inline .layout > .main { grid-area: main; min-width: 0; }
-.html-inline .layout > .right { grid-area: right; width: var(--side, 260px); }
-.html-inline .layout > .bottom { grid-area: bottom; }
-.html-inline .layout > * > hp-card { margin-bottom: 12px; }
+.html-inline .sides > .top { grid-area: top; }
+.html-inline .sides > .left { grid-area: left; width: var(--side, 260px); }
+.html-inline .sides > .main { grid-area: main; min-width: 0; }
+.html-inline .sides > .right { grid-area: right; width: var(--side, 260px); }
+.html-inline .sides > .bottom { grid-area: bottom; }
+.html-inline .sides > * > hp-card { margin-bottom: 12px; }
 @media (max-width: 800px) {
-  .html-inline .layout { grid-template-columns: 1fr; grid-template-areas: "top" "left" "main" "right" "bottom"; }
-  .html-inline .layout > .left,
-  .html-inline .layout > .right { width: auto; }
+  .html-inline .sides { grid-template-columns: 1fr; grid-template-areas: "top" "left" "main" "right" "bottom"; }
+  .html-inline .sides > .left,
+  .html-inline .sides > .right { width: auto; }
 }
 
 /* Two helpers, so a row of cards does not need a hand-written flexbox every

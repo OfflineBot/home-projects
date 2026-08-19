@@ -359,7 +359,7 @@ describe("every screen draws something", () => {
       method: "PUT",
       body: {
         html:
-          `<div class="layout">\n` +
+          `<div class="sides">\n` +
           `<div class="top"><h1>Sides Page</h1></div>\n` +
           `<div class="left"><hp-card kind="rule" project="${pc.id}" rule="Start PC"></hp-card></div>\n` +
           `<div class="main"><hp-card kind="project" project="${pc.id}"></hp-card></div>\n` +
@@ -371,9 +371,9 @@ describe("every screen draws something", () => {
       const GroupBoard = (await import("./components/board/Board")).default;
       const c = await draw(<GroupBoard group={group.slug} />, /Sides Page/i);
       // Each card has to end up inside its own region, not merely on the page.
-      await waitFor(() => expect(c.querySelector(".layout > .left .card-rule")).not.toBeNull(), { timeout: 8000 });
-      await waitFor(() => expect(c.querySelector(".layout > .main .card-project")).not.toBeNull(), { timeout: 8000 });
-      expect(c.querySelector(".layout > .bottom")?.textContent).toMatch(/the strip at the bottom/);
+      await waitFor(() => expect(c.querySelector(".sides > .left .card-rule")).not.toBeNull(), { timeout: 8000 });
+      await waitFor(() => expect(c.querySelector(".sides > .main .card-project")).not.toBeNull(), { timeout: 8000 });
+      expect(c.querySelector(".sides > .bottom")?.textContent).toMatch(/the strip at the bottom/);
     } finally {
       await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });
       cleanup();
@@ -500,7 +500,7 @@ describe("every screen draws something", () => {
       const c = await draw(<Dashboard />, /Seite/i);
       fireEvent.click([...c.querySelectorAll("button")].find((b) => /Seite/.test(b.textContent ?? ""))!);
       await waitFor(() => expect(c.textContent).toMatch(/Geschrieben/));
-      expect(c.querySelector(".page-tab h1")?.textContent).toBe("Geschrieben");
+      expect(c.querySelector(".board-page h1")?.textContent).toBe("Geschrieben");
       cleanup();
     } finally {
       await api(`/api/boards/tabs/${tab.id}`, { method: "DELETE" });

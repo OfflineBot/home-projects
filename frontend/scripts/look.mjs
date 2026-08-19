@@ -28,7 +28,9 @@ const out = process.env.SHOTS ?? "/tmp/home-projects-shots";
 await mkdir(out, { recursive: true });
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+const page = await browser.newPage({
+  viewport: { width: Number(process.env.WIDE ?? 1600), height: Number(process.env.TALL ?? 1000) },
+});
 const shot = async (name, target) => {
   await (target ?? page).screenshot({ path: `${out}/${name}.png` });
   console.log("shot:", name);
@@ -158,7 +160,7 @@ await api(`/api/page?group=${group.slug}&tab=${tab}`, {
   method: "PUT",
   body: {
     html:
-      `<div class="layout">` +
+      `<div class="sides">` +
       `<div class="top"><h1>Zuhause</h1></div>` +
       `<div class="left"><hp-card kind="light" project="${pc.id}" host="192.168.178.60" title="Licht"></hp-card>` +
       `<hp-card kind="rule" project="${pc.id}" rule="Licht an"></hp-card></div>` +
@@ -172,6 +174,16 @@ await api(`/api/page?group=${group.slug}&tab=${tab}`, {
 await page.goto(`${URL}/groups/${group.slug}`, { waitUntil: "networkidle" });
 await page.waitForTimeout(4000);
 await shot("08-page-layout");
+const measured = await page.evaluate(() => {
+  const of = (sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return `${sel}=${Math.round(el.getBoundingClientRect().width)} (max ${cs.maxWidth}, ${cs.display})`;
+  };
+  return [".board", ".board-page", ".html-inline", ".html-inline .sides", ".html-inline .sides > .main"].map(of).filter(Boolean).join("  ");
+});
+console.log("page widths:", measured);
 
 // ------------------------------------------------------------------ tidy up
 await api(`/api/groups/${group.slug}?confirm=${group.slug}&withProjects=true`, { method: "DELETE" });

@@ -98,7 +98,7 @@ For rows there are two classes, so no hand-written flexbox is needed:
 bottom strip — any of the five may be left out, and one that is not there takes
 no room:
 
-    <div class="layout">
+    <div class="sides">
       <div class="top">…</div>
       <div class="left">…</div>
       <div class="main">…</div>
@@ -106,7 +106,7 @@ no room:
       <div class="bottom">…</div>
     </div>
 
-The sides are 260 pixels wide; `style="--side:180px"` on the layout changes
+The sides are 260 pixels wide; `style="--side:180px"` on it changes
 that. On a narrow screen the whole thing becomes one column, in the order it is
 written. `POST /api/boards/tabs/<id>/as-html` writes the same vocabulary, so a
 tab of cards turned into a page comes out as something you would have written.

@@ -239,6 +239,28 @@ export default function Board({
               <button className="btn small" onClick={() => setAdding(true)}>
                 <Icon name="plus" size={14} /> Add a card
               </button>
+              {/* How wide, where it can be seen. It was only in the tab's
+                  settings, two clicks in, which is why a board that was too
+                  narrow looked like something that could not be changed. */}
+              {current && !project ? (
+                <select
+                  className="board-width"
+                  title="How wide this board is"
+                  value={look.width}
+                  onChange={async (e) => {
+                    const width = e.target.value as TabStyle["width"];
+                    await api(`/api/boards/tabs/${current.id}`, {
+                      method: "PATCH",
+                      body: { style: { ...(current.style ?? {}), width } },
+                    });
+                    board.reload();
+                  }}
+                >
+                  <option value="wide">full width</option>
+                  <option value="normal">normal</option>
+                  <option value="narrow">narrow</option>
+                </select>
+              ) : null}
               {current ? (
                 <button className="btn small ghost" onClick={() => setTabSettings(current)}>
                   <Icon name="settings" size={14} /> This tab
@@ -712,7 +734,7 @@ function Palette({ group, onInsert }: { group?: string; onInsert: (snippet: stri
         {
           label: "Sides",
           snippet:
-            '<div class="layout">\n' +
+            '<div class="sides">\n' +
             '  <div class="top"></div>\n' +
             '  <div class="left"></div>\n' +
             '  <div class="main"></div>\n' +
@@ -782,7 +804,7 @@ function PageTab({
 
   if (!editing) {
     return (
-      <div className="page-tab">
+      <div className="board-page">
         <ErrorBox error={page.error} onRetry={page.reload} />
         {html.trim() ? (
           <HtmlCard options={{ html, mode: "inline" }} value={value} projects={projects} editing={false} />
@@ -859,7 +881,8 @@ export interface TabStyle {
 
 function tabStyle(tab?: Tab): Required<TabStyle> {
   const s = (tab?.style ?? {}) as TabStyle;
-  return { width: s.width ?? "normal", background: s.background ?? "plain" };
+  // Wide unless the tab says otherwise: a board is for the screen it is on.
+  return { width: s.width ?? "wide", background: s.background ?? "plain" };
 }
 
 /**
