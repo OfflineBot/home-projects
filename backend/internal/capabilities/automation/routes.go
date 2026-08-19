@@ -25,7 +25,7 @@ func dueNow(spec string, now time.Time) bool {
 
 // Routes are mounted under /api/projects/:project/automation
 func (c Capability) Routes(env *capability.Env, r fiber.Router) {
-	mountLights(r)
+	mountLights(env, r)
 
 	r.Get("/rules", func(ctx *fiber.Ctx) error {
 		if err := capability.RequireRead(ctx); err != nil {
@@ -70,7 +70,14 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 			}
 			body = []byte(in.YAML)
 		} else {
-			out, err := yaml.Marshal(Spec{Rules: in.Rules})
+			// The lamps are in the same file and are not part of this form:
+			// writing the rules must not quietly delete them.
+			kept, _ := Read(ctx.UserContext(), env, p)
+			var lights []Light
+			if kept != nil {
+				lights = kept.Lights
+			}
+			out, err := yaml.Marshal(Spec{Rules: in.Rules, Lights: lights})
 			if err != nil {
 				return httpx.Internal("the rules could not be written").WithCause(err)
 			}

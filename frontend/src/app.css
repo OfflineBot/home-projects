@@ -707,6 +707,15 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
   .mail-list, .mail-read { max-height: none; }
 }
 
+/* The lamps a project can reach, and the switches for them. */
+.lights-block {
+  border: 1px solid var(--ctp-surface0); border-radius: 12px;
+  padding: 10px 12px; margin-bottom: 14px;
+}
+.lights-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.lights-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; flex-wrap: wrap; }
+.lights-row input[type="text"], .lights-row input:not([type]) { flex: 1; min-width: 140px; }
+
 /* --------------------------------------------------------------- machines */
 .machines-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .machine .tile-top { align-items: center; }

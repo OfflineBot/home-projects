@@ -101,6 +101,31 @@ func (r Rule) On() bool { return r.Enabled == nil || *r.Enabled }
 
 type Spec struct {
 	Rules []Rule `yaml:"rules" json:"rules"`
+	// Lights are the lamps this project can reach: a name and an address,
+	// written down once. Without them every card and every rule carries an IP
+	// address around, and renumbering the network means editing all of them.
+	Lights []Light `yaml:"lights,omitempty" json:"lights,omitempty"`
+}
+
+// Light is one lamp, by name.
+type Light struct {
+	Name string `yaml:"name" json:"name"`
+	Host string `yaml:"host" json:"host"`
+}
+
+// LightAt finds a lamp by name — that is what a card carries instead of an
+// address. Anything that is not a known name is taken to be an address, so a
+// card that was set up before this existed keeps working.
+func (s *Spec) LightAt(name string) string {
+	if s == nil {
+		return name
+	}
+	for _, l := range s.Lights {
+		if strings.EqualFold(strings.TrimSpace(l.Name), strings.TrimSpace(name)) {
+			return l.Host
+		}
+	}
+	return name
 }
 
 func Read(ctx context.Context, env *capability.Env, p *model.Project) (*Spec, error) {
@@ -171,10 +196,23 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 			Options: map[string]any{"projectId": p.ID.String(), "rule": r.Name, "title": r.Name},
 		})
 	}
-	// Every light this project already knows how to speak to is offered as a
-	// switch. The addresses are in the rules; nobody should have to copy one
-	// out of a YAML file to put a lamp on a board.
+	// Every lamp this project knows is offered as a switch: the ones written
+	// down by name first, then any address that only appears in a rule.
+	named := map[string]bool{}
+	for _, l := range spec.Lights {
+		if strings.TrimSpace(l.Name) == "" || strings.TrimSpace(l.Host) == "" {
+			continue
+		}
+		named[l.Host] = true
+		out = append(out, capability.Offer{
+			Card: "light", Title: l.Name, Icon: "lightbulb", Detail: "on, off, colour", W: 2, H: 1,
+			Options: map[string]any{"projectId": p.ID.String(), "host": l.Name, "title": l.Name},
+		})
+	}
 	for _, host := range lightsIn(spec) {
+		if named[host] {
+			continue
+		}
 		out = append(out, capability.Offer{
 			Card: "light", Title: host, Icon: "lightbulb", Detail: "on and off", W: 2, H: 1,
 			Options: map[string]any{"projectId": p.ID.String(), "host": host, "title": host},

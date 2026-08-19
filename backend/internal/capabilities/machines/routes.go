@@ -196,7 +196,7 @@ func (c Capability) Routes(env *capability.Env, r fiber.Router) {
 				// That is tmux's way of saying "none yet". It is not a fault,
 				// and reading it as one — under a terminal that is working —
 				// is how it looked for a while.
-				answer["note"] = "No sessions on " + m.Name + " yet. Start one below."
+				answer["note"] = "No sessions on " + m.Name + " yet."
 			case said == "" && rerr != nil:
 				answer["note"] = "tmux is not installed on " + m.Name
 			default:

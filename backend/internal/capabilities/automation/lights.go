@@ -10,7 +10,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/offlinebot/home-projects/backend/internal/capability"
+	"github.com/offlinebot/home-projects/backend/internal/files"
 	"github.com/offlinebot/home-projects/backend/internal/httpx"
+	"gopkg.in/yaml.v3"
 )
 
 // A lamp you can actually press.
@@ -114,14 +116,86 @@ func wledWrite(ctx context.Context, host string, state map[string]any) error {
 	return nil
 }
 
-// mountLights hangs the two routes a light card needs off the project.
-func mountLights(r fiber.Router) {
+// lampsOf resolves what a card carries — a name, or an address — against the
+// lamps this project has written down.
+func lampsOf(ctx *fiber.Ctx, env *capability.Env, raw string) []string {
+	spec, err := Read(ctx.UserContext(), env, capability.Project(ctx))
+	hosts := wledHosts(raw)
+	if err != nil || spec == nil {
+		return hosts
+	}
+	out := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		out = append(out, spec.LightAt(host))
+	}
+	return out
+}
+
+// mountLights hangs the routes a light card needs off the project.
+func mountLights(env *capability.Env, r fiber.Router) {
+	// The lamps this project can reach, by name.
+	r.Get("/lights", func(ctx *fiber.Ctx) error {
+		if err := capability.RequireRead(ctx); err != nil {
+			return err
+		}
+		spec, err := Read(ctx.UserContext(), env, capability.Project(ctx))
+		if err != nil {
+			return httpx.BadRequest("%v", err)
+		}
+		lights := []Light{}
+		if spec != nil && spec.Lights != nil {
+			lights = spec.Lights
+		}
+		return ctx.JSON(fiber.Map{"lights": lights})
+	})
+
+	// Written down once, used by name everywhere afterwards.
+	r.Put("/lights", func(ctx *fiber.Ctx) error {
+		if err := capability.RequireWrite(ctx); err != nil {
+			return err
+		}
+		p := capability.Project(ctx)
+		var in struct {
+			Lights []Light `json:"lights"`
+		}
+		if err := ctx.BodyParser(&in); err != nil {
+			return httpx.BadRequest("The lights could not be read.")
+		}
+		for i, l := range in.Lights {
+			if strings.TrimSpace(l.Name) == "" {
+				return httpx.BadRequest("light %d has no name", i+1)
+			}
+			if strings.TrimSpace(l.Host) == "" {
+				return httpx.BadRequest("%s has no address", l.Name)
+			}
+		}
+		spec, err := Read(ctx.UserContext(), env, p)
+		if err != nil {
+			return httpx.BadRequest("%v", err)
+		}
+		if spec == nil {
+			spec = &Spec{Rules: []Rule{}}
+		}
+		spec.Lights = in.Lights
+		body, err := yaml.Marshal(spec)
+		if err != nil {
+			return httpx.Internal("the lights could not be written").WithCause(err)
+		}
+		author, email := capability.AuthorOf(ctx)
+		if _, err := env.Files.Write(ctx.UserContext(), p, File, body, files.Op{
+			Author: author, Email: email, Message: "Edit lights", Commit: true,
+		}); err != nil {
+			return err
+		}
+		return ctx.JSON(fiber.Map{"lights": spec.Lights})
+	})
+
 	// What is it doing right now — so the button can say "on" rather than guess.
 	r.Get("/light", func(ctx *fiber.Ctx) error {
 		if err := capability.RequireRead(ctx); err != nil {
 			return err
 		}
-		hosts := wledHosts(ctx.Query("host"))
+		hosts := lampsOf(ctx, env, ctx.Query("host"))
 		if len(hosts) == 0 {
 			return httpx.BadRequest("Which light? Give this card an address.")
 		}
@@ -149,7 +223,7 @@ func mountLights(r fiber.Router) {
 		if err := ctx.BodyParser(&in); err != nil {
 			return httpx.BadRequest("that is not a light to switch")
 		}
-		hosts := wledHosts(in.Host)
+		hosts := lampsOf(ctx, env, in.Host)
 		if len(hosts) == 0 {
 			return httpx.BadRequest("Which light? Give this card an address.")
 		}

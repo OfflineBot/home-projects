@@ -1045,6 +1045,30 @@ def main() -> int:
            {"host": "127.0.0.1:9", "color": "#ff8800"}, expect=502)
     c.call("POST", f"/api/projects/{system}/automation/light",
            {"host": "127.0.0.1:9", "color": "not-a-colour"}, expect=400)
+    # A lamp is written down once, by name, and everything else uses the name.
+    c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [
+        {"name": "Desk", "host": "127.0.0.1:9"},
+    ]})
+    named = c.call("GET", f"/api/projects/{system}/automation/lights") or {}
+    check(named.get("lights", [{}])[0].get("name") == "Desk", "a light can be written down by name")
+    by_name = c.call("GET", f"/api/projects/{system}/automation/light?host=Desk")
+    check(bool(by_name) and by_name["light"]["reachable"] is False,
+          "and asked about by that name rather than by an address")
+    c.call("POST", f"/api/projects/{system}/automation/light", {"host": "Desk", "power": "toggle"}, expect=502)
+    c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [{"name": "", "host": "x"}]}, expect=400)
+    c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [{"name": "x", "host": ""}]}, expect=400)
+    offered_lights = c.call("GET", f"/api/projects/{system}/offers") or {}
+    check(any(o["card"] == "light" and o["options"].get("host") == "Desk"
+              for o in offered_lights.get("offers", [])),
+          "a light written down is offered as a switch by its name")
+    # Writing the rules must not throw the lamps away: they share one file.
+    c.call("PUT", f"/api/projects/{system}/automation/rules", {"rules": [
+        {"name": "check-self", "trigger": {"type": "button"},
+         "actions": [{"run": "ping", "host": "127.0.0.1", "port": 5000, "variable": "online"}]},
+    ]})
+    still = c.call("GET", f"/api/projects/{system}/automation/lights") or {}
+    check(len(still.get("lights", [])) == 1, "and editing the rules leaves the lights alone")
+
     kinds = c.call("GET", "/api/boards/cards") or {}
     check(any(k["name"] == "light" for k in kinds.get("cards", [])),
           "a light is a kind of card the board knows")

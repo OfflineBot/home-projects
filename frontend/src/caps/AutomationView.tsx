@@ -49,6 +49,138 @@ const LABELS: Record<string, string> = {
 };
 
 /**
+ * The lamps this project can reach, written down once.
+ *
+ * Without this every card and every rule carries an IP address around, and the
+ * day the network is renumbered means editing all of them. A lamp has a name
+ * here; cards and rules use the name. The switches are on the page too, because
+ * the first thing anybody wants after writing down a lamp is to see it come on.
+ */
+function Lights({ project, onFailed }: { project: Project; onFailed: (e: Error) => void }) {
+  const { data, reload } = useQuery<{ lights: { name: string; host: string }[] }>(
+    `/api/projects/${project.id}/automation/lights`,
+  );
+  const [draft, setDraft] = useState<{ name: string; host: string }[] | null>(null);
+  const [busy, setBusy] = useState("");
+  const [said, setSaid] = useState("");
+  const lights = draft ?? data?.lights ?? [];
+
+  const save = async (next: { name: string; host: string }[]) => {
+    try {
+      await api(`/api/projects/${project.id}/automation/lights`, { method: "PUT", body: { lights: next } });
+      setDraft(null);
+      reload();
+    } catch (err) {
+      onFailed(err as Error);
+    }
+  };
+
+  const send = async (light: { name: string }, body: Record<string, unknown>) => {
+    setBusy(light.name);
+    setSaid("");
+    try {
+      const answer = await api<{ light: { on: boolean; reachable: boolean }; note?: string }>(
+        `/api/projects/${project.id}/automation/light`,
+        { body: { host: light.name, ...body } },
+      );
+      setSaid(answer.light?.reachable ? `${light.name}: ${answer.light.on ? "on" : "off"}` : (answer.note ?? ""));
+    } catch (err) {
+      setSaid((err as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <div className="lights-block">
+      <div className="lights-head">
+        <strong className="grow">Lights</strong>
+        {said ? <span className="meta">{said}</span> : null}
+        {!project.readOnly ? (
+          <button className="btn small" onClick={() => setDraft([...lights, { name: "", host: "" }])}>
+            <Icon name="plus" size={13} /> A light
+          </button>
+        ) : null}
+      </div>
+
+      {lights.length === 0 && draft === null ? (
+        <p className="meta">
+          None yet. A light is a name and the address of its WLED — after that the cards and the rules use the name.
+        </p>
+      ) : null}
+
+      {lights.map((light, i) => (
+        <div key={i} className="lights-row">
+          {draft ? (
+            <>
+              <input
+                value={light.name}
+                placeholder="Desk"
+                onChange={(e) =>
+                  setDraft(draft.map((l, j) => (j === i ? { ...l, name: e.target.value } : l)))
+                }
+              />
+              <input
+                className="mono"
+                value={light.host}
+                placeholder="192.168.178.60"
+                onChange={(e) =>
+                  setDraft(draft.map((l, j) => (j === i ? { ...l, host: e.target.value } : l)))
+                }
+              />
+              <button
+                className="btn ghost icon"
+                aria-label={`Remove ${light.name}`}
+                onClick={() => setDraft(draft.filter((_, j) => j !== i))}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </>
+          ) : (
+            <>
+              <Icon name="lightbulb" size={15} />
+              <strong>{light.name}</strong>
+              <span className="meta mono grow">{light.host}</span>
+              <button className="btn small" disabled={busy === light.name} onClick={() => void send(light, { power: "on" })}>
+                on
+              </button>
+              <button className="btn small" disabled={busy === light.name} onClick={() => void send(light, { power: "off" })}>
+                off
+              </button>
+              <button
+                className="btn small"
+                disabled={busy === light.name}
+                onClick={() => void send(light, { power: "toggle" })}
+              >
+                toggle
+              </button>
+              <input
+                type="color"
+                className="light-colour"
+                aria-label={`Colour of ${light.name}`}
+                defaultValue="#b4befe"
+                onChange={(e) => void send(light, { color: e.target.value })}
+              />
+            </>
+          )}
+        </div>
+      ))}
+
+      {draft ? (
+        <div className="lights-row">
+          <button className="btn small primary" onClick={() => void save(draft.filter((l) => l.name && l.host))}>
+            Save
+          </button>
+          <button className="btn small" onClick={() => setDraft(null)}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Rules made of trigger plus actions, stored as automation.yaml in the
  * project — so they are versioned and exportable. This is what replaced the
  * old dedicated "Lights" and "PC" pages.
@@ -100,6 +232,8 @@ export default function AutomationView({ project }: { project: Project; reload: 
       {data?.error ? <div className="warning">{data.error}</div> : null}
       {data?.warning ? <div className="warning">{data.warning}</div> : null}
       {loading && !data ? <Spinner /> : null}
+
+      <Lights project={project} onFailed={setActionError} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <strong style={{ flex: 1 }}>{data?.rules.length ?? 0} rules</strong>
