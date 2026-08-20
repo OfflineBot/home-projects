@@ -207,6 +207,14 @@ export default function Board({
   // somebody whose board is a grid.
   const building = Boolean(editing && !exposed && current);
 
+  // While a page is being built, it is the only thing on the screen: the
+  // sidebar, the group's head and its tabs step out of the way. Everything
+  // around the page is a thing to look at instead of the thing being made.
+  useEffect(() => {
+    document.body.classList.toggle("focus", building);
+    return () => document.body.classList.remove("focus");
+  }, [building]);
+
   /** Every variable there is, by "group/project.name" and by "project.name". */
   const value = useCallback(
     (name: string, groupId?: string): Variable | undefined => {
@@ -442,11 +450,14 @@ export default function Board({
               });
               board.reload();
             }}
+            quiet={building}
+            chosen={chosen}
+            onChoose={(card) => setChosen(card.id)}
             onAdd={(section, column) => {
               setPlacing({ section, column });
-              setAdding(true);
+              if (!building) setAdding(true);
             }}
-            onSettings={(card) => setSettling(card)}
+            onSettings={(card) => (building ? setChosen(card.id) : setSettling(card))}
             onRemove={async (card) => {
               await api(`/api/boards/cards/${card.id}`, { method: "DELETE" });
               board.reload();
@@ -556,6 +567,33 @@ export default function Board({
         if (!building || !current) return canvas;
         return (
           <div className="building">
+            <div className="focus-bar building-page-bar">
+              <button className="btn small ghost" onClick={() => { setEditing(false); setChosen(null); }}>
+                <Icon name="chevronLeft" size={14} /> Back
+              </button>
+              <span className="name">{current.title}</span>
+              {tabs.length > 1 ? (
+                <select
+                  className="board-width"
+                  aria-label="Which tab"
+                  value={tab}
+                  onChange={(e) => {
+                    setTab(Number(e.target.value));
+                    setChosen(null);
+                  }}
+                >
+                  {tabs.map((t, i) => (
+                    <option key={t.id} value={i}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <span className="grow" />
+              <button className="btn small ghost" onClick={() => setTabSettings(current)}>
+                <Icon name="settings" size={13} /> This tab
+              </button>
+            </div>
             <div className="building-page">{canvas}</div>
             <Builder
               tab={current}

@@ -132,6 +132,15 @@ func (Capability) Cards() []capability.Card {
 			{Name: "projectId", Label: "Project", Type: "project", Required: true},
 			{Name: "machine", Label: "Which machine", Type: "text", Required: true,
 				Hint: "The name it has in that project."},
+			{Name: "wakeLabel", Label: "The wake button says", Type: "text", Placeholder: "Wake"},
+			{Name: "shutdownLabel", Label: "The shutdown button says", Type: "text", Placeholder: "Shut down"},
+			{Name: "restartLabel", Label: "The restart button says", Type: "text", Placeholder: "Restart"},
+			{Name: "buttons", Label: "Which buttons", Type: "select", Options: []capability.Option{
+				{Value: "", Label: "all three"},
+				{Value: "wake", Label: "only wake"},
+				{Value: "power", Label: "only shut down and restart"},
+				{Value: "none", Label: "none — just whether it is up"},
+			}},
 		},
 	}, {
 		Name: "terminal", Title: "A terminal", Icon: "code", W: 8, H: 4,

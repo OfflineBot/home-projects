@@ -14,6 +14,15 @@ import type { CardProps } from "../../components/board/cards";
  * asked for one.
  */
 export default function MachineCard({ options }: CardProps) {
+  // Every word on this card is a setting. "Shut down" is right in English and
+  // wrong in a German kitchen, and a card that cannot be renamed is a card
+  // somebody works around.
+  const words = {
+    wake: String(options.wakeLabel ?? "") || "Wake",
+    shutdown: String(options.shutdownLabel ?? "") || "Shut down",
+    restart: String(options.restartLabel ?? "") || "Restart",
+  };
+  const which = String(options.buttons ?? "");
   const ask = useAsk();
   const project = String(options.projectId ?? "");
   const name = String(options.machine ?? "");
@@ -61,7 +70,7 @@ export default function MachineCard({ options }: CardProps) {
             answering had no way to be shut down from its own card, while the
             machines page offered it. What a button does is not a matter of
             what a check thinks. */}
-        {machine.mac ? (
+        {machine.mac && which !== "power" && which !== "none" ? (
           <button
             className="btn small primary"
             disabled={busy === "wake"}
@@ -79,15 +88,19 @@ export default function MachineCard({ options }: CardProps) {
               }
             }}
           >
-            <Icon name="zap" size={14} /> Wake
+            <Icon name="zap" size={14} /> {words.wake}
           </button>
         ) : null}
-        <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("shutdown")}>
-          <Icon name="lock" size={13} /> Shut down
-        </button>
-        <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("reboot")}>
-          <Icon name="refresh" size={13} /> Restart
-        </button>
+        {which !== "wake" && which !== "none" ? (
+          <>
+            <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("shutdown")}>
+              <Icon name="lock" size={13} /> {words.shutdown}
+            </button>
+            <button className="btn small ghost" disabled={busy !== ""} onClick={() => power("reboot")}>
+              <Icon name="refresh" size={13} /> {words.restart}
+            </button>
+          </>
+        ) : null}
         <button className="btn ghost icon" aria-label="Check again" onClick={reload}>
           <Icon name="refresh" size={13} />
         </button>

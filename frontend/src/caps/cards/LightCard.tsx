@@ -27,6 +27,8 @@ export default function LightCard({ options, editing }: CardProps) {
   // name, switched together, reachable from any page.
   const account = String(options.account ?? "");
   const name = String(options.title ?? "") || host || "Light";
+  const words = { on: String(options.onWord ?? "") || "on", off: String(options.offWord ?? "") || "off" };
+  const showBrightness = String(options.brightness ?? "yes") !== "no";
   const where = account
     ? `/api/capabilities/automation/lights/${account}`
     : `/api/projects/${project}/automation/light`;
@@ -98,8 +100,9 @@ export default function LightCard({ options, editing }: CardProps) {
       >
         <Icon name="lightbulb" size={18} />
         <span className="grow">{name}</span>
-        <span className="light-state">{on === null ? "—" : on ? "on" : "off"}</span>
+        <span className="light-state">{on === null ? "—" : on ? words.on : words.off}</span>
       </button>
+      {showBrightness ? (
       <div className="light-knobs">
         <input
           className="light-colour"
@@ -126,6 +129,7 @@ export default function LightCard({ options, editing }: CardProps) {
           }}
         />
       </div>
+      ) : null}
       {note ? <div className="meta bad">{note}</div> : null}
     </div>
   );

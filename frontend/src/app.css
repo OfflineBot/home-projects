@@ -1132,6 +1132,28 @@ main.main:has(.machine-terminal) { max-width: none; }
 .board.width-wide .html-inline,
 .board.width-wide .board-page { max-width: none; }
 
+/* Building a page is the only thing on the screen while it lasts.
+
+   The sidebar, the group's head and its tabs are all ways of getting somewhere
+   else, and none of them is what you are doing. They come back when you press
+   Done. */
+body.focus .sidebar,
+body.focus .mobile-bar,
+body.focus .page-head,
+body.focus .page-tabs,
+body.focus .board-bar { display: none; }
+body.focus .layout { grid-template-columns: 1fr; }
+body.focus main.main { padding: 14px 18px 60px; max-width: none; }
+
+/* The way back, and what is being built. */
+.focus-bar {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+/* It sits above both columns, not in one of them — a third child of a
+   two-column grid is how the panel ended up underneath the page. */
+.building-page-bar { grid-column: 1 / -1; }
+.focus-bar .name { font-weight: 600; }
+
 /* Building a page: the page on the left, everything about it on the right.
 
    The panel is a column beside the page rather than a dialog over it, so what
@@ -1155,6 +1177,24 @@ main.main:has(.machine-terminal) { max-width: none; }
 .page-builder-tab.on { background: var(--ctp-surface0); color: var(--ctp-text); }
 .page-builder-tab:disabled { opacity: .45; cursor: default; }
 .page-builder-body { display: flex; flex-direction: column; gap: 8px; }
+/* A part of the panel: a heading you can fold, with a colour that says what
+   kind of thing is inside. Colour is doing work here — thirty identical rows
+   is a list nobody reads. */
+.panel-group { border-top: 1px solid var(--ctp-surface0); }
+.panel-group:first-child { border-top: none; }
+.panel-group-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; color: var(--ctp-subtext1); cursor: pointer;
+  font: inherit; font-size: 12.5px; padding: 8px 2px;
+}
+.panel-group-head:hover { color: var(--ctp-text); }
+.panel-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ctp-overlay0); }
+.tone-mine .panel-dot { background: var(--ctp-blue); }
+.tone-lights .panel-dot { background: var(--ctp-yellow); }
+.tone-plain .panel-dot { background: var(--ctp-green); }
+.tone-quiet .panel-dot { background: var(--ctp-surface2); }
+.panel-group-body { padding: 2px 0 10px; display: flex; flex-direction: column; gap: 6px; }
+
 .page-builder-heading {
   font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
   color: var(--ctp-overlay1); margin: 8px 0 2px;
@@ -1173,6 +1213,14 @@ main.main:has(.machine-terminal) { max-width: none; }
 
 /* While building, a card says it can be chosen, and says when it is. */
 .building .sections-card { cursor: pointer; }
+/* Grips and "here" buttons appear under the pointer. A page covered in
+   handles is a page nobody can see. */
+.building .card-tools { opacity: 0; transition: opacity .12s ease; }
+.building .sections-card:hover .card-tools,
+.building .sections-card.chosen .card-tools { opacity: 1; }
+.building .add-here.in-column { opacity: .25; transition: opacity .12s ease; }
+.building .sections-col:hover .add-here.in-column,
+.building .sections-col.over .add-here.in-column { opacity: 1; }
 .building .sections-card::after {
   content: ""; position: absolute; inset: -4px; border-radius: 12px;
   border: 1px solid transparent; pointer-events: none;

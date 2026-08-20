@@ -198,6 +198,12 @@ func (Capability) Cards() []capability.Card {
 			{Name: "host", Label: "Address", Type: "text", Show: "!account",
 				Placeholder: "192.168.178.60", Hint: "Several, separated by commas, are switched together."},
 			{Name: "title", Label: "Name", Type: "text", Placeholder: "Desk"},
+			{Name: "onWord", Label: "The word for on", Type: "text", Placeholder: "on"},
+			{Name: "offWord", Label: "The word for off", Type: "text", Placeholder: "off"},
+			{Name: "brightness", Label: "Show the brightness", Type: "select", Options: []capability.Option{
+				{Value: "yes", Label: "yes"},
+				{Value: "no", Label: "no — just the switch"},
+			}},
 		},
 	}}
 }

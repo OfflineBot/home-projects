@@ -29,6 +29,7 @@ export function CardFields({
   layout,
   draft,
   onChange,
+  part = "all",
 }: {
   card: Card;
   kinds: CardKind[];
@@ -36,6 +37,11 @@ export function CardFields({
   layout: Tab["layout"];
   draft: CardDraft;
   onChange: (next: CardDraft) => void;
+  /**
+   * Which part of it. A dialog shows everything at once; a panel beside the
+   * page shows one thing at a time, folded, or it is a mile long.
+   */
+  part?: "all" | "options" | "size" | "look" | "who";
 }) {
   const meta = useMeta();
   const kind = kinds.find((k) => k.name === card.kind);
@@ -47,12 +53,13 @@ export function CardFields({
   const setStyle = (next: CardStyle) => onChange({ ...draft, style: next });
   const setVisibility = (next: Card["visibility"]) => onChange({ ...draft, visibility: next });
   const setSize = (next: { w: number; h: number }) => onChange({ ...draft, w: next.w, h: next.h });
+  const here = (which: string) => part === "all" || part === which;
 
   return (
     <>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {/* The card's own settings, drawn by the one renderer. */}
-      <Fields specs={kind?.options ?? []} values={options} onChange={setOptions} />
+      {here("options") ? <Fields specs={kind?.options ?? []} values={options} onChange={setOptions} /> : null}
 
       {card.kind === "html" ? (
         <Field label="How it looks">
@@ -67,6 +74,8 @@ export function CardFields({
           onChange={(e) => setOptions({ ...options, title: e.target.value })}
         />
       </Field>
+      {here("size") ? (
+        <>
       <Section title="How big" />
       {layout === "free" ? (
         <div className="row">
@@ -128,6 +137,10 @@ export function CardFields({
         </>
       )}
 
+        </>
+      ) : null}
+      {here("look") ? (
+        <>
       <Section title="Look" />
       <div className="row">
         <Field label="Colour" optional>
@@ -207,6 +220,10 @@ export function CardFields({
         <span>A line around it</span>
       </label>
 
+        </>
+      ) : null}
+      {here("who") ? (
+        <>
       <Section title="Who may see it" />
       <Field label="" hint="Never wider than what it shows.">
         <select
@@ -218,6 +235,8 @@ export function CardFields({
           <option value="password">Password — once its project has been unlocked</option>
         </select>
       </Field>
+        </>
+      ) : null}
     </>
   );
 }

@@ -27,6 +27,39 @@ import type { Card, CardKind, Tab, TabStyle } from "./Board";
 
 type Where = "add" | "card" | "page";
 
+/**
+ * A part of the panel: a heading you can fold away, with a colour that says
+ * what kind of thing is inside — what your projects offer, the lights of the
+ * house, the plain parts everybody has. Colour is not decoration here: a
+ * panel of thirty identical rows is a list nobody reads.
+ */
+function Group({
+  title,
+  count,
+  tone,
+  open,
+  children,
+}: {
+  title: string;
+  count?: number;
+  tone: "mine" | "lights" | "plain" | "quiet";
+  open?: boolean;
+  children: React.ReactNode;
+}) {
+  const [shown, setShown] = useState(Boolean(open));
+  return (
+    <div className={`panel-group tone-${tone}`}>
+      <button className="panel-group-head" onClick={() => setShown(!shown)}>
+        <span className="panel-dot" />
+        <span className="grow">{title}</span>
+        {count !== undefined ? <span className="meta">{count}</span> : null}
+        <Icon name={shown ? "chevronUp" : "chevronDown"} size={13} />
+      </button>
+      {shown ? <div className="panel-group-body">{children}</div> : null}
+    </div>
+  );
+}
+
 export function Builder({
   tab,
   kinds,
@@ -163,6 +196,9 @@ function AddPanel({
   onAdd: (kind: string, options: Record<string, any>) => Promise<void>;
 }) {
   const [find, setFind] = useState("");
+  const plain = kinds
+    .filter((k) => !k.options?.some((o) => o.name === "projectId"))
+    .filter((k) => !find || (k.title + k.description).toLowerCase().includes(find.toLowerCase()));
   const mine = project
     ? projects.filter((p) => p.id === project)
     : group
@@ -181,23 +217,21 @@ function AddPanel({
 
       <LightAccounts find={find} onAdd={onAdd} />
 
-      {mine.map((p) => (
-        <ProjectOffers key={p.id} project={p} find={find} onAdd={onAdd} />
+      {mine.map((p, i) => (
+        <ProjectOffers key={p.id} project={p} find={find} open={i === 0} onAdd={onAdd} />
       ))}
 
-      <h3 className="page-builder-heading">The plain parts</h3>
-      <div className="page-builder-blocks">
-        {kinds
-          .filter((k) => !k.options?.some((o) => o.name === "projectId"))
-          .filter((k) => !find || (k.title + k.description).toLowerCase().includes(find.toLowerCase()))
-          .map((k) => (
+      <Group title="The plain parts" tone="plain" count={plain.length} open={!mine.length}>
+        <div className="page-builder-blocks">
+          {plain.map((k) => (
             <button key={k.name} className="page-builder-block" onClick={() => void onAdd(k.name, {})}>
               <Icon name={(k.icon || "box") as never} size={15} />
               <span className="grow">{k.title}</span>
               <Icon name="plus" size={13} />
             </button>
           ))}
-      </div>
+        </div>
+      </Group>
     </>
   );
 }
@@ -224,8 +258,7 @@ function LightAccounts({
   );
   if (!list.length) return null;
   return (
-    <>
-      <h3 className="page-builder-heading">Lights</h3>
+    <Group title="Lights" tone="lights" count={list.length} open>
       <div className="page-builder-blocks">
         {list.map((light) => (
           <button
@@ -242,7 +275,7 @@ function LightAccounts({
           </button>
         ))}
       </div>
-    </>
+    </Group>
   );
 }
 
@@ -250,10 +283,12 @@ function LightAccounts({
 function ProjectOffers({
   project,
   find,
+  open,
   onAdd,
 }: {
   project: Project;
   find: string;
+  open?: boolean;
   onAdd: (kind: string, options: Record<string, any>) => Promise<void>;
 }) {
   const offers = useQuery<{ offers: { card: string; title: string; detail?: string; icon?: string; options: Record<string, any> }[] }>(
@@ -266,8 +301,7 @@ function ProjectOffers({
   if (!list.length) return null;
 
   return (
-    <>
-      <h3 className="page-builder-heading">{project.title}</h3>
+    <Group title={project.title} tone="mine" count={list.length} open={open}>
       <div className="page-builder-blocks">
         {list.map((offer, i) => (
           <button
@@ -285,7 +319,7 @@ function ProjectOffers({
           </button>
         ))}
       </div>
-    </>
+    </Group>
   );
 }
 
@@ -350,7 +384,18 @@ function CardPanel({
 
   return (
     <>
-      <CardFields card={card} kinds={kinds} layout={layout} draft={draft} onChange={setDraft} />
+      <Group title="What it shows" tone="mine" open>
+        <CardFields card={card} kinds={kinds} layout={layout} draft={draft} onChange={setDraft} part="options" />
+      </Group>
+      <Group title="How big" tone="quiet">
+        <CardFields card={card} kinds={kinds} layout={layout} draft={draft} onChange={setDraft} part="size" />
+      </Group>
+      <Group title="How it looks" tone="quiet">
+        <CardFields card={card} kinds={kinds} layout={layout} draft={draft} onChange={setDraft} part="look" />
+      </Group>
+      <Group title="Who may see it" tone="quiet">
+        <CardFields card={card} kinds={kinds} layout={layout} draft={draft} onChange={setDraft} part="who" />
+      </Group>
       <button
         className="btn small ghost page-builder-remove"
         onClick={async () => {
