@@ -647,28 +647,83 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 	})
 }
 
+// What a page wants from a mailbox.
+//
+// How many messages there are in total is a number for a status page, not for
+// a wall: what anybody looks at is how much is waiting in the inbox, how much
+// of that matters, and what the last few were about. The classifier already
+// says which category a message is in, so "important" is a real answer rather
+// than a guess.
 func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Project) ([]store.VariableInput, error) {
 	all := listMessages(env, p)
-	inbox := 0
+	inbox := []Summary{}
 	var newest time.Time
 	for _, m := range all {
 		if strings.HasPrefix(m.Path, Inbox+"/") {
-			inbox++
+			inbox = append(inbox, m)
 		}
 		if m.Date.After(newest) {
 			newest = m.Date
 		}
 	}
+	sort.Slice(inbox, func(i, j int) bool { return inbox[i].Date.After(inbox[j].Date) })
+
+	important := 0
+	for _, m := range inbox {
+		if isImportant(m.Category) {
+			important++
+		}
+	}
+
 	out := []store.VariableInput{
-		{Name: "messages", Type: "number", Value: len(all), Source: "capability:mail"},
-		{Name: "inbox", Type: "number", Value: inbox, Source: "capability:mail"},
+		{Name: "inbox", Type: "number", Value: len(inbox), Source: "capability:mail"},
+		{Name: "important", Type: "number", Value: important, Source: "capability:mail"},
 	}
 	if !newest.IsZero() {
 		out = append(out, store.VariableInput{
 			Name: "latest", Type: "date", Value: newest, Source: "capability:mail",
 		})
 	}
+
+	// The last few, as a list a card can show: who it is from and what about.
+	waiting := []map[string]any{}
+	for _, m := range inbox {
+		if len(waiting) >= 12 {
+			break
+		}
+		waiting = append(waiting, map[string]any{
+			"label": m.Subject,
+			"value": m.Date.Local().Format("02.01. 15:04"),
+			"note":  fromName(m.From),
+		})
+	}
+	if len(waiting) > 0 {
+		out = append(out, store.VariableInput{
+			Name: "waiting", Type: "list", Value: waiting, Source: "capability:mail",
+		})
+	}
 	return out, nil
+}
+
+// isImportant: the categories that mean somebody has to do something — the
+// university, a person, a bill, a warning about an account. A newsletter and a
+// parcel notification are not among them, which is the whole point of having
+// the classifier in the first place.
+func isImportant(category string) bool {
+	switch category {
+	case CatUniversity, CatPersonal, CatInvoice, CatSecurity:
+		return true
+	}
+	return false
+}
+
+// fromName keeps the person and drops the machinery: "Prof. Meier" rather than
+// "Prof. Meier <meier@dhbw.de>".
+func fromName(from string) string {
+	if i := strings.Index(from, "<"); i > 0 {
+		return strings.TrimSpace(strings.Trim(from[:i], `"`))
+	}
+	return strings.TrimSpace(from)
 }
 
 // ----------------------------------------------------------------- sending

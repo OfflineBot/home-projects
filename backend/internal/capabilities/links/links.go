@@ -232,7 +232,7 @@ func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Pro
 		}
 	}
 	return []store.VariableInput{
-		{Name: "links", Type: "number", Value: len(list.Links), Source: "capability:links"},
+		{Name: "links", Type: "number", Value: len(list.Links), Source: "capability:links", Reported: true},
 		{Name: "open", Type: "number", Value: open, Source: "capability:links"},
 	}, nil
 }

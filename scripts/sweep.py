@@ -713,6 +713,29 @@ def main() -> int:
         check(bool(folded) and abs(folded["grade"] - 2.13) < 0.01,
               "and the subject's grade is what the parts weigh out to")
         check(view["counted"] == 3, "the average counts the subject once, not the exams")
+
+        # What such a project puts on a page: the average, the average of each
+        # semester, and the marks themselves — not how many modules exist.
+        for _ in range(30):
+            reported = {v["name"]: v for v in (c.call("GET", f"/api/projects/{marks['id']}/variables") or {}).get("variables", [])}
+            if "semesters" in reported:
+                break
+            time.sleep(1)
+        check("average" in reported and "credits" in reported and "open" in reported,
+              "a set of grades reports its average, its credits and what is still open")
+        check("modules" not in reported and "graded" not in reported,
+              "and no longer reports numbers nobody puts on a wall")
+        per_term = reported.get("semesters", {}).get("value") or []
+        check(len(per_term) == 3 and all("label" in row and "value" in row for row in per_term),
+              "the average of each semester is there, as a list a card can show")
+        check(any(name.startswith("average_") for name in reported),
+              "and each semester's average on its own, for a number card")
+        marks_list = reported.get("grades", {}).get("value") or []
+        check(len(marks_list) >= 4 and marks_list[0].get("value"),
+              "the marks themselves are there too")
+        offered_marks = c.call("GET", f"/api/projects/{marks['id']}/offers") or {}
+        check(all(o.get("from") != "reported" for o in offered_marks.get("offers", [])),
+              "and none of it is buried as something the system worked out for itself")
         c.call("DELETE", f"/api/projects/{marks['id']}?confirm={marks['slug']}")
 
     # ------------------------------------------------ what the files already are

@@ -293,7 +293,7 @@ func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Pro
 		}
 	}
 	out := []store.VariableInput{
-		{Name: "note_count", Type: "number", Value: len(notes), Source: "capability:markdown"},
+		{Name: "note_count", Type: "number", Value: len(notes), Source: "capability:markdown", Reported: true},
 	}
 	if !newest.IsZero() {
 		out = append(out, store.VariableInput{

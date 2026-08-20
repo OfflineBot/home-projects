@@ -14,7 +14,7 @@ import (
 // exports.json — goes through SetVariable.
 
 const variableCols = `v.project_id, v.name, v.type, v.value, v.unit, v.source, v.error,
-	v.ttl_seconds, v.updated_at`
+	v.ttl_seconds, v.reported, v.updated_at`
 
 const variableSelect = `SELECT ` + variableCols + `, COALESCE(p.slug,'')
 	FROM variables v LEFT JOIN projects p ON p.id = v.project_id`
@@ -22,7 +22,7 @@ const variableSelect = `SELECT ` + variableCols + `, COALESCE(p.slug,'')
 func scanVariable(r scanner) (*model.Variable, error) {
 	var v model.Variable
 	err := r.Scan(&v.ProjectID, &v.Name, &v.Type, &v.Value, &v.Unit, &v.Source, &v.Error,
-		&v.TTLSeconds, &v.UpdatedAt, &v.ProjectSlug)
+		&v.TTLSeconds, &v.Reported, &v.UpdatedAt, &v.ProjectSlug)
 	if err != nil {
 		return nil, norm(err)
 	}
@@ -39,6 +39,13 @@ type VariableInput struct {
 	TTLSeconds int
 	// History keeps a row in variable_history so the dashboard can draw a graph.
 	History bool
+	// Reported marks the numbers the system keeps about itself — how many runs
+	// there were, how many notes exist, whether something answered. They are
+	// worth having and they are not what anybody came to see, so a list of what
+	// can go on a page shows them last and folded away. The substance of a
+	// project — an average, the marks, what is waiting in the inbox — is not
+	// marked and comes first.
+	Reported bool
 }
 
 // SetVariable stores a value and says whether it is a different one than
@@ -57,14 +64,14 @@ func (s *Store) SetVariable(ctx context.Context, projectID uuid.UUID, in Variabl
 	var changed bool
 	err = s.pool.QueryRow(ctx, `
 		WITH before AS (SELECT value FROM variables WHERE project_id=$1 AND name=$2)
-		INSERT INTO variables (project_id, name, type, value, unit, source, error, ttl_seconds, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+		INSERT INTO variables (project_id, name, type, value, unit, source, error, ttl_seconds, reported, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
 		ON CONFLICT (project_id, name) DO UPDATE SET
 			type=EXCLUDED.type, value=EXCLUDED.value, unit=EXCLUDED.unit,
 			source=EXCLUDED.source, error=EXCLUDED.error, ttl_seconds=EXCLUDED.ttl_seconds,
-			updated_at=now()
+			reported=EXCLUDED.reported, updated_at=now()
 		RETURNING (SELECT value FROM before) IS DISTINCT FROM $4::jsonb`,
-		projectID, in.Name, in.Type, body, in.Unit, in.Source, in.Error, in.TTLSeconds).Scan(&changed)
+		projectID, in.Name, in.Type, body, in.Unit, in.Source, in.Error, in.TTLSeconds, in.Reported).Scan(&changed)
 	if err != nil {
 		return false, norm(err)
 	}

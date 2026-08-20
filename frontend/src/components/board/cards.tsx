@@ -96,9 +96,22 @@ function ListCard({ options, value }: CardProps) {
     <div className="card-list">
       <div className="meta">{options.title || shortName(String(options.variable ?? ""))}</div>
       <ul>
-        {items.slice(0, 12).map((item, i) => (
-          <li key={i}>{typeof item === "object" ? JSON.stringify(item) : String(item)}</li>
-        ))}
+        {items.slice(0, 12).map((item, i) => {
+          // A row of a list is a thing and what it is worth: a grade and its
+          // mark, a semester and its average, a mail and when it came. Showing
+          // the JSON of that is showing the plumbing.
+          if (item && typeof item === "object") {
+            const row = item as { label?: string; value?: unknown; note?: string };
+            return (
+              <li key={i} className="list-line">
+                <span className="grow">{row.label ?? JSON.stringify(item)}</span>
+                {row.note ? <span className="meta">{row.note}</span> : null}
+                {row.value !== undefined ? <strong>{format(row.value)}</strong> : null}
+              </li>
+            );
+          }
+          return <li key={i}>{String(item)}</li>;
+        })}
         {items.length === 0 ? <li className="meta">nothing</li> : null}
       </ul>
     </div>

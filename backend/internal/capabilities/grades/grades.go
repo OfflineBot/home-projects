@@ -19,6 +19,7 @@ import (
 	"github.com/offlinebot/home-projects/backend/internal/files"
 	"github.com/offlinebot/home-projects/backend/internal/httpx"
 	"github.com/offlinebot/home-projects/backend/internal/model"
+	"github.com/offlinebot/home-projects/backend/internal/slug"
 	"github.com/offlinebot/home-projects/backend/internal/store"
 )
 
@@ -343,25 +344,87 @@ func (Capability) Routes(env *capability.Env, r fiber.Router) {
 	})
 }
 
+// What a page wants from a set of grades.
+//
+// The old server showed three things and they were the right three: the
+// average, what is still open, and the marks themselves. This reports those,
+// plus the average per semester, because "how did last term go" is a question
+// people actually ask — and it no longer reports how many modules exist, which
+// is a number nobody has ever put on a wall.
 func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Project) ([]store.VariableInput, error) {
 	sheet, err := read(ctx, env, p)
 	if err != nil {
 		return nil, err
 	}
-	avg, credits, counted := Average(sheet.Modules)
+	avg, credits, _ := Average(sheet.Modules)
 	open := 0
 	for _, m := range sheet.Modules {
 		if m.Status == "pending" || (m.Grade <= 0 && m.Status == "") {
 			open++
 		}
 	}
-	return []store.VariableInput{
+
+	out := []store.VariableInput{
 		{Name: "average", Type: "number", Value: avg, Source: "capability:grades", History: true},
 		{Name: "credits", Type: "number", Value: credits, Unit: "ECTS", Source: "capability:grades"},
-		{Name: "modules", Type: "number", Value: len(sheet.Modules), Source: "capability:grades"},
-		{Name: "graded", Type: "number", Value: counted, Source: "capability:grades"},
 		{Name: "open", Type: "number", Value: open, Source: "capability:grades"},
-	}, nil
+	}
+
+	// Per semester, in the order the semesters run.
+	terms := []string{}
+	byTerm := map[string][]Module{}
+	for _, m := range sheet.Modules {
+		term := strings.TrimSpace(m.Semester)
+		if term == "" {
+			continue
+		}
+		if _, seen := byTerm[term]; !seen {
+			terms = append(terms, term)
+		}
+		byTerm[term] = append(byTerm[term], m)
+	}
+	sort.Strings(terms)
+	perTerm := []map[string]any{}
+	for _, term := range terms {
+		termAvg, termCredits, counted := Average(byTerm[term])
+		if counted == 0 {
+			continue
+		}
+		perTerm = append(perTerm, map[string]any{
+			"label": term,
+			"value": fmt.Sprintf("%.2f", termAvg),
+			"note":  fmt.Sprintf("%.0f ECTS", termCredits),
+		})
+		out = append(out, store.VariableInput{
+			Name: "average_" + slug.Make(term), Type: "number", Value: termAvg,
+			Source: "capability:grades",
+		})
+	}
+	if len(perTerm) > 0 {
+		out = append(out, store.VariableInput{
+			Name: "semesters", Type: "list", Value: perTerm, Source: "capability:grades",
+		})
+	}
+
+	// The marks themselves, newest term first, so a card can simply show them.
+	marks := []map[string]any{}
+	for i := len(sheet.Modules) - 1; i >= 0; i-- {
+		m := sheet.Modules[i]
+		if m.Grade <= 0 {
+			continue
+		}
+		marks = append(marks, map[string]any{
+			"label": m.Name,
+			"value": fmt.Sprintf("%.1f", m.Grade),
+			"note":  m.Semester,
+		})
+	}
+	if len(marks) > 0 {
+		out = append(out, store.VariableInput{
+			Name: "grades", Type: "list", Value: marks, Source: "capability:grades",
+		})
+	}
+	return out, nil
 }
 
 // SchedulerKinds brings the Dualis fetch. Its credentials follow the

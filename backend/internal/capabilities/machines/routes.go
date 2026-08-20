@@ -353,7 +353,7 @@ func shellQuote(s string) string {
 func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Project) ([]store.VariableInput, error) {
 	list := read(ctx, env, p)
 	out := []store.VariableInput{
-		{Name: "machines", Type: "number", Value: len(list.Machines), Source: "capability:machines"},
+		{Name: "machines", Type: "number", Value: len(list.Machines), Source: "capability:machines", Reported: true},
 	}
 	for _, m := range list.Machines {
 		out = append(out, store.VariableInput{

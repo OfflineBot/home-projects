@@ -273,7 +273,10 @@ type Variable struct {
 	Source      string          `json:"source"`
 	Error       string          `json:"error,omitempty"`
 	TTLSeconds  int             `json:"ttlSeconds"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	// Reported marks the numbers the system keeps about itself rather than the
+	// ones a project exists to produce.
+	Reported  bool      `json:"reported,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // QualifiedName is how a variable appears in its group: <project-slug>.<name>.

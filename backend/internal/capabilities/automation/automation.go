@@ -370,8 +370,8 @@ func (Capability) Exports(ctx context.Context, env *capability.Env, p *model.Pro
 		}
 	}
 	out := []store.VariableInput{
-		{Name: "automation_runs", Type: "number", Value: total, Source: "capability:automation"},
-		{Name: "automation_failed", Type: "number", Value: failed, Source: "capability:automation"},
+		{Name: "automation_runs", Type: "number", Value: total, Source: "capability:automation", Reported: true},
+		{Name: "automation_failed", Type: "number", Value: failed, Source: "capability:automation", Reported: true},
 	}
 	if lastAt != nil {
 		out = append(out,

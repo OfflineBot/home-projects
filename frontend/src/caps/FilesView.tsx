@@ -11,10 +11,23 @@ import { useQuery } from "../lib/store";
  * The file tree — the foundation every project has, whatever else is switched
  * on. The path lives in the URL, so the back button works.
  */
-export default function FilesView({ project, reload }: { project: Project; reload: () => void }) {
+export default function FilesView({
+  project,
+  reload,
+  start,
+}: {
+  project: Project;
+  reload: () => void;
+  /**
+   * Where to begin. A card on a page usually means one folder — the invoices,
+   * the notes — rather than the whole tree, and saying so is the difference
+   * between a useful card and a file manager nobody wanted there.
+   */
+  start?: string;
+}) {
   const ask = useAsk();
   const [params, setParams] = useSearchParams();
-  const path = params.get("path") ?? "";
+  const path = params.get("path") ?? start ?? "";
   const editing = params.get("file");
   const query = params.get("q") ?? "";
 

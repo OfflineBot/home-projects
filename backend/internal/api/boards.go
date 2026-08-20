@@ -603,14 +603,19 @@ func (s *Server) mountOffers(one fiber.Router) {
 					card = "list"
 				}
 				name := p.Slug + "." + v.Name
-				// Written down by a person, or worked out by the server: the
-				// difference is where it came from.
-				mine := v.Source == "project.yaml" || v.Source == "exports.json"
-				detail := "worked out by itself"
-				from := "reported"
-				if mine {
-					detail = "declared in project.yaml"
-					from = "yours"
+				// The variable itself says whether it is the point of the
+				// project or the system's own bookkeeping. Guessing from where
+				// it came was close but wrong: an average out of Dualis is a
+				// capability's export and is exactly what somebody wants.
+				detail := "declared in project.yaml"
+				from := "yours"
+				switch {
+				case v.Reported:
+					detail, from = "the system's own count", "reported"
+				case strings.HasPrefix(v.Source, "capability:"):
+					detail = "what this project works out"
+				case v.Source == "exports.json":
+					detail = "from exports.json"
 				}
 				offer := capability.Offer{
 					Card: card, Title: v.Name, Icon: "grid", Detail: detail, From: from,
@@ -643,6 +648,22 @@ func (s *Server) mountOffers(one fiber.Router) {
 			Options: map[string]any{"projectId": p.ID.String(), "view": "files",
 				"title": p.Title + " · Files"},
 		})
+		// And each folder on its own, because "the notes" or "the invoices" is
+		// what somebody means far more often than "all the files".
+		if entries, err := s.Env.Files.List(ctx, auth.From(c), p, ""); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir || strings.HasPrefix(entry.Name, ".") {
+					continue
+				}
+				folder := entry.Name
+				offers = append(offers, capability.Offer{
+					Card: "view", Title: folder, Icon: "folder", Detail: "that folder, on the board",
+					From: "yours", W: 6, H: 4,
+					Options: map[string]any{"projectId": p.ID.String(), "view": "files",
+						"folder": folder, "title": p.Title + " · " + folder},
+				})
+			}
+		}
 		return c.JSON(fiber.Map{"offers": offers})
 	})
 }

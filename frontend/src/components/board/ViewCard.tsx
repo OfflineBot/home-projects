@@ -26,6 +26,7 @@ export default function ViewCard({ options, editing }: CardProps) {
   if (!data) return <div className="meta">That project is gone.</div>;
 
   const View = which === "files" ? FilesView : capabilityViews[which]?.component;
+  const folder = String(options.folder ?? "");
   const address = `/groups/${data.groupSlug}/${data.slug}`;
 
   return (
@@ -35,14 +36,14 @@ export default function ViewCard({ options, editing }: CardProps) {
           <Icon name={data.icon} size={14} /> {options.title || data.title}
         </Link>
         <span className="grow" />
-        <Link className="meta" to={`${address}?tab=${which}`}>
+        <Link className="meta" to={`${address}?tab=${which}${folder ? `&path=${encodeURIComponent(folder)}` : ""}`}>
           open it
         </Link>
       </div>
       <div className="card-view-body">
         {View ? (
           <Suspense fallback={<Spinner />}>
-            <View project={data} reload={() => {}} />
+            <View project={data} reload={() => {}} start={folder || undefined} />
           </Suspense>
         ) : (
           <div className="meta">This project has no view called “{which}”.</div>

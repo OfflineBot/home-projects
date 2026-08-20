@@ -754,6 +754,10 @@ pre.block { background: var(--ctp-crust); border: 1px solid var(--ctp-surface0);
 }
 .card-rule { position: relative; }
 
+/* A row of a list: what it is, a word about it, what it is worth. */
+.card-list .list-line { display: flex; align-items: baseline; gap: 8px; }
+.card-list .list-line .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* A number, a button, and what is coming. */
 .card-timer { display: flex; flex-direction: column; gap: 8px; justify-content: center; height: 100%; }
 .card-timer-row { display: flex; align-items: center; gap: 8px; }
