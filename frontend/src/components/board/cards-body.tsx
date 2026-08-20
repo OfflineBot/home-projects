@@ -21,6 +21,7 @@ export function dress(style?: CardStyle) {
       "card",
       s.background === "tinted" ? "tinted" : "",
       s.background === "bare" ? "bare" : "",
+      s.boxed ? "boxed" : "",
       s.border === false ? "borderless" : "",
       s.size === "large" ? "large" : "",
       s.align === "center" ? "centred" : "",

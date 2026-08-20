@@ -222,10 +222,10 @@ export function CardFields({
       <label className="check">
         <input
           type="checkbox"
-          checked={style.border !== false}
-          onChange={(e) => setStyle({ ...style, border: e.target.checked })}
+          checked={Boolean(style.boxed)}
+          onChange={(e) => setStyle({ ...style, boxed: e.target.checked })}
         />
-        <span>A line around it</span>
+        <span>A box around it — on a page the cards have none by default</span>
       </label>
 
         </>

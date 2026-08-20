@@ -1245,6 +1245,37 @@ body.focus main.main { padding: 14px 18px 60px; max-width: none; }
 .sections-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .sections-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .sections-card { position: relative; transition: opacity .12s ease; }
+/* A page, not a tray of tiles.
+   
+   On a board arranged as sections the cards are the page: no box around each
+   one, no second background inside the section's own, no line between a
+   heading and the thing under it. What gives the page its shape is the
+   sections — a band, a heading, columns — not forty rectangles.
+   
+   A card that asks for a box still gets one: choose "tinted" or switch the
+   line back on in its settings, and it stands out because it was meant to. */
+.sections-card > .card {
+  background: none; border: none; border-radius: 0; padding: 0; overflow: visible;
+}
+.sections-card > .card.tinted {
+  background: color-mix(in srgb, var(--card-color, var(--ctp-blue)) 12%, var(--ctp-mantle));
+  border-radius: 12px; padding: 14px 16px;
+}
+.sections-card > .card:not(.borderless).boxed {
+  border: 1px solid var(--ctp-surface0); border-radius: 12px; padding: 14px 16px;
+}
+/* The things that are a box by their nature keep theirs: a terminal is a
+   screen, a picture has edges, a lamp is a switch. */
+.sections-card > .card-terminal,
+.sections-card > .card-embed,
+.sections-card > .card-image,
+.sections-card > .card-view { border-radius: 12px; overflow: hidden; }
+.sections-card > .card > .card-machine,
+.sections-card > .card > .card-light {
+  border: 1px solid var(--ctp-surface0); border-radius: 12px; padding: 12px 14px;
+  background: var(--ctp-mantle);
+}
+.sections-row { row-gap: 18px; }
 /* Being dragged, and where it would land. */
 .sections-card.lifted { opacity: .35; }
 .sections-card.landing::before {
