@@ -8,7 +8,7 @@ import { Grid, type Placed } from "./Grid";
 import { CardBody, CardInner, dress } from "./cards-body";
 import { CardSettings } from "./CardSettings";
 import { Sections, arrange, fromGrid, type Section as PaneSection } from "./Sections";
-import { Builder } from "./Builder";
+import { BuildBar } from "./BuildBar";
 import { CodeArea } from "../CodeArea";
 import HtmlCard from "./HtmlCard";
 
@@ -566,37 +566,11 @@ export default function Board({
         );
         if (!building || !current) return canvas;
         return (
-          <div className="building">
-            <div className="focus-bar building-page-bar">
-              <button className="btn small ghost" onClick={() => { setEditing(false); setChosen(null); }}>
-                <Icon name="chevronLeft" size={14} /> Back
-              </button>
-              <span className="name">{current.title}</span>
-              {tabs.length > 1 ? (
-                <select
-                  className="board-width"
-                  aria-label="Which tab"
-                  value={tab}
-                  onChange={(e) => {
-                    setTab(Number(e.target.value));
-                    setChosen(null);
-                  }}
-                >
-                  {tabs.map((t, i) => (
-                    <option key={t.id} value={i}>
-                      {t.title}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              <span className="grow" />
-              <button className="btn small ghost" onClick={() => setTabSettings(current)}>
-                <Icon name="settings" size={13} /> This tab
-              </button>
-            </div>
-            <div className="building-page">{canvas}</div>
-            <Builder
+          <>
+            {canvas}
+            <BuildBar
               tab={current}
+              tabs={tabs}
               kinds={kinds.data?.cards ?? []}
               projects={projects.data?.projects ?? []}
               group={group}
@@ -604,6 +578,10 @@ export default function Board({
               chosen={current.cards.find((c) => c.id === chosen) ?? null}
               sections={arrange((current.style as TabStyle | undefined)?.sections, current.cards)}
               onChoose={(card) => setChosen(card?.id ?? null)}
+              onTab={(index) => {
+                setTab(index);
+                setChosen(null);
+              }}
               onSections={(next) => void saveSections(current, next)}
               onAdd={async (kind, options) => {
                 const fallback = (kinds.data?.cards ?? []).find((k) => k.name === kind);
@@ -639,7 +617,7 @@ export default function Board({
                 setChosen(null);
               }}
             />
-          </div>
+          </>
         );
       })()}
 

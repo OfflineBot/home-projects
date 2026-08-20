@@ -1114,6 +1114,14 @@ def main() -> int:
     c.call("POST", f"/api/projects/{system}/automation/light", {"host": "Desk", "power": "toggle"}, expect=502)
     c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [{"name": "", "host": "x"}]}, expect=400)
     c.call("PUT", f"/api/projects/{system}/automation/lights", {"lights": [{"name": "x", "host": ""}]}, expect=400)
+    # What somebody made and what the server worked out are not the same list.
+    told = c.call("GET", f"/api/projects/{system}/offers") or {}
+    kinds_of = {o["title"]: o.get("from") for o in told.get("offers", [])}
+    check(any(v == "reported" for v in kinds_of.values()),
+          "a number the server works out says so")
+    check(all(kinds_of.get(name) != "reported" for name in ("Desk", "check-self")),
+          "and a lamp or a rule somebody wrote is not lumped in with it")
+
     offered_lights = c.call("GET", f"/api/projects/{system}/offers") or {}
     check(any(o["card"] == "light" and o["options"].get("host") == "Desk"
               for o in offered_lights.get("offers", [])),

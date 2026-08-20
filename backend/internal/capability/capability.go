@@ -188,10 +188,16 @@ type Card struct {
 // person knows they want the average out of their grades project; they should
 // not have to know that the average is a "number" card pointing at a variable.
 type Offer struct {
-	Card    string         `json:"card"`
-	Title   string         `json:"title"`
-	Icon    string         `json:"icon,omitempty"`
-	Detail  string         `json:"detail,omitempty"`
+	Card   string `json:"card"`
+	Title  string `json:"title"`
+	Icon   string `json:"icon,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	// From says where this came from: "yours" for the things somebody made — a
+	// rule they wrote, a machine they wrote down, a lamp they named — and
+	// "reported" for what the system worked out by itself, like how many runs
+	// failed or whether something answered. A list that mixes the two buries
+	// the six things you meant under forty you never asked for.
+	From    string         `json:"from,omitempty"`
 	Options map[string]any `json:"options"`
 	W       int            `json:"w,omitempty"`
 	H       int            `json:"h,omitempty"`

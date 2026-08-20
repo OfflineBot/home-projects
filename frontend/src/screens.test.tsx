@@ -411,9 +411,11 @@ describe("every screen draws something", () => {
       // Building it: the page stays as it is and everything about it is in the
       // panel beside it. The shape of a section is changed there, and it sticks.
       fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      const panel = await waitFor(() => c.querySelector(".page-builder")!, { timeout: 8000 });
-      fireEvent.click([...panel.querySelectorAll("button")].find((b) => /Page/.test(b.textContent ?? ""))!);
-      const shape = await waitFor(() => panel.querySelector<HTMLSelectElement>(".page-builder-section select")!);
+      const bar = await waitFor(() => document.querySelector(".build-bar")!, { timeout: 8000 });
+      fireEvent.click([...bar.querySelectorAll("button")].find((b) => /Page/.test(b.textContent ?? ""))!);
+      const shape = await waitFor(() => document.querySelector<HTMLSelectElement>(".sheet-section select")!, {
+        timeout: 8000,
+      });
       fireEvent.change(shape, { target: { value: "three" } });
       await waitFor(async () => {
         const after = await api<{ tabs: { id: string; style?: { sections?: { shape: string }[] } }[] }>(
@@ -446,9 +448,11 @@ describe("every screen draws something", () => {
       expect(c.querySelector(".board.fills")).not.toBeNull();
       // And it can be switched off again where it is switched on: the panel.
       fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Edit")!);
-      const panel = await waitFor(() => c.querySelector(".page-builder")!, { timeout: 8000 });
-      fireEvent.click([...panel.querySelectorAll("button")].find((b) => /Page/.test(b.textContent ?? ""))!);
-      const fill = await waitFor(() => panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+      // The bar at the bottom opens the page's own sheet.
+      const bar = await waitFor(() => document.querySelector(".build-bar")!, { timeout: 8000 });
+      fireEvent.click([...bar.querySelectorAll("button")].find((b) => /Page/.test(b.textContent ?? ""))!);
+      const sheet = await waitFor(() => document.querySelector(".sheet")!, { timeout: 8000 });
+      const fill = await waitFor(() => sheet.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
       fireEvent.click(fill);
       await waitFor(() => expect(c.querySelector(".board.fills")).toBeNull(), { timeout: 8000 });
     } finally {

@@ -168,17 +168,17 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 		out = append(out,
 			capability.Offer{
 				Card: "machine", Title: m.Name, Icon: "server", Detail: m.Host, W: 3, H: 2,
-				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name, "title": m.Name},
+				From: "yours", Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name, "title": m.Name},
 			},
 			capability.Offer{
 				Card: "terminal", Title: m.Name + " · terminal", Icon: "code",
 				Detail: "the sessions, open", W: 8, H: 4,
-				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name},
+				From: "yours", Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name},
 			},
 			capability.Offer{
 				Card: "terminal", Title: m.Name + " · terminal button", Icon: "code",
 				Detail: "one button, opens full screen", W: 2, H: 1,
-				Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name, "as": "button"},
+				From: "yours", Options: map[string]any{"projectId": p.ID.String(), "machine": m.Name, "as": "button"},
 			})
 	}
 	return out

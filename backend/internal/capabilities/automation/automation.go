@@ -221,7 +221,7 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 		}
 		out = append(out, capability.Offer{
 			Card: "rule", Title: r.Name, Icon: "play", Detail: "runs this rule", W: 2, H: 1,
-			Options: map[string]any{"projectId": p.ID.String(), "rule": r.Name, "title": r.Name},
+			From: "yours", Options: map[string]any{"projectId": p.ID.String(), "rule": r.Name, "title": r.Name},
 		})
 	}
 	out = append(out, timerOffers(p, spec)...)
@@ -241,7 +241,7 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 		}
 		out = append(out, capability.Offer{
 			Card: "light", Title: l.Name, Icon: "lightbulb", Detail: detail, W: 2, H: 1,
-			Options: map[string]any{"projectId": p.ID.String(), "host": l.Name, "title": l.Name},
+			From: "yours", Options: map[string]any{"projectId": p.ID.String(), "host": l.Name, "title": l.Name},
 		})
 	}
 	for _, host := range lightsIn(spec) {
@@ -250,7 +250,7 @@ func (Capability) Offers(ctx context.Context, env *capability.Env, p *model.Proj
 		}
 		out = append(out, capability.Offer{
 			Card: "light", Title: host, Icon: "lightbulb", Detail: "on and off", W: 2, H: 1,
-			Options: map[string]any{"projectId": p.ID.String(), "host": host, "title": host},
+			From: "yours", Options: map[string]any{"projectId": p.ID.String(), "host": host, "title": host},
 		})
 	}
 	return out

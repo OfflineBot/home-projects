@@ -589,7 +589,7 @@ func (s *Server) mountOffers(one fiber.Router) {
 
 		offers := []capability.Offer{{
 			Card: "project", Title: p.Title, Icon: p.Icon, Detail: "the project itself",
-			W: 3, H: 2, Options: map[string]any{"projectId": p.ID.String()},
+			From: "yours", W: 3, H: 2, Options: map[string]any{"projectId": p.ID.String()},
 		}}
 
 		// Every number this project reports, as the card that suits it.
@@ -603,8 +603,17 @@ func (s *Server) mountOffers(one fiber.Router) {
 					card = "list"
 				}
 				name := p.Slug + "." + v.Name
+				// Written down by a person, or worked out by the server: the
+				// difference is where it came from.
+				mine := v.Source == "project.yaml" || v.Source == "exports.json"
+				detail := "worked out by itself"
+				from := "reported"
+				if mine {
+					detail = "declared in project.yaml"
+					from = "yours"
+				}
 				offer := capability.Offer{
-					Card: card, Title: v.Name, Icon: "grid", Detail: "a number this project reports",
+					Card: card, Title: v.Name, Icon: "grid", Detail: detail, From: from,
 					Options: map[string]any{"variable": name, "title": v.Name},
 				}
 				if p.GroupID != nil {
@@ -623,14 +632,14 @@ func (s *Server) mountOffers(one fiber.Router) {
 			// it stands rather than one click away.
 			offers = append(offers, capability.Offer{
 				Card: "view", Title: cap.Title() + ", right here", Icon: cap.Icon(),
-				Detail: "the view itself, on the board", W: 6, H: 5,
+				Detail: "the view itself, on the board", From: "yours", W: 6, H: 5,
 				Options: map[string]any{"projectId": p.ID.String(), "view": cap.Name(),
 					"title": p.Title + " · " + cap.Title()},
 			})
 		}
 		offers = append(offers, capability.Offer{
 			Card: "view", Title: "Its files, right here", Icon: "folder",
-			Detail: "the file tree, on the board", W: 6, H: 5,
+			Detail: "the file tree, on the board", From: "yours", W: 6, H: 5,
 			Options: map[string]any{"projectId": p.ID.String(), "view": "files",
 				"title": p.Title + " · Files"},
 		})

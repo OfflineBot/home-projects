@@ -213,12 +213,19 @@ if (sectionTab) {
   const before = await api(`/api/boards?group=${group.slug}`);
   const beforeCols = before.tabs.find((t) => t.id === sectionTab)?.style?.sections?.[1]?.columns;
   await page.getByRole("button", { name: "Edit" }).first().click();
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(2500);
   await shot("17-building");
+  // And what "Add" opens: a search, not a column.
+  await page.getByRole("button", { name: /^Add$/ }).first().click();
+  await page.waitForTimeout(2500);
+  await shot("18-finding");
+  console.log("finder blocks:", await page.locator(".finder-block").count());
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
   console.log(
     "panel:",
     await page.evaluate(() => {
-      const b = document.querySelector(".page-builder");
+      const b = document.querySelector(".build-bar");
       if (!b) return "none";
       const r = b.getBoundingClientRect();
       const box = (sel) => {
@@ -228,7 +235,7 @@ if (sectionTab) {
         const cs = getComputedStyle(el);
         return `${sel} ${Math.round(q.width)}x${Math.round(q.height)}@${Math.round(q.x)},${Math.round(q.y)} ${cs.display}/${cs.visibility}/${cs.opacity}`;
       };
-      return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)}  ${box(".page-builder-body")}  ${box(".page-builder-block")}  blocks ${document.querySelectorAll(".page-builder-block").length}`;
+      return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)}  ${box(".finder")}  ${box(".build-chip")}  blocks ${document.querySelectorAll(".finder-block").length}`;
     }),
   );
   const grip = page.locator(".sections-section").nth(1).locator(".card-grip").first();

@@ -231,7 +231,7 @@ func timerOffers(p *model.Project, spec *Spec) []capability.Offer {
 		out = append(out, capability.Offer{
 			Card: "timer", Title: fmt.Sprintf("%s, later", r.Name), Icon: "clock",
 			Detail: "in so many minutes", W: 4, H: 2,
-			Options: map[string]any{
+			From: "yours", Options: map[string]any{
 				"projectId": p.ID.String(), "rule": r.Name, "minutes": 5, "title": r.Name,
 			},
 		})
