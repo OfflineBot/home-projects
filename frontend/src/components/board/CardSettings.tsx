@@ -59,21 +59,29 @@ export function CardFields({
     <>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {/* The card's own settings, drawn by the one renderer. */}
-      {here("options") ? <Fields specs={kind?.options ?? []} values={options} onChange={setOptions} /> : null}
-
-      {card.kind === "html" ? (
-        <Field label="How it looks">
-          <div className="html-preview">
-            <HtmlCard options={options} value={() => undefined} projects={[]} editing={false} />
-          </div>
-        </Field>
+      {here("options") ? (
+        <>
+          <Fields specs={kind?.options ?? []} values={options} onChange={setOptions} />
+          {/* What it says on the page. It sat outside the folds before, which
+              drew it once per fold and called it "Title", which is not what
+              anybody is looking for when they want to rename a button. */}
+          {card.kind === "html" ? (
+            <Field label="How it looks">
+              <div className="html-preview">
+                <HtmlCard options={options} value={() => undefined} projects={[]} editing={false} />
+              </div>
+            </Field>
+          ) : null}
+          <Field label="What it says" hint="The name shown on the card itself.">
+            <input
+              value={options.title ?? ""}
+              placeholder={kind?.title}
+              onChange={(e) => setOptions({ ...options, title: e.target.value })}
+            />
+          </Field>
+        </>
       ) : null}
-      <Field label="Title">
-        <input
-          value={options.title ?? ""}
-          onChange={(e) => setOptions({ ...options, title: e.target.value })}
-        />
-      </Field>
+
       {here("size") ? (
         <>
       <Section title="How big" />
